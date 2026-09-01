@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Pipe Games · Inventario</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: rgba(255,255,255,0.09);
+    --text: #f2f2f5;
+    --muted: #9a9aa8;
+    --accent: #3a7bd5;
+    --accent2: #00c896;
+    --danger: #e5484d;
+    --warn: #f5a623;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text); margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  input, select, button { font-family: inherit; font-size: 1rem; }
+  input, select {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.7rem 0.9rem;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  ::placeholder { color: var(--muted); opacity: 0.7; }
+  button { cursor: pointer; border: none; border-radius: 8px; padding: 0.7rem 1.2rem; font-weight: 700; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-success { background: var(--accent2); color: #04140f; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-danger-ghost { background: transparent; color: var(--danger); border: 1px solid var(--border); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; }
+  .row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  #app { max-width: 900px; margin: 0 auto; padding: 1.5rem; padding-bottom: 4rem; }
+  header { border-bottom: 1px solid var(--border); padding: 1.25rem 1.5rem; }
+  header .inner { max-width: 900px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+  h1 { font-size: 1.4rem; font-weight: 800; margin: 0; letter-spacing: 0.5px; }
+  h1 span { color: var(--accent); }
+  .sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+  .product-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+  .stripe { width: 6px; align-self: stretch; border-radius: 3px; }
+  .qty-btn { width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 1.1rem; padding: 0; }
+  .toast { position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%); padding: 0.7rem 1.2rem; border-radius: 10px; font-size: 0.9rem; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 60; max-width: 90vw; text-align: center; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; padding: 1rem; z-index: 50; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; width: 100%; max-width: 380px; }
+  .setup-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+  .mono { font-family: monospace; }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Estado ----------
+  var APP_PIN = '1795';
+
+  var state = {
+    unlocked: localStorage.getItem('inv_unlocked') === 'true',
+    pinValue: '',
+    pinError: false,
+    dbUrl: localStorage.getItem('inv_db_url') || null,
+    products: {},
+    movements: [],
+    loading: true,
+    saving: false,
+    connected: null, // null = sin probar, true/false
+    scanValue: '',
+    qty: 1,
+    pendingBarcode: null,
+    newProduct: { name: '', platform: 'PS4', origen: '', price: '', stock: 1 },
+    lookupLoading: false,
+    lookupFound: false,
+    search: '',
+    editingBarcode: null,
+    editDraft: {},
+    showMovements: false,
+    showImport: false,
+    importRows: null,
+    importHeaders: [],
+    importMapping: { barcode: '', name: '', platform: '', price: '', origen: '' },
+    importSummary: null,
+    toast: null,
+  };
+
+  var toastTimer = null;
+  var pollTimer = null;
+
+  var PLATFORMS = ['PS4', 'PS5', 'PS3', 'SWITCH', 'SWITCH 2', 'XBOX', 'ACCESORIO', 'OTRO'];
+  var PLATFORM_COLOR = {
+    PS4: 'var(--accent)', PS5: 'var(--accent2)', PS3: '#6c5ce7', SWITCH: '#e91e8c',
+    'SWITCH 2': '#e91e8c', XBOX: '#107c10', ACCESORIO: 'var(--warn)', OTRO: 'var(--muted)'
+  };
+
+  var GS1_PREFIXES = [
+    { min: 0, max: 139, label: 'Estados Unidos / Canadá' },
+    { min: 300, max: 379, label: 'Francia' },
+    { min: 400, max: 440, label: 'Alemania' },
+    { min: 450, max: 459, label: 'Japón' },
+    { min: 490, max: 499, label: 'Japón' },
+    { min: 500, max: 509, label: 'Reino Unido' },
+    { min: 690, max: 699, label: 'China' },
+    { min: 750, max: 750, label: 'México' },
+    { min: 770, max: 771, label: 'Colombia' },
+    { min: 773, max: 773, label: 'Uruguay' },
+    { min: 775, max: 775, label: 'Perú' },
+    { min: 777, max: 777, label: 'Bolivia' },
+    { min: 779, max: 779, label: 'Argentina' },
+    { min: 780, max: 780, label: 'Chile' },
+    { min: 786, max: 786, label: 'Ecuador' },
+    { min: 789, max: 790, label: 'Brasil' },
+    { min: 850, max: 850, label: 'República Dominicana' },
+  ];
+
+  function guessOrigenPorPrefijo(code) {
+    var digits = code.replace(/\D/g, '');
+    if (digits.length < 12) return '';
+    var normalized = digits.length === 12 ? '0' + digits : digits;
+    var prefix = parseInt(normalized.slice(0, 3), 10);
+    for (var i = 0; i < GS1_PREFIXES.length; i++) {
+      var r = GS1_PREFIXES[i];
+      if (prefix >= r.min && prefix <= r.max) return r.label;
+    }
+    return '';
+  }
+
+  function guessPlatformFromTitle(title) {
+    var t = title.toUpperCase();
+    if (t.indexOf('SWITCH 2') !== -1) return 'SWITCH 2';
+    if (t.indexOf('SWITCH') !== -1) return 'SWITCH';
+    if (t.indexOf('PS5') !== -1 || t.indexOf('PLAYSTATION 5') !== -1) return 'PS5';
+    if (t.indexOf('PS4') !== -1 || t.indexOf('PLAYSTATION 4') !== -1) return 'PS4';
+    if (t.indexOf('PS3') !== -1 || t.indexOf('PLAYSTATION 3') !== -1) return 'PS3';
+    if (t.indexOf('XBOX') !== -1 || t.indexOf('XB1') !== -1) return 'XBOX';
+    return '';
+  }
+
+  function lookupBarcodeOnline(code, cb) {
+    var result = { title: '', platform: '', origen: guessOrigenPorPrefijo(code), found: false };
+    fetch('https://api.upcitemdb.com/prod/trial/lookup?upc=' + encodeURIComponent(code))
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        var item = data && data.items && data.items[0];
+        if (item && item.title) {
+          result.title = item.title;
+          result.platform = guessPlatformFromTitle(item.title);
+          result.found = true;
+        }
+        cb(result);
+      })
+      .catch(function () { cb(result); });
+  }
+
+  function fmtDate(iso) {
+    var d = new Date(iso);
+    return d.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ---------- Firebase REST helpers ----------
+  function dbFetch(path, opts) {
+    var url = state.dbUrl.replace(/\/$/, '') + '/' + path + '.json';
+    return fetch(url, opts);
+  }
+
+  function loadFromDb(isInitial) {
+    if (isInitial) { state.loading = true; render(); }
+    Promise.all([
+      dbFetch('products').then(function (r) { return r.ok ? r.json() : null; }),
+      dbFetch('movements').then(function (r) { return r.ok ? r.json() : null; })
+    ]).then(function (results) {
+      var newProducts = results[0] || {};
+      var mv = results[1];
+      var newMovements = Array.isArray(mv) ? mv.filter(Boolean) : (mv ? Object.values(mv) : []);
+      var changed = JSON.stringify(newProducts) !== JSON.stringify(state.products) ||
+                    JSON.stringify(newMovements) !== JSON.stringify(state.movements);
+      state.products = newProducts;
+      state.movements = newMovements;
+      state.connected = true;
+      if (isInitial) state.loading = false;
+      // En actualizaciones de fondo, no interrumpir si hay un formulario abierto
+      // ni volver a pintar la pantalla si no cambió nada (evita el parpadeo).
+      if (isInitial || (changed && !state.pendingBarcode && !state.editingBarcode)) {
+        render();
+      }
+    }).catch(function () {
+      state.connected = false;
+      if (isInitial) state.loading = false;
+      if (isInitial) render();
+    });
+  }
+
+  function saveProducts(cb) {
+    state.saving = true; render();
+    dbFetch('products', { method: 'PUT', body: JSON.stringify(state.products) })
+      .then(function (r) {
+        state.connected = r.ok;
+        state.saving = false;
+        render();
+        if (cb) cb();
+      })
+      .catch(function () {
+        state.connected = false;
+        state.saving = false;
+        showToast('No se pudo guardar. Revisa tu conexión a internet.', 'error');
+        render();
+      });
+  }
+
+  function saveMovements() {
+    var trimmed = state.movements.slice(0, 120);
+    state.movements = trimmed;
+    dbFetch('movements', { method: 'PUT', body: JSON.stringify(trimmed) }).catch(function () {});
+  }
+
+  function addMovement(entry) {
+    entry.date = new Date().toISOString();
+    state.movements.unshift(entry);
+    saveMovements();
+  }
+
+  function showToast(message, type) {
+    if (toastTimer) clearTimeout(toastTimer);
+    state.toast = { message: message, type: type || 'success' };
+    render();
+    toastTimer = setTimeout(function () { state.toast = null; render(); }, 3200);
+  }
+
+  // ---------- Acciones ----------
+  function handleScanSubmit(e) {
+    e.preventDefault();
+    var code = state.scanValue.trim();
+    if (!code) return;
+    var existing = state.products[code];
+    if (existing) {
+      var addQty = Math.max(1, Number(state.qty) || 1);
+      var newStock = existing.stock + addQty;
+      state.products[code] = Object.assign({}, existing, { stock: newStock, updatedAt: new Date().toISOString() });
+      saveProducts();
+      addMovement({ type: 'entrada', barcode: code, name: existing.name, qty: addQty, stockResult: newStock });
+      showToast('+' + addQty + ' · ' + existing.name + ' → stock: ' + newStock, 'success');
+      state.scanValue = ''; state.qty = 1;
+      render();
+    } else {
+      var stockInicial = Math.max(1, Number(state.qty) || 1);
+      state.pendingBarcode = code;
+      state.newProduct = { name: '', platform: 'PS4', origen: '', price: '', stock: stockInicial };
+      state.lookupFound = false;
+      state.scanValue = '';
+      render();
+      runLookup(code, stockInicial);
+    }
+  }
+
+  function runLookup(code, stockInicial) {
+    state.lookupLoading = true; render();
+    lookupBarcodeOnline(code, function (result) {
+      state.lookupLoading = false;
+      state.lookupFound = result.found;
+      state.newProduct.name = result.title || state.newProduct.name;
+      state.newProduct.platform = result.platform || state.newProduct.platform;
+      state.newProduct.origen = result.origen || state.newProduct.origen;
+      state.newProduct.stock = stockInicial;
+      render();
+    });
+  }
+
+  function handleCreateProduct() {
+    if (!state.newProduct.name.trim()) { showToast('Ponle un nombre al producto', 'error'); return; }
+    var stockInicial = Math.max(0, Number(state.newProduct.stock) || 0);
+    var code = state.pendingBarcode;
+    state.products[code] = {
+      name: state.newProduct.name.trim(), platform: state.newProduct.platform,
+      origen: state.newProduct.origen, price: state.newProduct.price,
+      stock: stockInicial, updatedAt: new Date().toISOString()
+    };
+    saveProducts();
+    addMovement({ type: 'alta', barcode: code, name: state.newProduct.name.trim(), qty: stockInicial, stockResult: stockInicial });
+    showToast('Producto creado: ' + state.newProduct.name.trim(), 'success');
+    state.pendingBarcode = null; state.qty = 1;
+    render();
+  }
+
+  function cancelPending() { state.pendingBarcode = null; state.qty = 1; render(); }
+
+  function pasteFromClipboard() {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      showToast('Tu navegador no permite pegar automático aquí. Mantén presionado el campo y elige "Pegar".', 'error');
+      return;
+    }
+    navigator.clipboard.readText().then(function (text) {
+      text = (text || '').trim();
+      if (!text) { showToast('El portapapeles está vacío. Copia el nombre primero.', 'error'); return; }
+      state.newProduct.name = text;
+      var guessedPlatform = guessPlatformFromTitle(text);
+      if (guessedPlatform) state.newProduct.platform = guessedPlatform;
+      render();
+      showToast('Nombre pegado' + (guessedPlatform ? ' · plataforma detectada: ' + guessedPlatform : ''), 'success');
+    }).catch(function () {
+      showToast('No se pudo leer el portapapeles. Mantén presionado el campo y elige "Pegar" manualmente.', 'error');
+    });
+  }
+
+  function adjustStock(barcode, delta) {
+    var p = state.products[barcode];
+    if (!p) return;
+    var newStock = Math.max(0, p.stock + delta);
+    state.products[barcode] = Object.assign({}, p, { stock: newStock, updatedAt: new Date().toISOString() });
+    saveProducts();
+    addMovement({ type: 'ajuste', barcode: barcode, name: p.name, qty: delta, stockResult: newStock });
+    render();
+  }
+
+  function startEdit(barcode) { state.editingBarcode = barcode; state.editDraft = Object.assign({}, state.products[barcode]); render(); }
+
+  function saveEdit() {
+    state.products[state.editingBarcode] = Object.assign({}, state.products[state.editingBarcode], state.editDraft, { updatedAt: new Date().toISOString() });
+    saveProducts();
+    showToast('Producto actualizado', 'success');
+    state.editingBarcode = null;
+    render();
+  }
+
+  function deleteProduct(barcode) {
+    var p = state.products[barcode];
+    if (!confirm('¿Eliminar "' + p.name + '" del inventario? Esta acción no se puede deshacer.')) return;
+    var stockAntes = p.stock;
+    delete state.products[barcode];
+    saveProducts();
+    addMovement({ type: 'baja', barcode: barcode, name: p.name, qty: -stockAntes, stockResult: 0 });
+    showToast('Producto eliminado', 'success');
+    render();
+  }
+
+  // ---------- Importar Excel / CSV ----------
+  function findField(row, candidates) {
+    var keys = Object.keys(row);
+    for (var i = 0; i < keys.length; i++) {
+      var normalized = keys[i].toString().trim().toLowerCase();
+      for (var j = 0; j < candidates.length; j++) {
+        if (normalized === candidates[j]) return keys[i];
+      }
+    }
+    return '';
+  }
+
+  function guessMapping(headers, rows) {
+    var sample = rows[0] || {};
+    return {
+      barcode: findField(sample, ['codigo de barras', 'código de barras', 'codigo', 'código', 'barcode', 'ean', 'upc']),
+      name: findField(sample, ['nombre', 'titulo', 'título', 'juego', 'name', 'product-name', 'product_name']),
+      platform: findField(sample, ['plataforma', 'consola', 'platform', 'console-name', 'console_name', 'console']),
+      price: findField(sample, ['precio', 'price']),
+      origen: findField(sample, ['origen', 'region', 'región'])
+    };
+  }
+
+  function loadExcelPreview() {
+    var fileInput = document.getElementById('excelFileInput');
+    var file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file) { showToast('Selecciona un archivo primero', 'error'); return; }
+    if (typeof XLSX === 'undefined') { showToast('No se pudo cargar el lector de Excel. Revisa tu conexión a internet.', 'error'); return; }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var data = new Uint8Array(e.target.result);
+        var workbook = XLSX.read(data, { type: 'array' });
+        var sheet = workbook.Sheets[workbook.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+        if (!rows.length) { showToast('El archivo no tiene filas de datos.', 'error'); return; }
+        state.importRows = rows;
+        state.importHeaders = Object.keys(rows[0]);
+        state.importMapping = guessMapping(state.importHeaders, rows);
+        state.importSummary = null;
+        render();
+      } catch (err) {
+        showToast('No se pudo leer el archivo. Verifica que sea un Excel (.xlsx) o CSV válido.', 'error');
+      }
+    };
+    reader.onerror = function () { showToast('Error leyendo el archivo.', 'error'); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function updateImportMapping(field, headerValue) {
+    state.importMapping[field] = headerValue;
+  }
+
+  function cancelImportPreview() {
+    state.importRows = null;
+    state.importHeaders = [];
+    state.importMapping = { barcode: '', name: '', platform: '', price: '', origen: '' };
+    render();
+  }
+
+  function confirmImport() {
+    var mapping = state.importMapping;
+    if (!mapping.barcode || !mapping.name) {
+      showToast('Selecciona al menos qué columna es el código y cuál el nombre.', 'error');
+      return;
+    }
+    var added = 0, skipped = 0, errors = 0;
+    var updatedProducts = Object.assign({}, state.products);
+    state.importRows.forEach(function (row) {
+      var barcode = String(row[mapping.barcode] || '').trim();
+      var name = String(row[mapping.name] || '').trim();
+      var platformRaw = mapping.platform ? String(row[mapping.platform] || '').trim().toUpperCase() : '';
+      var price = mapping.price ? String(row[mapping.price] || '').trim() : '';
+      var origen = mapping.origen ? String(row[mapping.origen] || '').trim() : '';
+      if (!barcode || !name) { errors++; return; }
+      if (updatedProducts[barcode]) { skipped++; return; }
+      var platform = PLATFORMS.indexOf(platformRaw) !== -1 ? platformRaw : (guessPlatformFromTitle(name) || guessPlatformFromTitle(platformRaw) || 'OTRO');
+      updatedProducts[barcode] = {
+        name: name, platform: platform, origen: origen, price: price,
+        stock: 0, updatedAt: new Date().toISOString()
+      };
+      added++;
+    });
+    state.products = updatedProducts;
+    saveProducts(function () {
+      state.importSummary = added + ' producto(s) nuevo(s) agregados con stock 0 · ' +
+        skipped + ' ya existían y no se tocaron' +
+        (errors > 0 ? ' · ' + errors + ' fila(s) sin código o nombre, se omitieron' : '');
+      state.importRows = null;
+      state.importHeaders = [];
+      render();
+    });
+    if (added > 0) addMovement({ type: 'importacion', barcode: '-', name: added + ' producto(s) importados', qty: added, stockResult: 0 });
+  }
+
+  // ---------- Configuración inicial (Firebase URL) ----------
+  function saveDbUrl(url) {
+    url = url.trim();
+    if (!url) return;
+    localStorage.setItem('inv_db_url', url);
+    state.dbUrl = url;
+    render();
+    startPolling();
+  }
+
+  function resetDbUrl() {
+    if (!confirm('¿Cambiar la base de datos? Vas a tener que pegar la URL de nuevo.')) return;
+    localStorage.removeItem('inv_db_url');
+    state.dbUrl = null;
+    if (pollTimer) clearInterval(pollTimer);
+    render();
+  }
+
+  function startPolling() {
+    loadFromDb(true);
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(function () { loadFromDb(false); }, 7000);
+  }
+
+  // ---------- Render ----------
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function renderSetupScreen() {
+    return (
+      '<div class="setup-screen"><div class="card" style="max-width:480px;width:100%">' +
+      '<h1>Pipe Games <span>· Inventario</span></h1>' +
+      '<p class="sub" style="margin-top:0.75rem;line-height:1.5">Para que el stock se sincronice entre tus dispositivos, pega aquí la URL de tu base de datos de Firebase (gratis). Si aún no la has creado, sigue las instrucciones que te dieron por chat.</p>' +
+      '<input id="dbUrlInput" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com" style="width:100%;margin-top:0.75rem">' +
+      '<button class="btn-primary" style="margin-top:0.75rem;width:100%" onclick="App.saveDbUrl(document.getElementById(\'dbUrlInput\').value)">Guardar y conectar</button>' +
+      '</div></div>'
+    );
+  }
+
+  function renderLockScreen() {
+    var errorMsg = state.pinError ? '<div style="color:var(--danger);font-size:0.85rem;margin-top:0.5rem">PIN incorrecto, intenta de nuevo.</div>' : '';
+    return (
+      '<div class="setup-screen"><div class="card" style="max-width:360px;width:100%;text-align:center">' +
+      '<div style="font-size:1.8rem;margin-bottom:0.5rem">🔒</div>' +
+      '<h1 style="font-size:1.2rem">Pipe Games <span>· Inventario</span></h1>' +
+      '<p class="sub" style="margin-top:0.5rem">Ingresa el PIN para continuar</p>' +
+      '<form id="pinForm">' +
+      '<input id="pinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="width:100%;margin-top:0.9rem;text-align:center;font-size:1.4rem;letter-spacing:6px" autofocus>' +
+      '<button type="submit" class="btn-primary" style="margin-top:0.75rem;width:100%">Entrar</button>' +
+      '</form>' + errorMsg +
+      '</div></div>'
+    );
+  }
+
+  function checkPin(value) {
+    if (value === APP_PIN) {
+      localStorage.setItem('inv_unlocked', 'true');
+      state.unlocked = true;
+      state.pinError = false;
+      if (state.dbUrl) { startPolling(); } else { render(); }
+    } else {
+      state.pinError = true;
+      render();
+    }
+  }
+
+  function lockApp() {
+    localStorage.removeItem('inv_unlocked');
+    state.unlocked = false;
+    if (pollTimer) clearInterval(pollTimer);
+    render();
+  }
+
+  function render() {
+    var root = document.getElementById('root');
+
+    if (!state.unlocked) {
+      root.innerHTML = renderLockScreen();
+      var pinForm = document.getElementById('pinForm');
+      if (pinForm) pinForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        checkPin(document.getElementById('pinInput').value.trim());
+      });
+      var pinInput = document.getElementById('pinInput');
+      if (pinInput) pinInput.focus();
+      return;
+    }
+
+    if (!state.dbUrl) { root.innerHTML = renderSetupScreen(); return; }
+
+    if (state.loading) {
+      root.innerHTML = '<div class="setup-screen">Cargando inventario…</div>';
+      return;
+    }
+
+    var totalRefs = Object.keys(state.products).length;
+    var totalUnidades = Object.values(state.products).reduce(function (s, p) { return s + p.stock; }, 0);
+    var sinStock = Object.values(state.products).filter(function (p) { return p.stock === 0; }).length;
+
+    var connDot = state.connected === false
+      ? '<span class="dot" style="background:var(--danger)"></span>Sin conexión'
+      : '<span class="dot" style="background:var(--accent2)"></span>Sincronizado';
+
+    var html = '';
+    html += '<header><div class="inner">';
+    html += '<div><h1>Pipe Games <span>· Inventario</span></h1>';
+    html += '<div class="sub">' + totalRefs + ' referencias · ' + totalUnidades + ' unidades en stock';
+    if (sinStock > 0) html += ' · <span style="color:var(--warn)">' + sinStock + ' agotadas</span>';
+    if (state.saving) html += ' · <span style="color:var(--accent)">guardando…</span>';
+    html += ' · ' + connDot + '</div></div>';
+    html += '<div class="row">';
+    html += '<button class="btn-ghost" onclick="App.toggleMovements()">' + (state.showMovements ? 'Ver productos' : 'Ver movimientos') + '</button>';
+    html += '<button class="btn-ghost" onclick="App.toggleImport()">📊 Importar Excel</button>';
+    html += '<button class="btn-ghost" onclick="App.resetDbUrl()">Cambiar base de datos</button>';
+    html += '<button class="btn-ghost" onclick="App.lockApp()">🔒 Bloquear</button>';
+    html += '</div></div></header>';
+
+    html += '<div id="app">';
+
+    // Import panel
+    if (state.showImport) {
+      html += '<div class="card" style="margin-bottom:1.25rem">';
+      html += '<div style="font-weight:700;margin-bottom:0.4rem">📊 Importar base de datos (Excel o CSV)</div>';
+
+      if (!state.importRows) {
+        html += '<div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.8rem;line-height:1.5">Sube tu archivo. En el siguiente paso te voy a mostrar las columnas que encontré para que tú elijas cuál es cuál — no importa cómo se llamen.</div>';
+        html += '<input type="file" id="excelFileInput" accept=".xlsx,.xls,.csv" style="width:100%;margin-bottom:0.7rem">';
+        html += '<button class="btn-success" onclick="App.loadExcelPreview()">Cargar archivo</button>';
+      } else {
+        html += '<div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.9rem;line-height:1.5">Encontré <b>' + state.importRows.length + '</b> fila(s) y estas columnas. Indica qué columna corresponde a cada dato (código y nombre son obligatorios):</div>';
+
+        var fieldLabels = [
+          { key: 'barcode', label: 'Código de barras *' },
+          { key: 'name', label: 'Nombre del producto *' },
+          { key: 'platform', label: 'Plataforma / consola (opcional)' },
+          { key: 'price', label: 'Precio (opcional)' },
+          { key: 'origen', label: 'Origen / región (opcional)' }
+        ];
+        html += '<div style="display:flex;flex-direction:column;gap:0.6rem">';
+        fieldLabels.forEach(function (f) {
+          html += '<div>';
+          html += '<div style="font-size:0.75rem;color:var(--muted);margin-bottom:0.25rem">' + f.label + '</div>';
+          html += '<select data-map-field="' + f.key + '" style="width:100%">';
+          html += '<option value="">-- ninguna --</option>';
+          state.importHeaders.forEach(function (h) {
+            html += '<option value="' + esc(h) + '"' + (state.importMapping[f.key] === h ? ' selected' : '') + '>' + esc(h) + '</option>';
+          });
+          html += '</select>';
+          html += '</div>';
+        });
+        html += '</div>';
+
+        // Vista previa de la primera fila con el mapeo actual
+        var sampleRow = state.importRows[0];
+        html += '<div style="margin-top:0.9rem;font-size:0.78rem;color:var(--muted)">Ejemplo con la primera fila: ';
+        html += '<span style="color:var(--text)">' + esc(state.importMapping.barcode ? sampleRow[state.importMapping.barcode] : '—') + '</span> · ';
+        html += '<span style="color:var(--text)">' + esc(state.importMapping.name ? sampleRow[state.importMapping.name] : '—') + '</span>';
+        html += '</div>';
+
+        html += '<div class="row" style="margin-top:1rem">';
+        html += '<button class="btn-success" onclick="App.confirmImport()">Confirmar e importar</button>';
+        html += '<button class="btn-ghost" onclick="App.cancelImportPreview()">Cancelar</button>';
+        html += '</div>';
+      }
+
+      if (state.importSummary) {
+        html += '<div style="margin-top:0.8rem;font-size:0.82rem;color:var(--accent2);background:var(--surface2);padding:0.6rem 0.8rem;border-radius:8px">' + esc(state.importSummary) + '</div>';
+      }
+      html += '</div>';
+    }
+
+    // Scan panel
+    html += '<form class="card" style="margin-bottom:1.25rem" id="scanForm">';
+    html += '<div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.6rem;text-transform:uppercase;letter-spacing:1px">Escanear código</div>';
+    html += '<div class="row">';
+    html += '<input id="scanInput" style="flex:1 1 260px" placeholder="Haz clic aquí y escanea con la pistola…" value="' + esc(state.scanValue) + '">';
+    html += '<input id="qtyInput" type="number" min="1" style="width:80px;text-align:center" value="' + esc(state.qty) + '" title="Cantidad a sumar">';
+    html += '<button type="submit" class="btn-primary">Registrar</button>';
+    html += '</div>';
+    html += '<div style="font-size:0.75rem;color:var(--muted);margin-top:0.5rem">Si el código ya existe, suma stock automáticamente. Si es nuevo, te pido los datos del producto.</div>';
+    html += '</form>';
+
+    // Pending new product
+    if (state.pendingBarcode) {
+      html += '<div class="card" style="border-color:var(--accent);margin-bottom:1.25rem">';
+      html += '<div style="font-weight:700;margin-bottom:0.25rem">Producto nuevo</div>';
+      html += '<div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.6rem">Código: <span class="mono" style="color:var(--text)">' + esc(state.pendingBarcode) + '</span></div>';
+      var statusColor = state.lookupLoading ? 'var(--muted)' : (state.lookupFound ? 'var(--accent2)' : 'var(--warn)');
+      var statusText = state.lookupLoading
+        ? 'Buscando el título en línea…'
+        : (state.lookupFound
+          ? 'Encontrado automáticamente — revisa que el nombre, plataforma y origen sean correctos antes de guardar.'
+          : 'No se encontró automáticamente (esa base es de retail general, no de videojuegos). Usa uno de estos botones para buscarlo manualmente y copia el nombre:');
+      html += '<div style="font-size:0.78rem;margin-bottom:0.9rem;padding:0.5rem 0.7rem;border-radius:8px;background:var(--surface2);color:' + statusColor + '">' + statusText + '</div>';
+      html += '<div class="row" style="margin-bottom:0.9rem">';
+      html += '<a href="https://www.pricecharting.com/search-products?type=videogames&q=' + encodeURIComponent(state.pendingBarcode) + '" target="_blank" rel="noopener" class="btn-ghost" style="text-decoration:none;display:inline-block;color:var(--accent2);border-color:var(--accent2);font-size:0.8rem;padding:0.5rem 0.85rem">🔍 PriceCharting</a>';
+      html += '<a href="https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(state.pendingBarcode) + '" target="_blank" rel="noopener" class="btn-ghost" style="text-decoration:none;display:inline-block;color:var(--warn);border-color:var(--warn);font-size:0.8rem;padding:0.5rem 0.85rem">🔍 eBay</a>';
+      html += '<a href="https://www.google.com/search?q=' + encodeURIComponent(state.pendingBarcode + ' upc video game') + '" target="_blank" rel="noopener" class="btn-ghost" style="text-decoration:none;display:inline-block;font-size:0.8rem;padding:0.5rem 0.85rem">🔍 Google</a>';
+      html += '</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:0.6rem">';
+      html += '<div class="row" style="align-items:stretch">';
+      html += '<input id="npName" placeholder="Nombre del producto" style="flex:1 1 200px" value="' + esc(state.newProduct.name) + '">';
+      html += '<button type="button" class="btn-ghost" style="flex:0 0 auto;color:var(--accent);border-color:var(--accent)" onclick="App.pasteFromClipboard()">📋 Pegar</button>';
+      html += '</div>';
+      html += '<div class="row">';
+      html += '<select id="npPlatform" style="flex:1 1 120px">';
+      PLATFORMS.forEach(function (p) {
+        html += '<option value="' + p + '"' + (state.newProduct.platform === p ? ' selected' : '') + '>' + p + '</option>';
+      });
+      html += '</select>';
+      html += '<input id="npOrigen" style="flex:1 1 160px" placeholder="Origen / región (estimado)" value="' + esc(state.newProduct.origen) + '" title="Estimado según el prefijo del código. No es la región de bloqueo del juego.">';
+      html += '</div>';
+      html += '<div class="row">';
+      html += '<input id="npPrice" style="flex:1 1 120px" placeholder="Precio (opcional)" value="' + esc(state.newProduct.price) + '">';
+      html += '<input id="npStock" type="number" min="0" style="width:110px" placeholder="Stock inicial" value="' + esc(state.newProduct.stock) + '">';
+      html += '</div></div>';
+      html += '<div class="row" style="margin-top:0.9rem">';
+      html += '<button class="btn-success" onclick="App.createProduct()">Guardar producto</button>';
+      if (!state.lookupLoading) {
+        html += '<button class="btn-ghost" style="color:var(--accent);border-color:var(--accent)" onclick="App.retryLookup()">Reintentar búsqueda</button>';
+      }
+      html += '<button class="btn-ghost" onclick="App.cancelPending()">Cancelar</button>';
+      html += '</div></div>';
+    }
+
+    if (!state.showMovements) {
+      html += '<input id="searchInput" style="width:100%;margin-bottom:1rem" placeholder="Buscar por nombre o código…" value="' + esc(state.search) + '">';
+
+      var entries = Object.entries(state.products).filter(function (e) {
+        var q = state.search.toLowerCase();
+        return !q || e[1].name.toLowerCase().indexOf(q) !== -1 || e[0].toLowerCase().indexOf(q) !== -1;
+      });
+
+      if (entries.length === 0) {
+        html += '<div style="color:var(--muted);text-align:center;padding:2rem 0">' +
+          (totalRefs === 0 ? 'Aún no has registrado productos. Escanea el primero arriba.' : 'No hay resultados para esa búsqueda.') + '</div>';
+      } else {
+        var groups = {};
+        entries.forEach(function (e) {
+          var plat = e[1].platform || 'OTRO';
+          if (!groups[plat]) groups[plat] = [];
+          groups[plat].push(e);
+        });
+        var orderedPlatforms = PLATFORMS.filter(function (p) { return groups[p] && groups[p].length; });
+        Object.keys(groups).forEach(function (p) { if (orderedPlatforms.indexOf(p) === -1) orderedPlatforms.push(p); });
+
+        orderedPlatforms.forEach(function (plat) {
+          var list = groups[plat].sort(function (a, b) { return a[1].name.localeCompare(b[1].name, 'es'); });
+          html += '<div style="margin:1.3rem 0 0.5rem;font-size:0.78rem;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:' + (PLATFORM_COLOR[plat] || 'var(--muted)') + '">' + esc(plat) + ' <span style="color:var(--muted);font-weight:600">(' + list.length + ')</span></div>';
+          list.forEach(function (entry) {
+            var code = entry[0], p = entry[1];
+            html += '<div class="product-item">';
+            html += '<div class="stripe" style="background:' + (PLATFORM_COLOR[p.platform] || 'var(--muted)') + '"></div>';
+            html += '<div style="flex:1 1 180px;min-width:0">';
+            html += '<div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(p.name) + '</div>';
+            html += '<div style="font-size:0.75rem;color:var(--muted)" class="mono">' + esc(code) + (p.origen ? ' · ' + esc(p.origen) : '') + (p.price ? ' · ' + esc(p.price) : '') + '</div>';
+            html += '</div>';
+            html += '<div style="display:flex;align-items:center;gap:0.4rem">';
+            html += '<button class="qty-btn" onclick="App.adjust(\'' + code + '\',-1)">−</button>';
+            html += '<div style="min-width:42px;text-align:center;font-weight:800;color:' + (p.stock === 0 ? 'var(--danger)' : 'var(--text)') + '">' + p.stock + '</div>';
+            html += '<button class="qty-btn" onclick="App.adjust(\'' + code + '\',1)">+</button>';
+            html += '</div>';
+            html += '<div class="row" style="gap:0.4rem">';
+            html += '<button class="btn-ghost" style="padding:0.4rem 0.65rem;font-size:0.75rem" onclick="App.startEdit(\'' + code + '\')">Editar</button>';
+            html += '<button class="btn-danger-ghost" style="padding:0.4rem 0.65rem;font-size:0.75rem" onclick="App.deleteProduct(\'' + code + '\')">Eliminar</button>';
+            html += '</div></div>';
+          });
+        });
+      }
+    } else {
+      if (state.movements.length === 0) {
+        html += '<div style="color:var(--muted);text-align:center;padding:2rem 0">Sin movimientos todavía.</div>';
+      } else {
+        state.movements.forEach(function (m) {
+          var color = m.type === 'entrada' ? 'var(--accent2)' : m.type === 'alta' ? 'var(--accent)' : m.type === 'baja' ? 'var(--danger)' : 'var(--warn)';
+          html += '<div class="card" style="padding:0.65rem 0.9rem;margin-bottom:0.5rem;display:flex;justify-content:space-between;align-items:center;font-size:0.85rem;gap:0.5rem;flex-wrap:wrap">';
+          html += '<div><span style="color:' + color + ';font-weight:700;text-transform:uppercase;font-size:0.7rem;margin-right:0.5rem">' + m.type + '</span>' + esc(m.name) + ' <span class="mono" style="color:var(--muted);font-size:0.75rem">(' + esc(m.barcode) + ')</span></div>';
+          html += '<div style="color:var(--muted)">' + (m.qty > 0 ? '+' : '') + m.qty + ' → stock: ' + m.stockResult + ' · ' + fmtDate(m.date) + '</div>';
+          html += '</div>';
+        });
+      }
+    }
+
+    html += '</div>'; // #app
+
+    // Edit modal
+    if (state.editingBarcode) {
+      var d = state.editDraft;
+      html += '<div class="modal-overlay"><div class="modal">';
+      html += '<div style="font-weight:700;margin-bottom:0.9rem">Editar producto</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:0.6rem">';
+      html += '<input id="edName" placeholder="Nombre" value="' + esc(d.name) + '">';
+      html += '<select id="edPlatform">';
+      PLATFORMS.forEach(function (p) { html += '<option value="' + p + '"' + (d.platform === p ? ' selected' : '') + '>' + p + '</option>'; });
+      html += '</select>';
+      html += '<input id="edOrigen" placeholder="Origen / región" value="' + esc(d.origen) + '">';
+      html += '<input id="edPrice" placeholder="Precio" value="' + esc(d.price) + '">';
+      html += '<input id="edStock" type="number" min="0" placeholder="Stock" value="' + esc(d.stock) + '">';
+      html += '</div>';
+      html += '<div class="row" style="margin-top:1rem">';
+      html += '<button class="btn-primary" onclick="App.saveEdit()">Guardar</button>';
+      html += '<button class="btn-ghost" onclick="App.closeEdit()">Cancelar</button>';
+      html += '</div></div></div>';
+    }
+
+    // Toast
+    if (state.toast) {
+      var isErr = state.toast.type === 'error';
+      html += '<div class="toast" style="background:' + (isErr ? 'var(--danger)' : 'var(--surface2)') + ';border:1px solid ' + (isErr ? 'var(--danger)' : 'var(--accent2)') + ';color:#fff">' + esc(state.toast.message) + '</div>';
+    }
+
+    root.innerHTML = html;
+    wireEvents();
+  }
+
+  function wireEvents() {
+    var scanForm = document.getElementById('scanForm');
+    if (scanForm) scanForm.addEventListener('submit', handleScanSubmit);
+
+    var scanInput = document.getElementById('scanInput');
+    if (scanInput) {
+      scanInput.addEventListener('input', function (e) { state.scanValue = e.target.value; });
+      if (!state.pendingBarcode && !state.editingBarcode) scanInput.focus();
+    }
+    var qtyInput = document.getElementById('qtyInput');
+    if (qtyInput) qtyInput.addEventListener('input', function (e) { state.qty = e.target.value; });
+
+    var searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', function (e) { state.search = e.target.value; render(); });
+    }
+
+    ['npName', 'npPlatform', 'npOrigen', 'npPrice', 'npStock'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var key = id.replace('np', '').toLowerCase();
+      el.addEventListener('input', function (e) { state.newProduct[key] = e.target.value; });
+      el.addEventListener('change', function (e) { state.newProduct[key] = e.target.value; });
+    });
+
+    ['edName', 'edPlatform', 'edOrigen', 'edPrice', 'edStock'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var key = id.replace('ed', '').toLowerCase();
+      el.addEventListener('input', function (e) { state.editDraft[key] = e.target.value; });
+      el.addEventListener('change', function (e) { state.editDraft[key] = e.target.value; });
+    });
+
+    var mapSelects = document.querySelectorAll('[data-map-field]');
+    mapSelects.forEach(function (el) {
+      el.addEventListener('change', function (e) {
+        state.importMapping[el.getAttribute('data-map-field')] = e.target.value;
+        render();
+      });
+    });
+  }
+
+  // ---------- API pública para los onclick del HTML ----------
+  window.App = {
+    saveDbUrl: saveDbUrl,
+    resetDbUrl: resetDbUrl,
+    toggleMovements: function () { state.showMovements = !state.showMovements; render(); },
+    toggleImport: function () { state.showImport = !state.showImport; state.importSummary = null; state.importRows = null; render(); },
+    loadExcelPreview: loadExcelPreview,
+    confirmImport: confirmImport,
+    cancelImportPreview: cancelImportPreview,
+    createProduct: handleCreateProduct,
+    retryLookup: function () { runLookup(state.pendingBarcode, state.newProduct.stock); },
+    pasteFromClipboard: pasteFromClipboard,
+    cancelPending: cancelPending,
+    adjust: adjustStock,
+    startEdit: startEdit,
+    saveEdit: saveEdit,
+    closeEdit: function () { state.editingBarcode = null; render(); },
+    deleteProduct: deleteProduct,
+    lockApp: lockApp
+  };
+
+  // ---------- Arranque ----------
+  if (state.unlocked && state.dbUrl) { startPolling(); } else { render(); }
+})();
+</script>
+</body>
+</html>
