@@ -35,7 +35,18 @@ body{padding-top:env(safe-area-inset-top,0px)}
 </style>
 </head>
 <body>
-<main id="raiz"><div class="cargando">Cargando…</div></main>
+<main id="raiz"><div class="cargando" id="cargando">Cargando…</div></main>
+<script>
+  // Si algo falla al arrancar, mostrarlo en pantalla en vez de quedarse cargando.
+  function mostrarFallo(t) {
+    var el = document.getElementById("cargando");
+    if (el) el.innerHTML = '<div style="max-width:420px;padding:16px;text-align:center"><b>No se pudo abrir la app.</b><br><span style="font-size:13px">' + String(t).replace(/</g, "&lt;") + '</span><br><br><button class="btn" onclick="location.reload()">Reintentar</button></div>';
+  }
+  window.addEventListener("error", function (e) { mostrarFallo(e.message || "Error desconocido"); });
+  window.addEventListener("unhandledrejection", function (e) { mostrarFallo((e.reason && e.reason.message) || e.reason || "Error desconocido"); });
+  setTimeout(function () { if (document.getElementById("cargando")) mostrarFallo("La app tarda demasiado en cargar. Revisa que el celular tenga internet."); }, 20000);
+</script>
+<script src="capacitor.js"></script>
 <nav class="barra-abajo" id="barra" hidden>
   <a href="#inicio" data-r="inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
   <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8"/></svg>Disponibles<span class="insignia" id="nDisp" hidden></span></a>
@@ -63,9 +74,10 @@ const { esc } = C;
 /* ---------- plugins nativos ---------- */
 const Cap = window.Capacitor;
 const nativo = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
-const BG = nativo ? Cap.registerPlugin("BackgroundGeolocation") : null;
-const Http = nativo ? Cap.registerPlugin("CapacitorHttp") : null;
-const Notif = nativo ? Cap.registerPlugin("LocalNotifications") : null;
+const registrar = window.capacitorExports?.registerPlugin;
+const BG = nativo && registrar ? registrar("BackgroundGeolocation") : null;
+const Http = nativo && registrar ? registrar("CapacitorHttp") : null;
+const Notif = nativo && registrar ? registrar("LocalNotifications") : null;
 
 /* ---------- estado ---------- */
 const S = { u: null, perfil: null, disp: [], mios: [], entregas: [], pos: null, turno: false, watcher: null };
