@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipe Games – Catálogo</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: rgba(255,255,255,0.07);
+    --ps4: #3a7bd5;
+    --ps5: #00c896;
+    --switch: #e84040;
+    --acc: #f5c400;
+    --text: #e8e8f0;
+    --muted: #7a7a9a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  header {
+    padding: 2rem 1.5rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: 50%; transform: translateX(-50%);
+    width: 500px; height: 200px;
+    background: radial-gradient(ellipse, rgba(58,123,213,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .logo {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 2.2rem;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #fff;
+  }
+  .logo span { color: var(--ps4); }
+  .tagline {
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-top: 0.25rem;
+  }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    overflow-x: auto;
+    gap: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: 1;
+    min-width: 80px;
+    padding: 0.85rem 0.5rem;
+    text-align: center;
+    cursor: pointer;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .tab:hover { color: var(--text); background: var(--surface2); }
+  .tab.active[data-tab="ps4"] { color: var(--ps4); border-color: var(--ps4); }
+  .tab.active[data-tab="ps5"] { color: var(--ps5); border-color: var(--ps5); }
+  .tab.active[data-tab="switch"] { color: var(--switch); border-color: var(--switch); }
+  .tab.active[data-tab="acc"] { color: var(--acc); border-color: var(--acc); }
+
+  /* SEARCH */
+  .search-bar {
+    padding: 1rem 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .search-bar input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 1rem;
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border 0.2s;
+  }
+  .search-bar input:focus { border-color: rgba(255,255,255,0.2); }
+  .search-bar input::placeholder { color: var(--muted); }
+
+  /* CONTENT */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .count-bar {
+    padding: 0.6rem 1.5rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .game-list { padding: 0 0 4rem; }
+  .game-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  .game-item:hover { background: var(--surface2); }
+  .dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-ps4 { background: var(--ps4); box-shadow: 0 0 6px var(--ps4); }
+  .dot-ps5 { background: var(--ps5); box-shadow: 0 0 6px var(--ps5); }
+  .dot-switch { background: var(--switch); box-shadow: 0 0 6px var(--switch); }
+  .dot-sw2 { background: var(--switch); box-shadow: 0 0 6px var(--switch); }
+  .dot-acc { background: var(--acc); box-shadow: 0 0 6px var(--acc); }
+
+  .game-name { flex: 1; font-size: 0.875rem; font-weight: 400; line-height: 1.3; }
+  .game-platform {
+    font-size: 0.7rem;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .plat-ps4 { background: rgba(58,123,213,0.15); color: var(--ps4); }
+  .plat-ps5 { background: rgba(0,200,150,0.12); color: var(--ps5); }
+  .plat-switch { background: rgba(232,64,64,0.12); color: var(--switch); }
+  .plat-sw2 { background: rgba(232,64,64,0.2); color: #ff6b6b; }
+  .plat-acc { background: rgba(245,196,0,0.12); color: var(--acc); }
+  .plat-nintendo { background: rgba(232,64,64,0.12); color: var(--switch); }
+  .plat-zen { background: rgba(245,196,0,0.12); color: var(--acc); }
+
+  .game-price {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    min-width: 75px;
+    text-align: right;
+    flex-shrink: 0;
+    color: #fff;
+  }
+
+  /* SW2 badge */
+  .sw2-badge {
+    font-size: 0.6rem;
+    background: rgba(232,64,64,0.25);
+    color: #ff6b6b;
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 1px;
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* FOOTER */
+  footer {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 0.6rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  footer a {
+    color: var(--ps4);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .no-results {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">PIPE<span>GAMES</span></div>
+  <div class="tagline">Catálogo de videojuegos físicos</div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="ps4">🔵 PS4</div>
+  <div class="tab" data-tab="ps5">🟢 PS5</div>
+  <div class="tab" data-tab="switch">🔴 SWITCH</div>
+  <div class="tab" data-tab="acc">🟡 ACCESORIOS</div>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="Buscar juego o accesorio...">
+</div>
+
+<!-- PS4 -->
+<div class="panel active" id="panel-ps4">
+  <div class="count-bar" id="count-ps4"></div>
+  <div class="game-list" id="list-ps4"></div>
+  <div class="no-results" id="no-ps4">No se encontraron resultados.</div>
+</div>
+
+<!-- PS5 -->
+<div class="panel" id="panel-ps5">
+  <div class="count-bar" id="count-ps5"></div>
+  <div class="game-list" id="list-ps5"></div>
+  <div class="no-results" id="no-ps5">No se encontraron resultados.</div>
+</div>
+
+<!-- SWITCH -->
+<div class="panel" id="panel-switch">
+  <div class="count-bar" id="count-switch"></div>
+  <div class="game-list" id="list-switch"></div>
+  <div class="no-results" id="no-switch">No se encontraron resultados.</div>
+</div>
+
+<!-- ACCESORIOS -->
+<div class="panel" id="panel-acc">
+  <div class="count-bar" id="count-acc"></div>
+  <div class="game-list" id="list-acc"></div>
+  <div class="no-results" id="no-acc">No se encontraron resultados.</div>
+</div>
+
+<footer>
+  <span>PIPE GAMES</span>
+  <span>Precios en COP · Juegos físicos</span>
+</footer>
+
+<script>
+const ps4 = [
+  ["WATCH DOGS LEGION","PS4","$50.000"],["JUST CAUSE 4 DAY ONE EDITION","PS4","$65.000"],["TOM CLANCY'S THE DIVISION 2","PS4","$65.000"],["DRAGON BALL THE BREAKERS","PS4","$65.000"],["THE LAST OF US REMASTERED","PS4","$70.000"],["TOM CLANCY'S GHOST RECON WILDLANDS","PS4","$70.000"],["BATMAN: ARKHAM KNIGHT","PS4","$73.000"],["THE WALKING DEAD: THE TELLTALE DEFINITIVE SERIES","PS4","$73.000"],["RED DEAD REDEMPTION 2","PS4","$73.000"],["TOM CLANCY'S THE DIVISION","PS4","$75.000"],["UNCHARTED: THE NATHAN DRAKE COLLECTION","PS4","$75.000"],["MAFIA: DEFINITIVE EDITION","PS4","$75.000"],["RESIDENT EVIL 2","PS4","$78.000"],["LITTLE NIGHTMARES 2","PS4","$85.000"],["GRAND THEFT AUTO V PREMIUM EDITION","PS4","$85.000"],["DARK SOULS REMASTERED","PS4","$85.000"],["ASSASSIN'S CREED VALHALLA","PS4","$88.000"],["DRAGON BALL Z: KAKAROT","PS4","$90.000"],["HOT WHEELS UNLEASHED 2 TURBOCHARGED","PS4","$90.000"],["RESIDENT EVIL 7 BIOHAZARD GOLD EDITION","PS4","$90.000"],["KENA: BRIDGE OF SPIRITS DELUXE EDITION","PS4","$90.000"],["MORTAL KOMBAT 11 ULTIMATE","PS4","$90.000"],["GRAND THEFT AUTO: THE TRILOGY – THE DEFINITIVE EDITION","PS4","$95.000"],["RESIDENT EVIL 3","PS4","$95.000"],["LEGO MARVEL COLLECTION","PS4","$95.000"],["STAR OCEAN: THE DIVINE FORCE","PS4","$95.000"],["CUPHEAD","PS4","$97.000"],["RESIDENT EVIL 4 REMAKE","PS4","$97.000"],["NIER AUTOMATA: GAME OF THE YORHA EDITION","PS4","$99.000"],["LEGO STAR WARS: THE SKYWALKER SAGA","PS4","$99.000"],["OVERCOOKED! AND OVERCOOKED! 2","PS4","$99.000"],["GHOST OF TSUSHIMA","PS4","$99.000"],["SUBNAUTICA: BELOW ZERO","PS4","$99.000"],["SONIC FORCES","PS4","$105.000"],["RED DEAD REDEMPTION","PS4","$105.000"],["BATMAN ARKHAM COLLECTION","PS4","$105.000"],["HELLO NEIGHBOR 2","PS4","$105.000"],["DOOM ETERNAL","PS4","$110.000"],["GHOST OF TSUSHIMA DIRECTOR'S CUT","PS4","$110.000"],["CRASH BANDICOOT N. SANE TRILOGY GOTY","PS4","$115.000"],["CRASH 4: IT'S ABOUT TIME","PS4","$115.000"],["CTR CRASH TEAM RACING NITRO-FUELED","PS4","$115.000"],["HORIZON FORBIDDEN WEST","PS4","$115.000"],["TINY TINA'S WONDERLANDS","PS4","$115.000"],["THE CALLISTO PROTOCOL","PS4","$115.000"],["MINECRAFT STARTER COLLECTION","PS4","$120.000"],["THE QUARRY","PS4","$120.000"],["ELDEN RING","PS4","$125.000"],["HOLLOW KNIGHT","PS4","$130.000"],["GOD OF WAR RAGNARÖK (EUR)","PS4","$130.000"],["LIKE A DRAGON: INFINITE WEALTH","PS4","$130.000"],["STRANGER OF PARADISE: FINAL FANTASY ORIGIN","PS4","$135.000"],["SNOWRUNNER","PS4","$135.000"],["MINECRAFT LEGENDS DELUXE EDITION (EUR)","PS4","$135.000"],["CYBERPUNK 2077 ULTIMATE EDITION","PS4","$140.000"],["THE LAST OF US PART II (EUR)","PS4","$145.000"],["STREET FIGHTER 6","PS4","$150.000"],["EA SPORTS FC 26","PS4","$160.000"],["CALL OF DUTY: BLACK OPS 7","PS4","$185.000"],["FINAL FANTASY I-VI COLLECTION ANNIVERSARY","PS4","$185.000"],["ARMORED CORE VI","PS4","$199.000"],["FATAL FRAME: MAIDEN OF BLACK WATER (JPN)","PS4","$210.000"],["LIKE A DRAGON: ISHIN","PS4","$225.000"]
+];
+
+const ps5 = [
+  ["RESIDENT EVIL 7 BIOHAZARD GOLD EDITION","PS5","$75.000"],["GRAND THEFT AUTO V","PS5","$85.000"],["PAC-MAN WORLD 2 RE PAC","PS5","$90.000"],["DRAGON BALL Z: KAKAROT","PS5","$90.000"],["OVERCOOKED! ALL YOU CAN EAT","PS5","$90.000"],["FORSPOKEN","PS5","$95.000"],["RESIDENT EVIL VILLAGE","PS5","$95.000"],["WRC 10","PS5","$95.000"],["KING OF FIGHTERS XV","PS5","$99.000"],["TOMB RAIDER IV-VI REMASTERED","PS5","$99.000"],["HOT WHEELS UNLEASHED 2 TURBOCHARGED","PS5","$99.000"],["STREET FIGHTER 6","PS5","$105.000"],["RESIDENT EVIL 4 REMAKE","PS5","$105.000"],["BLASPHEMOUS 2","PS5","$110.000"],["KENA: BRIDGE OF SPIRITS DELUXE EDITION","PS5","$110.000"],["MINECRAFT","PS5","$115.000"],["STRANGER OF PARADISE: FINAL FANTASY ORIGIN","PS5","$115.000"],["COLLEGE FOOTBALL 25","PS5","$120.000"],["TONY HAWK PRO SKATER 1+2 (EUR)","PS5","$120.000"],["MANEATER","PS5","$120.000"],["AD INFINITUM","PS5","$125.000"],["MONSTER HUNTER WILD (EUR)","PS5","$125.000"],["RED DEAD REDEMPTION","PS5","$125.000"],["THE TEXAS CHAIN SAW MASSACRE","PS5","$127.000"],["MORTAL KOMBAT 1 (EUR)","PS5","$130.000"],["SONIC X SHADOW GENERATIONS","PS5","$130.000"],["LITTLE NIGHTMARES 3","PS5","$135.000"],["HITMAN: WORLD OF ASSASSINATION (EUR)","PS5","$135.000"],["JURASSIC WORLD EVOLUTION 2","PS5","$135.000"],["LIES OF P","PS5","$135.000"],["SIFU","PS5","$140.000"],["SNOWRUNNER","PS5","$140.000"],["UFC 5","PS5","$145.000"],["LIKE A DRAGON: ISHIN","PS5","$150.000"],["ELDEN RING NIGHTREIGN","PS5","$150.000"],["GOD OF WAR RAGNARÖK LAUNCH EDITION","PS5","$150.000"],["THE LAST OF US PART I","PS5","$150.000"],["EA SPORTS FC 26","PS5","$153.000"],["KINGDOM COME: DELIVERANCE II","PS5","$155.000"],["CRONOS: THE NEW DAWN","PS5","$155.000"],["GEARS OF WAR RELOADED","PS5","$155.000"],["SILENT HILL 2","PS5","$155.000"],["ASSASSIN'S CREED SHADOWS LIMITED EDITION","PS5","$160.000"],["THE LAST OF US PART II (EUR)","PS5","$165.000"],["ALAN WAKE 2 DELUXE EDITION","PS5","$165.000"],["GHOST OF TSUSHIMA DIRECTOR'S CUT","PS5","$165.000"],["GRAN TURISMO 7","PS5","$165.000"],["DRAGON BALL Z KAKAROT – DAIMA EDITION","PS5","$170.000"],["WARHAMMER 40.000: SPACE MARINE 2","PS5","$175.000"],["CALL OF DUTY: BLACK OPS 7","PS5","$175.000"],["MAFIA: THE OLD COUNTRY","PS5","$175.000"],["STELLAR BLADE","PS5","$175.000"],["ELDEN RING","PS5","$177.000"],["STARFIELD","PS5","$178.000"],["MARVEL'S SPIDER-MAN 2","PS5","$180.000"],["WUCHANG: FALLEN FEATHER","PS5","$180.000"],["PRINCE OF PERSIA: THE LOST CROWN","PS5","$185.000"],["FINAL FANTASY VII REBIRTH","PS5","$185.000"],["LIKE A DRAGON: PIRATE YAKUZA IN HAWAII","PS5","$185.000"],["ASTRO BOT","PS5","$185.000"],["SPIDER-MAN: MILES MORALES ULTIMATE EDITION","PS5","$185.000"],["DRAGON BALL: SPARKING ZERO","PS5","$185.000"],["MORTAL KOMBAT LEGACY KOLLECTION","PS5","$190.000"],["SNIPER ELITE RESISTANCE","PS5","$195.000"],["DEATH STRANDING 2: ON THE BEACH","PS5","$195.000"],["CYBERPUNK 2077 ULTIMATE EDITION","PS5","$199.000"],["F1 2025","PS5","$199.000"],["FATAL FRAME II: CRIMSON BUTTERFLY REMAKE","PS5","$199.000"],["CLAIR OBSCUR: EXPEDITION 33 (EUR)","PS5","$199.000"],["TWIN PACK: FINAL FANTASY VII REMAKE + REBIRTH","PS5","$210.000"],["JURASSIC WORLD EVOLUTION 3","PS5","$210.000"],["BLEACH: REBIRTH OF SOULS","PS5","$215.000"],["BLACK MYTH: WUKONG","PS5","$215.000"],["METAPHOR: REFANTAZIO","PS5","$220.000"],["LOST SOUL ASIDE","PS5","$225.000"],["BORDERLANDS 4","PS5","$225.000"],["METAL GEAR SOLID DELTA: SNAKE EATER","PS5","$230.000"],["NIOH 3 STEELBOOK LAUNCH EDITION","PS5","$230.000"],["CRIMSON DESERT","PS5","$230.000"],["WWE 2K26","PS5","$235.000"],["GHOST OF YOTEI","PS5","$235.000"],["NINJA GAIDEN 4","PS5","$245.000"],["RESIDENT EVIL REQUIEM","PS5","$250.000"],["LEGO BATMAN: LEGACY OF THE DARK KNIGHT","PS5","$255.000"],["SAROS","PS5","$255.000"]
+];
+
+const sw = [
+  ["JUST DANCE 2025 LIMITED EDITION CODE IN BOX","SWITCH","$95.000"],["MINECRAFT","SWITCH","$105.000"],["ASSASSIN'S CREED: THE EZIO COLLECTION","SWITCH","$115.000"],["CUPHEAD","SWITCH","$120.000"],["MORTAL KOMBAT 1","SWITCH","$120.000"],["OVERCOOKED! AND OVERCOOKED! 2","SWITCH","$120.000"],["CRASH BANDICOOT N. SANE TRILOGY","SWITCH","$125.000"],["CTR CRASH TEAM RACING NITRO-FUELED","SWITCH","$125.000"],["CRASH BANDICOOT 4","SWITCH","$125.000"],["EA SPORTS FC 26","SWITCH","$140.000"],["IT TAKES TWO (EUR)","SWITCH","$140.000"],["STRAY","SWITCH","$145.000"],["NIER: AUTOMATA THE END OF YORHA EDITION","SWITCH","$145.000"],["RESIDENT EVIL TRIPLE PACK","SWITCH","$160.000"],["PAPER MARIO: THE THOUSAND-YEAR DOOR","SWITCH","$163.000"],["MARIO & LUIGI: BROTHERSHIP","SWITCH","$163.000"],["METROID PRIME REMASTERED","SWITCH","$165.000"],["SUPER MARIO BROS. WONDER","SWITCH","$169.000"],["DONKEY KONG COUNTRY: TROPICAL FREEZE","SWITCH","$169.000"],["KIRBY AND THE FORGOTTEN LAND","SWITCH","$169.000"],["LUIGI'S MANSION 3","SWITCH","$169.000"],["MARIO KART 8 DELUXE","SWITCH","$169.000"],["NEW SUPER MARIO BROS. U DELUXE","SWITCH","$169.000"],["POKEMON SCARLET","SWITCH","$169.000"],["PRINCESS PEACH: SHOWTIME!","SWITCH","$169.000"],["POKEMON LEGENDS: ARCEUS","SWITCH","$170.000"],["SUPER MARIO 3D WORLD + BOWSER'S FURY","SWITCH","$175.000"],["POKEMON LET'S GO EEVEE","SWITCH","$175.000"],["METROID PRIME 4: BEYOND","SWITCH","$175.000"],["KIRBY'S RETURN TO DREAM LAND DELUXE","SWITCH","$175.000"],["PIKMIN 1 + 2","SWITCH","$175.000"],["THE LEGEND OF ZELDA: LINK'S AWAKENING","SWITCH","$175.000"],["SUPER MARIO PARTY JAMBOREE","SWITCH","$175.000"],["THE LEGEND OF ZELDA: BREATH OF THE WILD","SWITCH","$175.000"],["POKEMON LEGENDS: Z-A","SWITCH","$178.000"],["POKEMON VIOLET","SWITCH","$178.000"],["POKEMON: LET'S GO, PIKACHU!","SWITCH","$178.000"],["SUPER MARIO MAKER 2","SWITCH","$178.000"],["YOSHI'S CRAFTED WORLD","SWITCH","$178.000"],["THE LEGEND OF ZELDA: TEARS OF THE KINGDOM","SWITCH","$180.000"],["KIRBY STAR ALLIES","SWITCH","$180.000"],["POKEMON BRILLIANT DIAMOND","SWITCH","$180.000"],["THE LEGEND OF ZELDA: ECHOES OF WISDOM","SWITCH","$180.000"],["NINTENDO SWITCH SPORTS","SWITCH","$180.000"],["XENOBLADE CHRONICLES: DEFINITIVE EDITION","SWITCH","$180.000"],["SUPER MARIO GALAXY + SUPER MARIO GALAXY 2","SWITCH","$185.000"],["XENOBLADE CHRONICLES X: DEFINITIVE EDITION","SWITCH","$185.000"],["POKEMON SHINING PEARL","SWITCH","$185.000"],["OCTOPATH TRAVELER","SWITCH","$195.000"],["OCTOPATH TRAVELER II","SWITCH","$195.000"],["XENOBLADE CHRONICLES 3","SWITCH","$199.000"],["METROID PRIME 4: BEYOND","SWITCH 2","$205.000"],["ANIMAL CROSSING: NEW HORIZONS","SWITCH 2","$235.000"],["HYRULE WARRIORS: AGE OF IMPRISONMENT","SWITCH 2","$240.000"],["MARIO TENNIS FEVER","SWITCH 2","$240.000"],["DONKEY KONG BANANZA","SWITCH 2","$243.000"],["CYBERPUNK 2077 ULTIMATE EDITION","SWITCH 2","$245.000"],["POKEMON LEGENDS: Z-A","SWITCH 2","$245.000"],["KIRBY AIR RIDERS","SWITCH 2","$255.000"],["CYBERPUNK 2077 ULTIMATE EDITION","SWITCH 2","$255.000"],["POKEMON POKOPIA","SWITCH 2","$260.000"],["INDIANA JONES AND THE GREAT CIRCLE","SWITCH 2","$270.000"],["RESIDENT EVIL GENERATION PACK","SWITCH 2","$370.000"]
+];
+
+const acc = [
+  ["ESTUCHE PREMIUM SWITCH 2 NEGRO","SWITCH 2","$95.000"],["ESTUCHE VIAJERO SWITCH 2 NEGRO","SWITCH 2","$130.000"],["MALETA VIAJERA SWITCH 2 NEGRO","SWITCH 2","$170.000"],["GAME AND WATCH: SUPER MARIO BROS","NINTENDO","$205.000"],["CÁMARA SW2","SWITCH 2","$230.000"],["CONTROL DUALSENSE MIDNIGHT BLACK","PS5","$255.000"],["CONTROL PRO NINTENDO","SWITCH","$260.000"],["CONTROL DUALSENSE VOLCANIC RED","PS5","$265.000"],["CONTROL DUALSENSE COBALT BLUE","PS5","$265.000"],["CONTROL DUALSENSE GRAY CAMOUFLAGE","PS5","$265.000"],["JOYCONS PASTEL PURPLE / PASTEL GREEN","SWITCH","$275.000"],["CONTROL DUALSENSE TECHNO RED","PS5","$275.000"],["CONTROL DUALSENSE REMIX GREEN","PS5","$280.000"],["CONTROL DUALSENSE MARATHON LIMITED EDITION","PS5","$305.000"],["ADAPTADOR ZEN PS5 / PS4 / XBOX S/X / SWITCH","ZEN","$375.000"],["CONSOLA NINTENDO SWITCH LITE CORAL","SWITCH","$750.000"],["CONSOLA NINTENDO SWITCH LITE TURQUESA","SWITCH","$750.000"],["AURICULARES PULSE EXPLORE NEGRO","PS5","$820.000"]
+];
+
+function platClass(p) {
+  if (p === "PS4") return "plat-ps4";
+  if (p === "PS5") return "plat-ps5";
+  if (p === "SWITCH 2") return "plat-sw2";
+  if (p === "SWITCH") return "plat-switch";
+  if (p === "NINTENDO") return "plat-nintendo";
+  if (p === "ZEN") return "plat-zen";
+  return "plat-ps4";
+}
+function dotClass(tab, plat) {
+  if (tab === "ps4") return "dot dot-ps4";
+  if (tab === "ps5") return "dot dot-ps5";
+  if (tab === "switch") return plat === "SWITCH 2" ? "dot dot-sw2" : "dot dot-switch";
+  return "dot dot-acc";
+}
+
+function render(tab, data, query) {
+  const list = document.getElementById("list-" + tab);
+  const noRes = document.getElementById("no-" + tab);
+  const countEl = document.getElementById("count-" + tab);
+  const q = query.toLowerCase();
+  const filtered = data.filter(g => g[0].toLowerCase().includes(q) || g[1].toLowerCase().includes(q));
+  countEl.textContent = filtered.length + " producto" + (filtered.length !== 1 ? "s" : "");
+  if (filtered.length === 0) {
+    list.innerHTML = "";
+    noRes.style.display = "block";
+    return;
+  }
+  noRes.style.display = "none";
+  list.innerHTML = filtered.map(g => {
+    const sw2badge = g[1] === "SWITCH 2" ? '<span class="sw2-badge">SW2</span>' : "";
+    return `<div class="game-item">
+      <div class="${dotClass(tab, g[1])}"></div>
+      <span class="game-name">${g[0]}</span>
+      ${sw2badge}
+      <span class="game-platform ${platClass(g[1])}">${g[1]}</span>
+      <span class="game-price">${g[2]}</span>
+    </div>`;
+  }).join("");
+}
+
+let activeTab = "ps4";
+const datasets = { ps4, ps5, switch: sw, acc };
+
+function renderActive(q) {
+  render(activeTab, datasets[activeTab], q || "");
+}
+
+document.querySelectorAll(".tab").forEach(t => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    activeTab = t.dataset.tab;
+    document.getElementById("panel-" + activeTab).classList.add("active");
+    renderActive(document.getElementById("search").value);
+  });
+});
+
+document.getElementById("search").addEventListener("input", e => {
+  renderActive(e.target.value);
+});
+
+// Initial render all
+["ps4","ps5","switch","acc"].forEach(t => render(t, datasets[t], ""));
+</script>
+</body>
+</html>
