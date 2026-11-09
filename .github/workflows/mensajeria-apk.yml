@@ -35,7 +35,9 @@ jobs:
 
       - name: Instalar dependencias
         working-directory: mensajeria/app
-        run: npm install --no-audit --no-fund
+        run: |
+          npm install --no-audit --no-fund
+          cp node_modules/@capacitor/core/dist/capacitor.js www/
 
       - name: Crear proyecto Android
         working-directory: mensajeria/app
