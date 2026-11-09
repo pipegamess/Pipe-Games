@@ -46,17 +46,17 @@ jobs:
           node scripts/parche-android.js
           npx cap sync android
 
-      - name: Firma fija (permite actualizar sin desinstalar)
-        run: |
-          mkdir -p ~/.android
-          cp mensajeria/app/debug.keystore ~/.android/debug.keystore
-
       - name: Compilar APK
         working-directory: mensajeria/app/android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk ../../../mensajeria-prueba.apk
+
+      - name: Verificar firma
+        run: |
+          keytool -printcert -jarfile mensajeria-prueba.apk | tee firma.txt
+          grep -q "7C:7A:25:CB:AC:FF:9E:C9:D6:69:09:A2:B7:C0:66:77:C4:DD:48:84:6F:A5:7F:3F:84:10:BC:4C:1F:E0:F0:5E" firma.txt
 
       - name: Publicar en Releases
         uses: softprops/action-gh-release@v2

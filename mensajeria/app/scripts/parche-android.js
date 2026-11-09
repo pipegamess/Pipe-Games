@@ -31,5 +31,17 @@ const gradle = path.join(__dirname, "..", "android", "app", "build.gradle");
 let g = fs.readFileSync(gradle, "utf8");
 const n = parseInt(process.env.GITHUB_RUN_NUMBER || "1", 10);
 g = g.replace(/versionCode \d+/, `versionCode ${n}`).replace(/versionName "[^"]*"/, `versionName "1.0.${n}"`);
+// Firma fija con la llave del repositorio, para que cada versión se instale encima de la anterior.
+if (!g.includes("signingConfigs {")) {
+  g = g.replace(/android\s*\{/, `android {
+    signingConfigs {
+        debug {
+            storeFile file("../../debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }`);
+}
 fs.writeFileSync(gradle, g);
 console.log("Parche Android aplicado, versión 1.0." + n);
