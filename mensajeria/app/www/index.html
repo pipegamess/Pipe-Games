@@ -31,6 +31,13 @@ body{padding-top:env(safe-area-inset-top,0px)}
 .saldo{font-family:var(--f-display);font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
 .cargando{display:grid;place-items:center;min-height:60vh;color:var(--muted)}
 .rapidas{display:flex;flex-wrap:wrap;gap:6px}
+.btn-escanear{font-size:24px;padding:22px;border-radius:14px}
+.recibe{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.recibe label{flex-direction:row;justify-content:center;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:10px 6px;color:var(--ink);font-weight:600;background:var(--surface)}
+.recibe input{width:auto;margin:0}
+.recibe label:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.manual{display:flex;gap:8px}
+.manual input{font-family:var(--f-mono);text-transform:uppercase;letter-spacing:.06em}
 .rapidas button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 11px;font-size:13px}
 </style>
 </head>
@@ -49,7 +56,7 @@ body{padding-top:env(safe-area-inset-top,0px)}
 <script src="capacitor.js"></script>
 <nav class="barra-abajo" id="barra" hidden>
   <a href="#inicio" data-r="inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
-  <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8"/></svg>Disponibles<span class="insignia" id="nDisp" hidden></span></a>
+  <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Escanear<span class="insignia" id="nDisp" hidden></span></a>
   <a href="#mios" data-r="mios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Mis pedidos<span class="insignia" id="nMios" hidden></span></a>
   <a href="#perfil" data-r="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Perfil</a>
 </nav>
@@ -78,6 +85,7 @@ const registrar = window.capacitorExports?.registerPlugin;
 const BG = nativo && registrar ? registrar("BackgroundGeolocation") : null;
 const Http = nativo && registrar ? registrar("CapacitorHttp") : null;
 const Notif = nativo && registrar ? registrar("LocalNotifications") : null;
+const Escaner = nativo && registrar ? registrar("BarcodeScanner") : null;
 
 /* ---------- estado ---------- */
 const S = { u: null, perfil: null, disp: [], mios: [], entregas: [], pos: null, turno: false, watcher: null };
@@ -197,9 +205,10 @@ async function tomar(numero) {
   const ref = doc(db, "guias", numero);
   await runTransaction(db, async tx => {
     const s = await tx.get(ref);
-    if (!s.exists()) throw new Error("La guía ya no existe.");
+    if (!s.exists()) throw new Error("La guía no existe. Revisa el número.");
     const g = { numero, ...s.data() };
-    if (g.estado !== "disponible" || g.mensajeroId) throw new Error("Otro mensajero ya tomó este pedido.");
+    if (g.mensajeroId && g.mensajeroId !== S.u.uid) throw new Error("Otro mensajero ya tiene este pedido.");
+    if (g.estado !== "disponible") throw new Error("Esta guía no está disponible (estado: " + (C.ESTADOS[g.estado] || g.estado) + ").");
     const cambios = { estado: "tomada", mensajeroId: S.u.uid, mensajeroNombre: S.perfil.nombre, mensajeroPlaca: S.perfil.placa || "", eventos: [...(g.eventos || []), C.evento("tomada", "", S.perfil.nombre)], actualizado: Date.now() };
     tx.update(ref, cambios);
     tx.set(doc(db, "rastreo", numero), C.vistaPublica({ ...g, ...cambios }));
@@ -230,7 +239,7 @@ function ruta(soloDatos = false) {
   else if (r === "aviso") pintarAviso(decodeURIComponent(n), x);
   else location.hash = "#inicio";
 }
-const zonas = () => S.perfil?.zonas || [];
+const zonas = () => (S.perfil?.zonas || []).filter(z => C.NOMBRES_LOCALIDADES.includes(z));
 const disponiblesMias = () => S.disp.filter(g => !zonas().length || (g.zonas || []).some(z => zonas().includes(z))).sort((a, b) => a.creado - b.creado);
 const activos = () => S.mios.filter(g => ["tomada", "recogida", "en_camino"].includes(g.estado)).sort((a, b) => a.actualizado - b.actualizado);
 function insignias() {
@@ -268,8 +277,12 @@ function pintarIngreso() {
   };
 }
 function chipsZonas(sel = []) {
-  return `<div class="chips">${C.NOMBRES_LOCALIDADES.map((z, i) => `<label><input type="checkbox" name="zona" value="${esc(z)}" ${sel.includes(z) ? "checked" : ""}>${esc(z)}</label>`).join("")}</div>`;
+  return `<div class="btns"><button type="button" class="btn sec chico" data-todas="1">Marcar todas</button><button type="button" class="btn sec chico" data-todas="0">Quitar todas</button></div><div class="chips">${C.NOMBRES_LOCALIDADES.map((z, i) => `<label><input type="checkbox" name="zona" value="${esc(z)}" ${sel.includes(z) ? "checked" : ""}>${esc(z)}</label>`).join("")}</div>`;
 }
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-todas]"); if (!b) return;
+  document.querySelectorAll('input[name="zona"]').forEach(i => i.checked = b.dataset.todas === "1");
+});
 const zonasMarcadas = () => [...document.querySelectorAll('input[name="zona"]:checked')].map(i => i.value);
 function pintarRegistro() {
   $("#barra").hidden = true;
@@ -346,18 +359,46 @@ function tarjeta(g, accion) {
     ${accion}
   </div>`;
 }
+async function escanear() {
+  if (!Escaner) { toast("El escáner solo funciona en la app instalada. Escribe el número de guía."); return null; }
+  try {
+    const disp = await Escaner.isGoogleBarcodeScannerModuleAvailable().catch(() => ({ available: true }));
+    if (disp && disp.available === false) {
+      await Escaner.installGoogleBarcodeScannerModule();
+      toast("Descargando el escáner de Google. Intenta de nuevo en unos segundos.");
+      return null;
+    }
+    const r = await Escaner.scan({ formats: ["QR_CODE", "CODE_128"] });
+    const v = r?.barcodes?.[0]?.rawValue || r?.barcodes?.[0]?.displayValue || "";
+    if (!v) return null;
+    const n = C.guiaDesdeEscaneo(v);
+    if (!n) { toast("Ese código no es una guía de Mensajería Prueba."); return null; }
+    return n;
+  } catch (e) {
+    const m = String(e?.message || e);
+    if (/cancel/i.test(m)) return null;
+    toast("No se pudo abrir el escáner: " + m); return null;
+  }
+}
+async function recibirGuia(n) {
+  n = C.guiaDesdeEscaneo(n) || String(n || "").trim().toUpperCase();
+  if (!/^BOG-[A-Z0-9]{6}$/.test(n)) { toast("Escribe el número completo, por ejemplo BOG-7K2M9Q."); return; }
+  if (buscar(n) && ["tomada", "recogida", "en_camino"].includes(buscar(n).estado)) { location.hash = "#g/" + n; return; }
+  if (!S.turno) { toast("Inicia turno antes de recibir pedidos."); location.hash = "#inicio"; return; }
+  try { await tomar(n); toast("Pedido " + n + " asignado a ti"); location.hash = "#g/" + n; }
+  catch (err) { toast(/^(Otro|La guía|Esta guía)/.test(err.message || "") ? err.message : C.mensajeError(err)); }
+}
 function pintarDisponibles() {
   const l = disponiblesMias();
-  pantalla(`<h1>Disponibles</h1>
-    <p class="nota" style="margin:0">${zonas().length ? "Pedidos sin mensajero en tus zonas: " + esc(zonas().join(", ")) + "." : "No has elegido zonas; ves todos los pedidos."}</p>
-    <div class="lista">${l.length ? l.map(g => tarjeta(g, `<button class="btn ancho" data-tomar="${esc(g.numero)}">Tomar pedido</button>`)).join("") : `<div class="vacio">No hay pedidos disponibles en tus zonas. Cuando despacho cree uno, aparecerá aquí.</div>`}</div>`);
-  $("#raiz").onclick = async e => {
-    const b = e.target.closest("[data-tomar]"); if (!b) return;
-    if (!S.turno) { toast("Inicia turno antes de tomar pedidos"); return; }
-    b.disabled = true; b.textContent = "Tomando…";
-    try { await tomar(b.dataset.tomar); toast("Pedido tomado"); location.hash = "#g/" + b.dataset.tomar; }
-    catch (err) { toast(err.message?.startsWith("Otro") || err.message?.startsWith("La guía") ? err.message : C.mensajeError(err)); b.disabled = false; b.textContent = "Tomar pedido"; }
-  };
+  pantalla(`<h1>Recibir pedido</h1>
+    <p class="nota" style="margin:0">Escanea el código QR o el código de barras de la guía impresa. El pedido queda asignado a ti.</p>
+    <button class="btn btn-escanear ok" id="bScan">Escanear guía</button>
+    <form class="manual" id="fMan"><input id="mNum" placeholder="BOG-7K2M9Q" aria-label="Número de guía" autocomplete="off"><button class="btn sec" type="submit">Recibir</button></form>
+    <h3>Pendientes en tus zonas</h3>
+    <div class="lista">${l.length ? l.map(g => tarjeta(g, "")).join("") : `<div class="vacio">No hay pedidos pendientes por recoger en tus zonas.</div>`}</div>`);
+  $("#raiz").onclick = null;
+  $("#bScan").onclick = async () => { const n = await escanear(); if (n) recibirGuia(n); };
+  $("#fMan").onsubmit = e => { e.preventDefault(); recibirGuia($("#mNum").value); };
 }
 function pintarMios() {
   const l = activos();
@@ -387,7 +428,7 @@ function pintarGuia(n) {
       ${recogiendo ? `<div><b>${esc(g.remitente)}</b></div><div class="meta">${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div>
         <div class="btns"><button class="btn sec chico" data-ext="${esc(urlMapsTexto(textoOrigen))}">Google Maps</button><button class="btn sec chico" data-ext="${esc("https://waze.com/ul?q=" + encodeURIComponent(textoOrigen) + "&navigate=yes")}">Waze</button></div>`
       : `<div><b>${esc(g.cliente)}</b> · ${esc(g.telefono)}</div><div class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</div>
-        <div class="btns"><button class="btn sec chico" data-ext="tel:${esc(String(g.telefono).replace(/[^\d+]/g, ""))}">Llamar</button><button class="btn sec chico" data-ext="${esc(urlMaps(g.destino.lat, g.destino.lng))}">Google Maps</button><button class="btn sec chico" data-ext="${esc(urlWaze(g.destino.lat, g.destino.lng))}">Waze</button></div>`}
+        <div class="btns"><button class="btn sec chico" data-ext="tel:${esc(String(g.telefono).replace(/[^\d+]/g, ""))}">Llamar</button><button class="btn sec chico" data-ext="${esc(urlMapsTexto(C.direccionTexto(g.destino)))}">Google Maps</button><button class="btn sec chico" data-ext="${esc("https://waze.com/ul?q=" + encodeURIComponent(C.direccionTexto(g.destino)) + "&navigate=yes")}">Waze</button></div>`}
     </div>
     <div class="panel"><dl class="kv">
       <dt>Cobrar</dt><dd><b>${g.valor ? C.cop(g.valor) : "Ya pagado"}</b></dd>
@@ -439,6 +480,15 @@ function pintarEntregar(n) {
     <label class="foto-btn" id="lFoto"><input type="file" accept="image/*" capture="environment" id="fFoto"><span id="tFoto">Tomar foto del paquete entregado</span></label>
     <img class="foto-entrega" id="vFoto" alt="Foto de entrega" hidden>
     <div class="panel">
+      <h3>¿Quién recibe?</h3>
+      <div class="recibe">
+        <label><input type="radio" name="recibe" value="cliente" checked>Cliente</label>
+        <label><input type="radio" name="recibe" value="porteria">Portería</label>
+        <label><input type="radio" name="recibe" value="familiar">Familiar</label>
+      </div>
+      <label id="lRecNom" hidden><span id="tRecNom">Nombre de quien recibe</span><input id="eRecNom" autocomplete="off"></label>
+    </div>
+    <div class="panel">
       <h3>Pago</h3>
       ${g.valor ? `<p style="margin:0">Debes cobrar <b>${C.cop(g.valor)}</b></p>` : `<p style="margin:0">Este pedido ya estaba pago.</p>`}
       <div class="medios">
@@ -458,6 +508,11 @@ function pintarEntregar(n) {
     $("#lMot").hidden = !(g.valor && valor() !== g.valor);
   };
   document.querySelectorAll('input[name="medio"]').forEach(i => i.onchange = revisar);
+  const recibe = () => document.querySelector('input[name="recibe"]:checked')?.value;
+  document.querySelectorAll('input[name="recibe"]').forEach(i => i.onchange = () => {
+    $("#lRecNom").hidden = recibe() === "cliente";
+    $("#tRecNom").textContent = recibe() === "porteria" ? "Nombre del portero o vigilante" : "Nombre y parentesco (ej. Ana, hermana)";
+  });
   $("#eVal").oninput = revisar;
   $("#fFoto").onchange = async e => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -469,12 +524,14 @@ function pintarEntregar(n) {
     $("#eErr").textContent = "";
     if (!foto) { $("#eErr").textContent = "Toma la foto de entrega antes de confirmar."; return; }
     if (!medio()) { $("#eErr").textContent = "Escoge cómo pagó el cliente."; return; }
+    const recNom = $("#eRecNom").value.trim();
+    if (recibe() !== "cliente" && !recNom) { $("#eErr").textContent = "Escribe el nombre de quien recibe."; return; }
     const v = valor(), mot = $("#eMot").value.trim();
     if (g.valor && v !== g.valor && !mot) { $("#eErr").textContent = "Escribe por qué el valor recibido es diferente."; return; }
     $("#bEnt").disabled = true; $("#bEnt").textContent = "Guardando…";
     try {
       await setDoc(doc(db, "fotos", n), { imagen: foto, t: Date.now(), mensajeroId: S.u.uid });
-      const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot };
+      const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot, recibe: { tipo: recibe(), nombre: recibe() === "cliente" ? g.cliente : recNom } };
       S.ultimaEntregada = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] });
       location.hash = `#aviso/${n}/entregado`;
     } catch (err) { $("#eErr").textContent = C.mensajeError(err); $("#bEnt").disabled = false; $("#bEnt").textContent = "Confirmar entrega"; }

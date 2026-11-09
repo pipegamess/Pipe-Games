@@ -26,6 +26,15 @@ fs.writeFileSync(path.join(dir, "ic_tracking.xml"),
 </vector>
 `);
 
+// Escáner de Google (ML Kit): descargar el módulo al instalar la app.
+const manifest = path.join(__dirname, "..", "android", "app", "src", "main", "AndroidManifest.xml");
+let mf = fs.readFileSync(manifest, "utf8");
+if (!mf.includes("com.google.mlkit.vision.DEPENDENCIES")) {
+  mf = mf.replace("</application>", `    <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
+    </application>`);
+  fs.writeFileSync(manifest, mf);
+}
+
 // Versión visible de la app = número de compilación de GitHub.
 const gradle = path.join(__dirname, "..", "android", "app", "build.gradle");
 let g = fs.readFileSync(gradle, "utf8");

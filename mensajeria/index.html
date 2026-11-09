@@ -126,7 +126,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label>Localidad<select id="nLoc"></select></label>
             <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
           </div>
-          <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">El punto de entrega está en el centro de la localidad. Toca el mapa para ponerlo en el sitio exacto.</span></div>
+          <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Sin ubicar: el punto está en el centro de la localidad.</span></div>
+          <div class="lista" id="nCands"></div>
+          <label>Coordenadas o link de Google Maps (opcional)<input id="nCoord" placeholder="4.6789, -74.0456" autocomplete="off"></label>
+          <p class="nota" style="margin:0">Para la ubicación exacta: busca la dirección en Google Maps, mantén presionado el punto y copia las coordenadas que aparecen. Pégalas aquí.</p>
           <h3>Paquete</h3>
           <div class="fila">
             <label>Contenido<input id="nCont" placeholder="1 juego PS5"></label>
@@ -234,6 +237,7 @@ function iniciarMapa() {
   mapa.on("click", e => {
     if (S.tab !== "nueva") return;
     S.pin = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
+    S.pin.aprox = false; $("#nCands").innerHTML = "";
     $("#nPin").textContent = "Punto de entrega marcado en el mapa.";
     pintarMapa();
   });
@@ -365,6 +369,7 @@ function pintarDetalle() {
         ${g.nota ? `<dt>Notas</dt><dd>${esc(g.nota)}</dd>` : ""}
         <dt>Mensajero</dt><dd>${g.mensajeroNombre ? esc(g.mensajeroNombre) + (g.mensajeroPlaca ? " · " + esc(g.mensajeroPlaca) : "") + (u ? ` · señal ${C.hace(u.t)}` : "") : "Sin asignar"}</dd>
         ${r ? `<dt>Recaudo</dt><dd>${C.cop(r.valor)} · ${C.MEDIOS[r.medio] || r.medio}${r.motivo ? " · " + esc(r.motivo) : ""}</dd>` : ""}
+        ${r?.recibe ? `<dt>Recibió</dt><dd>${esc(C.textoRecibe(r.recibe))}</dd>` : ""}
       </dl>
     </div>
     ${g.estado === "entregada" ? (fotoCache[g.numero] && fotoCache[g.numero] !== "sin" ? `<img class="foto-entrega" alt="Foto de entrega" src="${fotoCache[g.numero]}">` : `<div class="vacio">${fotoCache[g.numero] === "sin" ? "Sin foto de entrega." : "Cargando foto…"}</div>`) : ""}
@@ -372,6 +377,7 @@ function pintarDetalle() {
       <button class="btn chico" data-acc="imprimir">Imprimir guía</button>
       <button class="btn sec chico" data-acc="link">Copiar link de rastreo</button>
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkRastreo(g.numero)}">Abrir rastreo</a>
+      <a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(C.direccionTexto(g.destino))}">Ver dirección en Google Maps</a>
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g.numero)}`)}">Enviar guía por WhatsApp</a>
     </div>
     ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
@@ -406,17 +412,86 @@ $("#hojaDetalle").addEventListener("click", async e => {
 const opciones = sel => C.NOMBRES_LOCALIDADES.map(n => `<option${n === sel ? " selected" : ""}>${n}</option>`).join("");
 $("#nOrigLoc").innerHTML = opciones("Fontibón");
 $("#nLoc").innerHTML = opciones("Chapinero");
-$("#nLoc").onchange = () => { S.pin = null; $("#nPin").textContent = "El punto de entrega está en el centro de la localidad. Toca el mapa para ponerlo en el sitio exacto."; ajustado = ""; pintarMapa(); };
+$("#nLoc").onchange = () => { S.pin = null; $("#nCands").innerHTML = ""; $("#nPin").textContent = "Sin ubicar: el punto está en el centro de la localidad."; ajustado = ""; pintarMapa(); };
+function ponerPin(p, texto) {
+  S.pin = { lat: p.lat, lng: p.lng, aprox: !!p.aprox };
+  $("#nPin").textContent = texto;
+  ajustado = ""; pintarMapa();
+}
+$("#nCoord").addEventListener("input", () => {
+  const p = C.leerCoordenadas($("#nCoord").value);
+  if (p) { $("#nCands").innerHTML = ""; ponerPin(p, "Ubicación tomada de las coordenadas de Google Maps."); }
+});
+async function overpass(q) {
+  const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
+  if (!r.ok) throw new Error("overpass " + r.status);
+  return (await r.json()).elements || [];
+}
+const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+async function cruceSimple(viaRe, cruceRe) {
+  const bbox = "(4.45,-74.25,4.85,-73.99)";
+  const els = await overpass(`[out:json][timeout:20];way["highway"]["name"~"${viaRe}",i]${bbox}->.v;way["highway"]["name"~"${cruceRe}",i]${bbox}->.c;node(w.v)(w.c);out;`);
+  return els.filter(e => e.type === "node").map(e => ({ lat: e.lat, lng: e.lon }));
+}
+function agrupar(puntos, centro) {
+  if (!puntos.length) return null;
+  // Si hay vías con el mismo nombre en varias zonas, quedarse con el grupo más cercano a la localidad.
+  puntos.sort((a, b) => C.km(a, centro) - C.km(b, centro));
+  const g = puntos.filter(p => C.km(p, puntos[0]) < 0.4);
+  return { lat: g.reduce((s, p) => s + p.lat, 0) / g.length, lng: g.reduce((s, p) => s + p.lng, 0) / g.length };
+}
+async function ubicar(dir, localidad) {
+  const centro = C.centroDe(localidad);
+  const n = C.normalizarDireccion(dir);
+  const cands = [];
+  if (n.via) {
+    try {
+      const m = n.via.match(/^(?:Avenida )?(Carrera|Calle|Diagonal|Transversal) (.+)$/i);
+      const tipo = m[1].toLowerCase();
+      const cruceTipos = ["carrera", "transversal"].includes(tipo) ? "Calle|Diagonal" : "Carrera|Transversal";
+      const sur = /sur/i.test(n.sufijo || "") ? " Sur" : "";
+      const [p1, p2] = n.placa.split("-");
+      const viaRe = `^(Avenida )?${m[1]} ${escRe(m[2].trim())}$`;
+      const [a, b] = await Promise.all([
+        cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${escRe(p1)}${sur}$`),
+        cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${parseInt(p1, 10) + 1}${sur}$`)
+      ]);
+      const e1 = agrupar(a, centro), e2 = e1 && agrupar(b, e1);
+      if (e1) {
+        let p = e1;
+        if (e2 && C.km(e1, e2) < 0.5) { const f = Math.min(parseInt(p2, 10), 99) / 100; p = { lat: e1.lat + (e2.lat - e1.lat) * f, lng: e1.lng + (e2.lng - e1.lng) * f }; }
+        cands.push({ lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6), etiqueta: `${n.texto} (calculada por el cruce de vías)`, cruce: true });
+      }
+    } catch {}
+  }
+  const nom = async params => {
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=4&countrycodes=co&viewbox=-74.25,4.85,-73.99,4.45&bounded=1&" + params, { headers: { "Accept-Language": "es" } });
+    return r.ok ? r.json() : [];
+  };
+  try {
+    let r = [];
+    if (n.via) r = await nom(`street=${encodeURIComponent(n.placa + " " + n.via)}&city=Bogot%C3%A1&country=Colombia`);
+    if (!r.length) r = await nom(`q=${encodeURIComponent(n.texto.replace("#", "") + ", " + localidad + ", Bogotá")}`);
+    r.forEach(x => cands.push({ lat: +(+x.lat).toFixed(6), lng: +(+x.lon).toFixed(6), etiqueta: x.display_name.split(",").slice(0, 3).join(","), cruce: false }));
+  } catch {}
+  // Quitar duplicados cercanos
+  return cands.filter((c, i) => cands.findIndex(d => C.km(c, d) < 0.05) === i).slice(0, 5);
+}
 $("#nBuscar").onclick = async () => {
   const dir = $("#nDir").value.trim(); if (!dir) { toast("Escribe primero la dirección de entrega"); return; }
-  const btn = $("#nBuscar"); btn.disabled = true; btn.textContent = "Buscando…";
+  const btn = $("#nBuscar"); btn.disabled = true; btn.textContent = "Buscando…"; $("#nCands").innerHTML = "";
   try {
-    const q = encodeURIComponent(`${dir.replace(/#/g, " ")}, ${$("#nLoc").value}, Bogotá, Colombia`);
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=co&viewbox=-74.25,4.85,-73.99,4.45&bounded=1&q=${q}`, { headers: { "Accept-Language": "es" } });
-    const d = await r.json();
-    if (d[0]) { S.pin = { lat: +(+d[0].lat).toFixed(6), lng: +(+d[0].lon).toFixed(6) }; $("#nPin").textContent = "Dirección ubicada. Revisa el marcador y arrástralo si no quedó exacto."; ajustado = ""; pintarMapa(); }
-    else $("#nPin").textContent = "No encontré esa dirección. Marca el punto tocando el mapa.";
-  } catch { $("#nPin").textContent = "No se pudo buscar la dirección. Marca el punto tocando el mapa."; }
+    const cands = await ubicar(dir, $("#nLoc").value);
+    const centro = C.centroDe($("#nLoc").value);
+    if (!cands.length) { $("#nPin").textContent = "No encontré la dirección. Pega las coordenadas de Google Maps o toca el mapa en el sitio exacto."; }
+    else {
+      ponerPin(cands[0], cands[0].cruce ? "Ubicada por el cruce de vías. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Revisa el marcador y arrástralo si hace falta.");
+      if (cands.length > 1) {
+        $("#nCands").innerHTML = `<div class="nota">Otras coincidencias (toca para usarla):</div>` + cands.map((c, i) => `<button type="button" class="item clic" data-cand="${i}" style="text-align:left"><span>${esc(c.etiqueta)}</span><span class="meta">${C.km(c, centro).toFixed(1)} km del centro de ${esc($("#nLoc").value)}</span></button>`).join("");
+        $("#nCands").onclick = e => { const b = e.target.closest("[data-cand]"); if (b) ponerPin(cands[+b.dataset.cand], "Ubicación elegida. Revisa el marcador."); };
+      }
+    }
+  } catch { $("#nPin").textContent = "No se pudo buscar la dirección. Pega las coordenadas de Google Maps o toca el mapa."; }
   btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa";
 };
 $("#fNueva").onsubmit = async e => {
@@ -431,7 +506,7 @@ $("#fNueva").onsubmit = async e => {
       numero, remitente: $("#nRem").value.trim(),
       origen: { direccion: $("#nOrigDir").value.trim(), localidad: $("#nOrigLoc").value, lat: o.lat, lng: o.lng },
       cliente: $("#nCli").value.trim(), telefono: $("#nTel").value.trim(),
-      destino: { direccion: $("#nDir").value.trim(), localidad: $("#nLoc").value, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng },
+      destino: { direccion: $("#nDir").value.trim(), localidad: $("#nLoc").value, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: !S.pin },
       contenido: $("#nCont").value.trim(), nota: $("#nNota").value.trim(),
       valor: parseInt(($("#nVal").value || "0").replace(/\D/g, ""), 10) || 0,
       zonas: [...new Set([$("#nOrigLoc").value, $("#nLoc").value])],
@@ -453,7 +528,7 @@ $("#fNueva").onsubmit = async e => {
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
     $("#rImp").onclick = () => imprimirGuia(g);
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota"].forEach(id => $("#" + id).value = "");
-    S.pin = null; ajustado = ""; pintarMapa();
+    S.pin = null; $("#nCoord").value = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = "Sin ubicar: el punto está en el centro de la localidad."; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
   } catch (err) { $("#nError").textContent = C.mensajeError(err); }
   btn.disabled = false;

@@ -8,8 +8,7 @@ export const LOCALIDADES = [
   ["Engativá", 4.7050, -74.1120], ["Suba", 4.7480, -74.0850], ["Barrios Unidos", 4.6670, -74.0750],
   ["Teusaquillo", 4.6400, -74.0900], ["Los Mártires", 4.6050, -74.0900], ["Antonio Nariño", 4.5900, -74.1020],
   ["Puente Aranda", 4.6170, -74.1150], ["La Candelaria", 4.5960, -74.0730], ["Rafael Uribe Uribe", 4.5700, -74.1150],
-  ["Ciudad Bolívar", 4.5450, -74.1550], ["Soacha", 4.5790, -74.2170], ["Chía", 4.8600, -74.0590],
-  ["Mosquera / Funza", 4.7060, -74.2300], ["Cota", 4.8090, -74.1030]
+  ["Ciudad Bolívar", 4.5450, -74.1550], ["Soacha", 4.5790, -74.2170], ["Chía", 4.8600, -74.0590]
 ];
 export const NOMBRES_LOCALIDADES = LOCALIDADES.map(l => l[0]);
 export const centroDe = nombre => { const l = LOCALIDADES.find(x => x[0] === nombre); return l ? { lat: l[1], lng: l[2] } : { lat: 4.65, lng: -74.10 }; };
@@ -29,6 +28,58 @@ export const PASOS = ["disponible", "tomada", "recogida", "en_camino", "entregad
 export const ACTIVOS = ["disponible", "tomada", "recogida", "en_camino", "novedad"];
 
 export const MEDIOS = { efectivo: "Efectivo", nequi: "Nequi", pagado: "Ya estaba pago" };
+export const RECIBE = { cliente: "Cliente", porteria: "Portería", familiar: "Familiar" };
+export function textoRecibe(r) {
+  if (!r || !r.tipo) return "";
+  return RECIBE[r.tipo] + (r.nombre ? " · " + r.nombre : "");
+}
+
+// Dirección completa en texto, para navegar con Google Maps o Waze.
+export function direccionTexto(d) {
+  if (!d) return "";
+  return [String(d.direccion || "").replace(/\b(apto|apt|ap|int|interior|torre|casa|oficina|of|piso|local)\b.*$/i, "").trim(), d.localidad, "Bogotá, Colombia"].filter(Boolean).join(", ");
+}
+
+// Convierte nomenclatura de Bogotá (Cra 15 # 93-47) a una forma que entiende el buscador de mapas.
+export function normalizarDireccion(dir) {
+  let t = " " + String(dir || "").replace(/\b(apto|apt|ap|int|interior|torre|casa|oficina|of|piso|local|bloque|conjunto|edificio)\b.*$/i, "") + " ";
+  const vias = [
+    [/\b(av(enida)?\.?\s*(cra|kra|kr|carrera)|ak)\b\.?/gi, "Avenida Carrera"],
+    [/\b(av(enida)?\.?\s*(cll|cl|calle)|ac)\b\.?/gi, "Avenida Calle"],
+    [/\b(carrera|cra|kra|kr|cr|crr)\b\.?/gi, "Carrera"],
+    [/\b(calle|cll|cl|clle)\b\.?/gi, "Calle"],
+    [/\b(diagonal|diag|dg)\b\.?/gi, "Diagonal"],
+    [/\b(transversal|transv|trans|tv|tr)\b\.?/gi, "Transversal"]
+  ];
+  for (const [re, v] of vias) t = t.replace(re, v);
+  t = t.replace(/\s*(#|No\.?|N°|Nº|numero|número)\s*/gi, " # ").replace(/\s+/g, " ").trim();
+  const m = t.match(/(Avenida Carrera|Avenida Calle|Carrera|Calle|Diagonal|Transversal)\s+(\d+\s*[A-Z]?(?:\s*Bis)?(?:\s*[A-Z])?(?:\s*Sur|\s*Este)?)\s*#?\s*(\d+\s*[A-Z]?(?:\s*Bis)?)\s*-\s*(\d+)(\s*Sur|\s*Este)?/i);
+  if (!m) return { texto: t, via: null };
+  const via = `${m[1]} ${m[2].replace(/\s+/g, " ").trim()}`;
+  const placa = `${m[3].replace(/\s+/g, "")}-${m[4]}`;
+  const sufijo = (m[5] || "").trim();
+  return { texto: `${via} # ${placa}${sufijo ? " " + sufijo : ""}`, via, placa, sufijo };
+}
+
+// Extrae coordenadas de un texto o de un enlace de Google Maps.
+export function leerCoordenadas(t) {
+  t = String(t || "");
+  const pats = [/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i, /(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{2,3}\.\d{3,})/];
+  for (const re of pats) {
+    const m = t.match(re);
+    if (m) {
+      const lat = +m[1], lng = +m[2];
+      if (lat > 4.2 && lat < 5.1 && lng > -74.5 && lng < -73.8) return { lat: +lat.toFixed(6), lng: +lng.toFixed(6) };
+    }
+  }
+  return null;
+}
+
+// Número de guía a partir de lo escaneado (QR con link de rastreo o código de barras).
+export function guiaDesdeEscaneo(v) {
+  const m = String(v || "").toUpperCase().match(/BOG-[A-Z0-9]{6}/);
+  return m ? m[0] : null;
+}
 
 export function cop(v) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(v || 0);
@@ -108,6 +159,7 @@ export function vistaPublica(g) {
     mensajeroPlaca: g.mensajeroPlaca || "",
     eventos: (g.eventos || []).map(e => ({ estado: e.estado, t: e.t })),
     tieneFoto: g.estado === "entregada",
+    recibe: g.estado === "entregada" && g.recaudo?.recibe ? g.recaudo.recibe.tipo : "",
     actualizado: Date.now()
   };
 }
