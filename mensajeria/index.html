@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Despacho · Mensajería Prueba</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="estilos.css">
+<style>
+.envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.quien{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.rejilla{display:grid;grid-template-columns:1fr;gap:14px}
+@media (min-width:960px){.rejilla{grid-template-columns:1.2fr 1fr;align-items:start}.col-mapa{position:sticky;top:12px}}
+#mapa{height:min(50vh,520px);min-height:300px}
+@media (min-width:960px){#mapa{height:calc(100vh - 100px);max-height:760px}}
+.col-mapa{position:relative}
+.aviso-mapa{position:absolute;left:10px;bottom:24px;right:10px;z-index:500;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--muted);pointer-events:none;max-width:420px}
+.tabs{display:flex;background:var(--chip);border-radius:10px;padding:4px;gap:4px;margin-bottom:12px;overflow-x:auto}
+.tabs button{flex:1 0 auto;font-family:var(--f-display);font-weight:600;font-size:16px;border:0;background:transparent;color:var(--muted);padding:9px 12px;border-radius:7px;white-space:nowrap}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.login{max-width:380px;margin:12vh auto 0;padding:0 16px}
+.item.clic{cursor:pointer}
+.item.clic:hover{border-color:var(--route)}
+.detalle{position:fixed;inset:0;z-index:2000;background:rgba(10,18,20,.45);display:flex;justify-content:flex-end}
+.detalle .hoja{width:min(520px,100%);height:100%;overflow-y:auto;background:var(--bg);padding:16px max(16px,env(safe-area-inset-right,0px)) 40px 16px;display:flex;flex-direction:column;gap:14px}
+.cerrar{align-self:flex-end}
+.codigo{font-family:var(--f-mono);font-size:28px;font-weight:600;letter-spacing:.12em}
+.buscar{display:flex;gap:8px}
+.tabla{width:100%;border-collapse:collapse;font-size:14px}
+.tabla th,.tabla td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.tabla th{font-size:12px;color:var(--muted);font-weight:600}
+.num{text-align:right!important}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+
+<!-- Ingreso -->
+<section class="login" id="vLogin" hidden>
+  <div class="panel">
+    <h1>Mensajería <span class="marca">Prueba</span></h1>
+    <p class="nota">Panel de despacho. Entra con el correo y la contraseña que creaste en Firebase.</p>
+    <form id="fLogin" class="lista">
+      <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
+      <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">Entrar</button>
+      <div class="error" id="lError"></div>
+    </form>
+  </div>
+</section>
+
+<!-- Panel -->
+<div class="envoltura" id="vPanel" hidden>
+  <header class="barra">
+    <h1>Mensajería <span class="marca">Prueba</span> · Despacho</h1>
+    <div class="quien"><span id="quien"></span><button class="btn sec chico" id="salir">Salir</button></div>
+  </header>
+  <div class="rejilla">
+    <div class="col-mapa">
+      <div id="mapa" class="mapa"></div>
+      <div class="aviso-mapa" id="avisoMapa">Mensajeros en turno y destinos de guías activas.</div>
+    </div>
+    <div>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="guias" aria-selected="true">Guías</button>
+        <button role="tab" data-tab="nueva" aria-selected="false">Nueva guía</button>
+        <button role="tab" data-tab="mensajeros" aria-selected="false">Mensajeros</button>
+        <button role="tab" data-tab="recaudo" aria-selected="false">Recaudo</button>
+      </nav>
+
+      <!-- GUÍAS -->
+      <section class="panel" id="t-guias">
+        <div class="cifras" id="cifras"></div>
+        <div class="buscar"><input id="busca" placeholder="Buscar por guía, cliente o dirección" aria-label="Buscar"></div>
+        <div class="filtros" id="filtros"></div>
+        <div class="lista" id="listaGuias"><div class="vacio">Cargando guías…</div></div>
+      </section>
+
+      <!-- NUEVA GUÍA -->
+      <section class="panel" id="t-nueva" hidden>
+        <h2>Nueva guía</h2>
+        <form id="fNueva" class="lista">
+          <h3>Recogida</h3>
+          <div class="fila">
+            <label>Remitente / tienda<input id="nRem" value="Pipe Games" required></label>
+            <label>Localidad de recogida<select id="nOrigLoc"></select></label>
+          </div>
+          <label>Dirección de recogida<input id="nOrigDir" placeholder="Dirección donde el mensajero recoge el paquete" required></label>
+          <h3>Entrega</h3>
+          <div class="fila">
+            <label>Destinatario<input id="nCli" required placeholder="Nombre completo"></label>
+            <label>Celular<input id="nTel" inputmode="tel" required placeholder="300 123 4567"></label>
+          </div>
+          <label>Dirección de entrega<input id="nDir" required placeholder="Cra 15 # 93-47, apto 502"></label>
+          <div class="fila">
+            <label>Localidad<select id="nLoc"></select></label>
+            <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
+          </div>
+          <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">El punto de entrega está en el centro de la localidad. Toca el mapa para ponerlo en el sitio exacto.</span></div>
+          <h3>Paquete</h3>
+          <div class="fila">
+            <label>Contenido<input id="nCont" placeholder="1 juego PS5"></label>
+            <label>Valor a cobrar (COP)<input id="nVal" inputmode="numeric" placeholder="0 si ya está pago"></label>
+          </div>
+          <label>Notas para el mensajero<textarea id="nNota" placeholder="Frágil, llamar antes de llegar"></textarea></label>
+          <button class="btn" type="submit" id="nBtn">Crear guía</button>
+          <div class="error" id="nError"></div>
+        </form>
+        <div id="nResultado"></div>
+      </section>
+
+      <!-- MENSAJEROS -->
+      <section class="panel" id="t-mensajeros" hidden>
+        <h2>Mensajeros</h2>
+        <div class="lista" id="listaMens"></div>
+        <h3>Invitaciones</h3>
+        <p class="nota">Genera un código y envíaselo al mensajero junto con el link de la app. Cada código sirve para una sola cuenta.</p>
+        <div class="btns"><button class="btn chico" id="genInv">Generar invitación</button></div>
+        <div id="invNueva"></div>
+        <div class="lista" id="listaInv"></div>
+      </section>
+
+      <!-- RECAUDO -->
+      <section class="panel" id="t-recaudo" hidden>
+        <h2>Recaudo contraentrega</h2>
+        <p class="nota">Saldo en mano = efectivo cobrado − dinero que el mensajero ya te entregó. Los pagos por Nequi van directo a la tienda y no suman al saldo.</p>
+        <div class="scroll"><table class="tabla" id="tablaRec"></table></div>
+        <div id="formEntrega"></div>
+        <h3>Entregas de dinero registradas</h3>
+        <div class="lista" id="listaEntregas"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Detalle de guía -->
+<div class="detalle" id="vDetalle" hidden><div class="hoja" id="hojaDetalle"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION } from "./config.js";
+import * as C from "./comun.js";
+const V = FIREBASE_VERSION;
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
+const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+const { getFirestore, collection, doc, getDoc, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc } = F;
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = s => document.querySelector(s);
+const { esc } = C;
+
+const S = { guias: {}, ubic: {}, mens: {}, inv: [], entregas: [], tab: "guias", filtro: "activas", busca: "", pin: null, abierta: null };
+let subs = [];
+
+function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
+async function copiar(texto, ok = "Copiado") { try { await navigator.clipboard.writeText(texto); toast(ok); } catch { prompt("Copia este texto:", texto); } }
+
+/* ---------- sesión ---------- */
+$("#fLogin").onsubmit = async e => {
+  e.preventDefault(); $("#lError").textContent = "";
+  try { await signInWithEmailAndPassword(auth, $("#lCorreo").value.trim(), $("#lClave").value); }
+  catch (err) { $("#lError").textContent = C.mensajeError(err); }
+};
+$("#salir").onclick = () => signOut(auth);
+onAuthStateChanged(auth, async u => {
+  subs.forEach(f => f()); subs = [];
+  if (!u) { $("#vLogin").hidden = false; $("#vPanel").hidden = true; return; }
+  if (u.uid !== ADMIN_UID) {
+    $("#lError").textContent = "Esta cuenta no es de despacho. Los mensajeros usan la app de Android.";
+    await signOut(auth); return;
+  }
+  $("#vLogin").hidden = true; $("#vPanel").hidden = false;
+  $("#quien").textContent = u.email;
+  iniciarMapa();
+  escuchar();
+});
+
+function escuchar() {
+  const err = e => toast(C.mensajeError(e));
+  subs.push(onSnapshot(query(collection(db, "guias"), orderBy("creado", "desc"), limit(500)), s => {
+    S.guias = {}; s.forEach(d => S.guias[d.id] = { numero: d.id, ...d.data() }); pintar();
+  }, err));
+  subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubic = {}; s.forEach(d => S.ubic[d.id] = d.data()); pintar(); }, err));
+  subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); pintar(); }, err));
+  subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
+  subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
+}
+
+/* ---------- mapa ---------- */
+let mapa, capa, ajustado = "";
+function iniciarMapa() {
+  if (mapa) return;
+  mapa = L.map("mapa", { zoomControl: true }).setView([C.BOGOTA.lat, C.BOGOTA.lng], 12);
+  C.capaMapa(L).addTo(mapa);
+  capa = L.layerGroup().addTo(mapa);
+  mapa.on("click", e => {
+    if (S.tab !== "nueva") return;
+    S.pin = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
+    $("#nPin").textContent = "Punto de entrega marcado en el mapa.";
+    pintarMapa();
+  });
+  setTimeout(() => mapa.invalidateSize(), 200);
+}
+const fresco = u => u && u.t && Date.now() - u.t < 10 * 60000;
+function marcadorMensajero(id, u) {
+  if (!u || u.lat == null) return;
+  const nombre = S.mens[id]?.nombre || u.nombre || "Mensajero";
+  const m = L.marker([u.lat, u.lng], { icon: C.icono(L, "mensajero" + (fresco(u) ? "" : " quieto"), C.iniciales(nombre)), zIndexOffset: 500 });
+  m.bindTooltip(`${esc(nombre)} · ${C.hace(u.t)}`);
+  m.addTo(capa);
+}
+function marcadorDestino(g) {
+  if (!g.destino || g.destino.lat == null) return;
+  const m = L.marker([g.destino.lat, g.destino.lng], { icon: C.icono(L, "destino", "") });
+  m.bindTooltip(`${esc(g.numero)} · ${esc(g.cliente)}`);
+  m.on("click", () => abrirDetalle(g.numero));
+  m.addTo(capa);
+}
+function pintarMapa() {
+  if (!mapa) return;
+  capa.clearLayers();
+  const aviso = $("#avisoMapa");
+  if (S.abierta && S.guias[S.abierta]) {
+    const g = S.guias[S.abierta];
+    marcadorDestino(g);
+    if (g.origen?.lat != null) L.marker([g.origen.lat, g.origen.lng], { icon: C.icono(L, "recogida", "R") }).bindTooltip("Recogida").addTo(capa);
+    if (g.mensajeroId && S.ubic[g.mensajeroId]?.enTurno) marcadorMensajero(g.mensajeroId, S.ubic[g.mensajeroId]);
+    aviso.textContent = `Guía ${g.numero}`;
+  } else if (S.tab === "nueva") {
+    const p = S.pin || C.centroDe($("#nLoc").value);
+    L.marker([p.lat, p.lng], { icon: C.icono(L, "destino", ""), draggable: true })
+      .on("dragend", e => { const ll = e.target.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; $("#nPin").textContent = "Punto de entrega marcado en el mapa."; })
+      .addTo(capa);
+    aviso.textContent = "Toca el mapa o arrastra el marcador al punto exacto de entrega.";
+  } else {
+    Object.values(S.guias).filter(g => C.ACTIVOS.includes(g.estado)).forEach(marcadorDestino);
+    Object.entries(S.ubic).filter(([, u]) => u.enTurno).forEach(([id, u]) => marcadorMensajero(id, u));
+    const n = Object.values(S.ubic).filter(u => u.enTurno).length;
+    aviso.textContent = n ? `${n} mensajero${n === 1 ? "" : "s"} en turno · destinos de guías activas` : "Ningún mensajero en turno. Los destinos de guías activas aparecen en azul.";
+  }
+  const pts = []; capa.eachLayer(l => l.getLatLng && pts.push(l.getLatLng()));
+  const clave = S.tab + (S.abierta || "") + pts.length;
+  if (clave !== ajustado) {
+    ajustado = clave;
+    if (pts.length === 1) mapa.setView(pts[0], 15);
+    else if (pts.length > 1) mapa.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 15 });
+  }
+}
+
+/* ---------- pestañas ---------- */
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => irA(b.dataset.tab));
+function irA(t) {
+  S.tab = t; S.abierta = null; $("#vDetalle").hidden = true;
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  ["guias", "nueva", "mensajeros", "recaudo"].forEach(x => $("#t-" + x).hidden = x !== t);
+  pintar();
+}
+
+/* ---------- escritura de guías ---------- */
+async function guardarGuia(numero, cambios) {
+  const g = { ...S.guias[numero], ...cambios };
+  const b = writeBatch(db);
+  b.update(doc(db, "guias", numero), { ...cambios, actualizado: Date.now() });
+  b.set(doc(db, "rastreo", numero), C.vistaPublica(g));
+  await b.commit();
+}
+
+/* ---------- GUÍAS ---------- */
+const FILTROS = [["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+$("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
+$("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
+$("#listaGuias").addEventListener("click", e => { const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
+function pintarGuias() {
+  const todas = Object.values(S.guias);
+  const n = k => todas.filter(g => g.estado === k).length;
+  const turno = Object.values(S.ubic).filter(u => u.enTurno).length;
+  $("#cifras").innerHTML = `<div><b>${todas.filter(g => C.ACTIVOS.includes(g.estado)).length}</b><span>Activas</span></div><div><b>${n("disponible")}</b><span>Sin mensajero</span></div><div><b>${n("en_camino")}</b><span>En camino</span></div><div><b>${n("novedad")}</b><span>Novedades</span></div><div><b>${turno}</b><span>En turno</span></div>`;
+  $("#filtros").innerHTML = FILTROS.map(([k, l]) => `<button data-f="${k}" aria-pressed="${S.filtro === k}">${l}</button>`).join("");
+  let lista = todas.filter(g => {
+    if (S.filtro === "activas") return C.ACTIVOS.includes(g.estado);
+    if (S.filtro === "ruta") return ["tomada", "recogida", "en_camino"].includes(g.estado);
+    if (S.filtro === "todas") return true;
+    return g.estado === S.filtro;
+  });
+  if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre].join(" ").toLowerCase().includes(S.busca));
+  $("#listaGuias").innerHTML = lista.length ? lista.map(g => `
+    <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
+      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></div>
+      <div><b>${esc(g.cliente)}</b> · <span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</span></div>
+      <div class="meta">${C.fecha(g.creado)} · ${g.valor ? "Cobrar " + C.cop(g.valor) : "Pagado"}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
+    </div>`).join("")
+    : `<div class="vacio">${todas.length ? "No hay guías en este filtro." : "Aún no hay guías. Crea la primera en “Nueva guía”."}</div>`;
+}
+
+/* ---------- detalle ---------- */
+$("#vDetalle").addEventListener("click", e => { if (e.target.id === "vDetalle") cerrarDetalle(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#vDetalle").hidden) cerrarDetalle(); });
+function cerrarDetalle() { S.abierta = null; $("#vDetalle").hidden = true; ajustado = ""; pintarMapa(); }
+let fotoCache = {};
+async function abrirDetalle(n) {
+  S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
+  const g = S.guias[n];
+  if (g?.estado === "entregada" && !fotoCache[n]) {
+    try { const f = await getDoc(doc(db, "fotos", n)); fotoCache[n] = f.exists() ? f.data().imagen : "sin"; } catch { fotoCache[n] = "sin"; }
+    if (S.abierta === n) pintarDetalle();
+  }
+}
+function pintarDetalle() {
+  const g = S.guias[S.abierta]; if (!g) { cerrarDetalle(); return; }
+  const u = g.mensajeroId ? S.ubic[g.mensajeroId] : null;
+  const eventos = (g.eventos || []).map(e => `<li class="${e.estado === "novedad" ? "mal" : "hecho"}"><div><div>${C.ESTADOS[e.estado] || e.estado}</div>${e.nota ? `<div class="n">${esc(e.nota)}</div>` : ""}</div><div class="t">${C.fecha(e.t)}</div></li>`).join("");
+  const r = g.recaudo;
+  const acciones = [];
+  if (["novedad", "tomada", "recogida", "en_camino"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="liberar">Volver a dejar disponible</button>`);
+  if (["novedad", "recogida", "en_camino"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="devolver">Marcar devuelta a la tienda</button>`);
+  if (["disponible", "novedad"].includes(g.estado)) acciones.push(`<button class="btn peligro chico" data-acc="cancelar">Cancelar guía</button>`);
+  $("#hojaDetalle").innerHTML = `
+    <button class="btn sec chico cerrar" data-acc="cerrar">Cerrar</button>
+    <div class="arriba" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><span class="guia" style="font-size:22px">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
+    <div class="panel">
+      <dl class="kv">
+        <dt>Cliente</dt><dd>${esc(g.cliente)} · ${esc(g.telefono)}</dd>
+        <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</dd>
+        <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
+        <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
+        <dt>Cobrar</dt><dd>${g.valor ? C.cop(g.valor) : "Ya pagado"}</dd>
+        ${g.nota ? `<dt>Notas</dt><dd>${esc(g.nota)}</dd>` : ""}
+        <dt>Mensajero</dt><dd>${g.mensajeroNombre ? esc(g.mensajeroNombre) + (g.mensajeroPlaca ? " · " + esc(g.mensajeroPlaca) : "") + (u ? ` · señal ${C.hace(u.t)}` : "") : "Sin asignar"}</dd>
+        ${r ? `<dt>Recaudo</dt><dd>${C.cop(r.valor)} · ${C.MEDIOS[r.medio] || r.medio}${r.motivo ? " · " + esc(r.motivo) : ""}</dd>` : ""}
+      </dl>
+    </div>
+    ${g.estado === "entregada" ? (fotoCache[g.numero] && fotoCache[g.numero] !== "sin" ? `<img class="foto-entrega" alt="Foto de entrega" src="${fotoCache[g.numero]}">` : `<div class="vacio">${fotoCache[g.numero] === "sin" ? "Sin foto de entrega." : "Cargando foto…"}</div>`) : ""}
+    <div class="btns">
+      <button class="btn chico" data-acc="link">Copiar link de rastreo</button>
+      <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkRastreo(g.numero)}">Abrir rastreo</a>
+      <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g.numero)}`)}">Enviar guía por WhatsApp</a>
+    </div>
+    ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
+    <h3>Historial</h3><ol class="tl">${eventos}</ol>`;
+}
+$("#hojaDetalle").addEventListener("click", async e => {
+  const b = e.target.closest("[data-acc]"); if (!b) return;
+  const n = S.abierta, g = S.guias[n];
+  const a = b.dataset.acc;
+  if (a === "cerrar") return cerrarDetalle();
+  if (a === "link") return copiar(C.linkRastreo(n), "Link de rastreo copiado");
+  if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para confirmar"; return; }
+  b.disabled = true;
+  try {
+    const ev = [...(g.eventos || [])];
+    if (a === "liberar") {
+      ev.push(C.evento("disponible", "Despacho la dejó disponible otra vez", "despacho"));
+      await guardarGuia(n, { estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "", eventos: ev });
+      toast("Guía disponible otra vez");
+    } else if (a === "devolver") {
+      ev.push(C.evento("devuelta", "Devuelta a la tienda", "despacho"));
+      await guardarGuia(n, { estado: "devuelta", eventos: ev }); toast("Guía marcada como devuelta");
+    } else if (a === "cancelar") {
+      ev.push(C.evento("cancelada", "Cancelada por despacho", "despacho"));
+      await guardarGuia(n, { estado: "cancelada", eventos: ev }); toast("Guía cancelada");
+    }
+  } catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
+});
+
+/* ---------- NUEVA GUÍA ---------- */
+const opciones = sel => C.NOMBRES_LOCALIDADES.map(n => `<option${n === sel ? " selected" : ""}>${n}</option>`).join("");
+$("#nOrigLoc").innerHTML = opciones("Fontibón");
+$("#nLoc").innerHTML = opciones("Chapinero");
+$("#nLoc").onchange = () => { S.pin = null; $("#nPin").textContent = "El punto de entrega está en el centro de la localidad. Toca el mapa para ponerlo en el sitio exacto."; ajustado = ""; pintarMapa(); };
+$("#nBuscar").onclick = async () => {
+  const dir = $("#nDir").value.trim(); if (!dir) { toast("Escribe primero la dirección de entrega"); return; }
+  const btn = $("#nBuscar"); btn.disabled = true; btn.textContent = "Buscando…";
+  try {
+    const q = encodeURIComponent(`${dir.replace(/#/g, " ")}, ${$("#nLoc").value}, Bogotá, Colombia`);
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=co&viewbox=-74.25,4.85,-73.99,4.45&bounded=1&q=${q}`, { headers: { "Accept-Language": "es" } });
+    const d = await r.json();
+    if (d[0]) { S.pin = { lat: +(+d[0].lat).toFixed(6), lng: +(+d[0].lon).toFixed(6) }; $("#nPin").textContent = "Dirección ubicada. Revisa el marcador y arrástralo si no quedó exacto."; ajustado = ""; pintarMapa(); }
+    else $("#nPin").textContent = "No encontré esa dirección. Marca el punto tocando el mapa.";
+  } catch { $("#nPin").textContent = "No se pudo buscar la dirección. Marca el punto tocando el mapa."; }
+  btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa";
+};
+$("#fNueva").onsubmit = async e => {
+  e.preventDefault(); $("#nError").textContent = "";
+  const btn = $("#nBtn"); btn.disabled = true;
+  try {
+    let numero = C.nuevoNumero();
+    for (let i = 0; i < 5 && (await getDoc(doc(db, "guias", numero))).exists(); i++) numero = C.nuevoNumero();
+    const p = S.pin || C.centroDe($("#nLoc").value);
+    const o = C.centroDe($("#nOrigLoc").value);
+    const g = {
+      numero, remitente: $("#nRem").value.trim(),
+      origen: { direccion: $("#nOrigDir").value.trim(), localidad: $("#nOrigLoc").value, lat: o.lat, lng: o.lng },
+      cliente: $("#nCli").value.trim(), telefono: $("#nTel").value.trim(),
+      destino: { direccion: $("#nDir").value.trim(), localidad: $("#nLoc").value, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng },
+      contenido: $("#nCont").value.trim(), nota: $("#nNota").value.trim(),
+      valor: parseInt(($("#nVal").value || "0").replace(/\D/g, ""), 10) || 0,
+      zonas: [...new Set([$("#nOrigLoc").value, $("#nLoc").value])],
+      estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
+      creado: Date.now(), actualizado: Date.now(),
+      eventos: [C.evento("disponible", "Guía creada", "despacho")]
+    };
+    const b = writeBatch(db);
+    b.set(doc(db, "guias", numero), g);
+    b.set(doc(db, "rastreo", numero), C.vistaPublica(g));
+    await b.commit();
+    localStorage.setItem("origenDir", g.origen.direccion); localStorage.setItem("origenLoc", g.origen.localidad);
+    const link = C.linkRastreo(numero);
+    $("#nResultado").innerHTML = `<div class="item"><div class="arriba"><span>Guía creada</span><span class="pill disponible">Disponible</span></div>
+      <div class="codigo">${numero}</div>
+      <div class="meta">Ya aparece en la app de los mensajeros que trabajan en ${esc(g.zonas.join(" o "))}.</div>
+      <div class="btns"><button class="btn chico" id="rCopia">Copiar link de rastreo</button>
+      <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${numero}. Síguelo aquí: ${link}`)}">Enviar guía al cliente</a></div></div>`;
+    $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
+    ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota"].forEach(id => $("#" + id).value = "");
+    S.pin = null; ajustado = ""; pintarMapa();
+    toast("Guía " + numero + " creada");
+  } catch (err) { $("#nError").textContent = C.mensajeError(err); }
+  btn.disabled = false;
+};
+try { const d = localStorage.getItem("origenDir"), l = localStorage.getItem("origenLoc"); if (d) $("#nOrigDir").value = d; if (l) $("#nOrigLoc").value = l; } catch {}
+
+/* ---------- MENSAJEROS ---------- */
+function pintarMensajeros() {
+  const ms = Object.entries(S.mens).sort((a, b) => (b[1].activo - a[1].activo) || String(a[1].nombre).localeCompare(b[1].nombre));
+  $("#listaMens").innerHTML = ms.length ? ms.map(([id, m]) => {
+    const u = S.ubic[id];
+    const act = Object.values(S.guias).filter(g => g.mensajeroId === id && ["tomada", "recogida", "en_camino"].includes(g.estado)).length;
+    const est = !m.activo ? ["cancelada", "Desactivado"] : u?.enTurno ? (fresco(u) ? ["en-linea", "En turno"] : ["devuelta", "En turno, sin señal reciente"]) : ["", "Fuera de turno"];
+    return `<div class="item"><div class="arriba"><span><b>${esc(m.nombre)}</b> <span class="meta">· ${esc(m.placa)}</span></span><span class="pill ${est[0]}">${est[1]}</span></div>
+      <div class="meta">${esc(m.telefono)} · ${esc(m.email)} · cédula ${esc(m.cedula)}</div>
+      <div class="meta">Zonas: ${(m.zonas || []).length ? esc(m.zonas.join(", ")) : "sin elegir"} · ${act} pedido${act === 1 ? "" : "s"} en curso · última ubicación ${C.hace(u?.t)}</div>
+      <div class="btns"><button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button></div></div>`;
+  }).join("") : `<div class="vacio">Aún no hay mensajeros. Genera una invitación y envíasela.</div>`;
+  const pend = S.inv.filter(i => !i.usada).sort((a, b) => b.creada - a.creada);
+  $("#listaInv").innerHTML = pend.length ? pend.map(i => `<div class="item"><div class="arriba"><span class="guia">${esc(i.codigo)}</span><span class="meta">creada ${C.fecha(i.creada)}</span></div>
+    <div class="btns"><button class="btn sec chico" data-copinv="${esc(i.codigo)}">Copiar mensaje</button><button class="btn peligro chico" data-delinv="${esc(i.codigo)}">Eliminar</button></div></div>`).join("") : `<div class="nota">No hay invitaciones pendientes.</div>`;
+}
+const textoInvitacion = c => `Hola, te invito a trabajar con Mensajería Prueba.\n1. Descarga la app (archivo .apk) aquí: ${URL_APK}\n2. Instálala y toca "Crear cuenta".\n3. Usa este código de invitación: ${c}`;
+$("#genInv").onclick = async () => {
+  const c = C.nuevoCodigo();
+  try {
+    await setDoc(doc(db, "invitaciones", c), { usada: false, usadaPor: null, creada: Date.now() });
+    $("#invNueva").innerHTML = `<div class="item"><div class="meta">Código de invitación</div><div class="codigo">${c}</div><div class="btns"><button class="btn chico" data-copinv="${c}">Copiar mensaje para el mensajero</button></div></div>`;
+  } catch (err) { toast(C.mensajeError(err)); }
+};
+$("#t-mensajeros").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.copinv) return copiar(textoInvitacion(b.dataset.copinv), "Mensaje copiado. Pégalo en WhatsApp.");
+  if (b.dataset.delinv) { try { await deleteDoc(doc(db, "invitaciones", b.dataset.delinv)); } catch (err) { toast(C.mensajeError(err)); } return; }
+  if (b.dataset.mens) {
+    if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para confirmar"; return; }
+    try { await updateDoc(doc(db, "usuarios", b.dataset.mens), { activo: b.dataset.activo === "1" }); toast("Mensajero actualizado"); } catch (err) { toast(C.mensajeError(err)); }
+  }
+});
+
+/* ---------- RECAUDO ---------- */
+function cuentas() {
+  const r = {};
+  const fila = id => r[id] ||= { efectivo: 0, nequi: 0, entregado: 0, pendientes: 0 };
+  Object.values(S.guias).forEach(g => {
+    if (!g.mensajeroId) return;
+    if (g.estado === "entregada" && g.recaudo) {
+      if (g.recaudo.medio === "efectivo") fila(g.mensajeroId).efectivo += g.recaudo.valor || 0;
+      if (g.recaudo.medio === "nequi") fila(g.mensajeroId).nequi += g.recaudo.valor || 0;
+    } else if (["tomada", "recogida", "en_camino"].includes(g.estado) && g.valor) fila(g.mensajeroId).pendientes += g.valor;
+  });
+  S.entregas.forEach(e => fila(e.mensajeroId).entregado += e.valor || 0);
+  Object.keys(S.mens).forEach(fila);
+  return r;
+}
+function pintarRecaudo() {
+  const r = cuentas();
+  const filas = Object.entries(r);
+  $("#tablaRec").innerHTML = filas.length ? `<thead><tr><th>Mensajero</th><th class="num">Efectivo cobrado</th><th class="num">Entregado</th><th class="num">Saldo en mano</th><th class="num">Nequi</th><th class="num">Por cobrar</th><th></th></tr></thead><tbody>` +
+    filas.map(([id, x]) => `<tr><td>${esc(S.mens[id]?.nombre || "Mensajero")}</td><td class="num">${C.cop(x.efectivo)}</td><td class="num">${C.cop(x.entregado)}</td><td class="num"><b>${C.cop(x.efectivo - x.entregado)}</b></td><td class="num">${C.cop(x.nequi)}</td><td class="num">${C.cop(x.pendientes)}</td><td><button class="btn sec chico" data-recibir="${id}">Registrar entrega</button></td></tr>`).join("") + "</tbody>"
+    : `<tbody><tr><td class="nota">Aún no hay mensajeros.</td></tr></tbody>`;
+  $("#listaEntregas").innerHTML = S.entregas.length ? S.entregas.map(e => `<div class="item"><div class="arriba"><b>${C.cop(e.valor)}</b><span class="meta">${C.fecha(e.t)}</span></div><div class="meta">${esc(S.mens[e.mensajeroId]?.nombre || "Mensajero")}${e.nota ? " · " + esc(e.nota) : ""}</div></div>`).join("") : `<div class="nota">Todavía no has registrado entregas de dinero.</div>`;
+}
+$("#t-recaudo").addEventListener("click", e => {
+  const b = e.target.closest("[data-recibir]"); if (!b) return;
+  const id = b.dataset.recibir, x = cuentas()[id];
+  $("#formEntrega").innerHTML = `<form class="item" id="fEnt"><b>Dinero recibido de ${esc(S.mens[id]?.nombre)}</b>
+    <div class="fila"><label>Valor (COP)<input id="eVal" inputmode="numeric" required value="${Math.max(0, x.efectivo - x.entregado)}"></label><label>Nota<input id="eNota" placeholder="Efectivo, transferencia…"></label></div>
+    <div class="btns"><button class="btn chico" type="submit">Guardar</button><button class="btn sec chico" type="button" id="eCan">Cancelar</button></div></form>`;
+  $("#eCan").onclick = () => $("#formEntrega").innerHTML = "";
+  $("#fEnt").onsubmit = async ev => {
+    ev.preventDefault();
+    const valor = parseInt($("#eVal").value.replace(/\D/g, ""), 10) || 0;
+    if (!valor) { toast("Escribe el valor recibido"); return; }
+    try { await addDoc(collection(db, "entregasDinero"), { mensajeroId: id, valor, nota: $("#eNota").value.trim(), t: Date.now() }); $("#formEntrega").innerHTML = ""; toast("Entrega registrada"); }
+    catch (err) { toast(C.mensajeError(err)); }
+  };
+});
+
+/* ---------- render ---------- */
+function pintar() {
+  if (S.tab === "guias") pintarGuias();
+  if (S.tab === "mensajeros") pintarMensajeros();
+  if (S.tab === "recaudo") pintarRecaudo();
+  if (S.abierta) pintarDetalle();
+  pintarMapa();
+}
+setInterval(() => { if (S.tab === "mensajeros") pintarMensajeros(); }, 60000);
+</script>
+</body>
+</html>

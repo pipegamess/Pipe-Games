@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mensajería Prueba</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="estilos.css">
+<style>
+body{padding-top:env(safe-area-inset-top,0px)}
+.pantalla{padding:14px max(16px,env(safe-area-inset-right,0px)) calc(90px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
+.barra-abajo{position:fixed;left:0;right:0;bottom:0;z-index:1500;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+.barra-abajo a{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:8px;text-decoration:none;color:var(--muted);font-family:var(--f-display);font-weight:600;font-size:14px;position:relative}
+.barra-abajo a[aria-current="page"]{color:var(--ink);background:var(--chip)}
+.barra-abajo svg{width:22px;height:22px}
+.insignia{position:absolute;top:2px;right:calc(50% - 22px);background:var(--accent);color:var(--accent-ink);font-size:11px;font-family:var(--f-body);font-weight:700;border-radius:99px;min-width:18px;height:18px;display:grid;place-items:center;padding:0 5px}
+.turno{border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line)}
+.turno.activo{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.turno .grande{font-family:var(--f-display);font-size:28px;font-weight:700;line-height:1.1}
+.btn-turno{font-size:22px;padding:16px}
+.mini-mapa{height:220px}
+.volver{align-self:flex-start}
+.aviso{background:var(--chip);border-radius:10px;padding:12px;font-size:14px;display:flex;flex-direction:column;gap:8px}
+.medios{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.medios label{flex-direction:row;justify-content:center;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:10px 6px;color:var(--ink);font-weight:600;background:var(--surface)}
+.medios input{width:auto;margin:0}
+.medios label:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.foto-btn{border:2px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--muted);background:var(--surface);display:block;font-weight:600}
+.foto-btn input{display:none}
+.saldo{font-family:var(--f-display);font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
+.cargando{display:grid;place-items:center;min-height:60vh;color:var(--muted)}
+.rapidas{display:flex;flex-wrap:wrap;gap:6px}
+.rapidas button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 11px;font-size:13px}
+</style>
+</head>
+<body>
+<main id="raiz"><div class="cargando">Cargando…</div></main>
+<nav class="barra-abajo" id="barra" hidden>
+  <a href="#inicio" data-r="inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
+  <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8"/></svg>Disponibles<span class="insignia" id="nDisp" hidden></span></a>
+  <a href="#mios" data-r="mios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Mis pedidos<span class="insignia" id="nMios" hidden></span></a>
+  <a href="#perfil" data-r="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Perfil</a>
+</nav>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js";
+import * as C from "./comun.js";
+const V = FIREBASE_VERSION;
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
+const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+const { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, writeBatch, runTransaction } = F;
+
+const app = initializeApp(firebaseConfig);
+const auth = A.initializeAuth(app, { persistence: [A.indexedDBLocalPersistence, A.browserLocalPersistence] });
+const db = getFirestore(app);
+const $ = s => document.querySelector(s);
+const { esc } = C;
+
+/* ---------- plugins nativos ---------- */
+const Cap = window.Capacitor;
+const nativo = !!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+const BG = nativo ? Cap.registerPlugin("BackgroundGeolocation") : null;
+const Http = nativo ? Cap.registerPlugin("CapacitorHttp") : null;
+const Notif = nativo ? Cap.registerPlugin("LocalNotifications") : null;
+
+/* ---------- estado ---------- */
+const S = { u: null, perfil: null, disp: [], mios: [], entregas: [], pos: null, turno: false, watcher: null };
+let subs = [];
+const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
+function abrirExterno(url) { window.location.href = url; }
+
+/* ---------- sesión ---------- */
+A.onAuthStateChanged(auth, async user => {
+  subs.forEach(f => f()); subs = [];
+  S.u = user; S.perfil = null;
+  if (!user) { $("#barra").hidden = true; if (!location.hash.startsWith("#registro")) location.hash = "#ingreso"; ruta(); return; }
+  try {
+    const p = await getDoc(doc(db, "usuarios", user.uid));
+    if (!p.exists()) { if (S.registrando) return; pantallaMensaje("Tu cuenta no tiene perfil de mensajero", "Pídele a despacho un código de invitación y crea la cuenta desde “Crear cuenta”.", true); return; }
+    S.perfil = p.data();
+    if (S.perfil.rol !== "mensajero") { pantallaMensaje("Esta cuenta es de despacho", "La app es solo para mensajeros. Despacho usa el panel web.", true); return; }
+    if (!S.perfil.activo) { pantallaMensaje("Tu cuenta está desactivada", "Habla con despacho para volver a activarla.", true); return; }
+  } catch (e) { pantallaMensaje("No se pudo cargar tu perfil", C.mensajeError(e), true); return; }
+  escuchar();
+  $("#barra").hidden = false;
+  if (!location.hash || ["#ingreso", "#registro"].includes(location.hash)) location.hash = "#inicio";
+  if (ls.get("turno") === "1") iniciarTurno(true);
+  ruta();
+});
+function escuchar() {
+  const uid = S.u.uid;
+  subs.push(onSnapshot(doc(db, "usuarios", uid), s => { if (s.exists()) { S.perfil = s.data(); if (!S.perfil.activo) { terminarTurno(); A.signOut(auth); } } }));
+  subs.push(onSnapshot(query(collection(db, "guias"), where("estado", "==", "disponible")), s => { S.disp = s.docs.map(d => ({ numero: d.id, ...d.data() })); ruta(true); }, e => toast(C.mensajeError(e))));
+  subs.push(onSnapshot(query(collection(db, "guias"), where("mensajeroId", "==", uid)), s => { S.mios = s.docs.map(d => ({ numero: d.id, ...d.data() })); ruta(true); }, e => toast(C.mensajeError(e))));
+  subs.push(onSnapshot(query(collection(db, "entregasDinero"), where("mensajeroId", "==", uid)), s => { S.entregas = s.docs.map(d => d.data()); ruta(true); }, () => {}));
+}
+
+/* ---------- ubicación en segundo plano ---------- */
+let tok = { v: null, exp: 0 }, ultimoEnvio = { t: 0, lat: 0, lng: 0 }, enviando = false;
+async function token() {
+  if (tok.v && Date.now() < tok.exp - 5 * 60000) return tok.v;
+  try {
+    // Primero intenta el SDK (funciona con la app abierta).
+    const r = await Promise.race([S.u.getIdTokenResult(), new Promise((_, no) => setTimeout(() => no(new Error("lento")), 8000))]);
+    tok = { v: r.token, exp: Date.parse(r.expirationTime) };
+    return tok.v;
+  } catch {
+    // En segundo plano, renueva el token por HTTP nativo.
+    const r = await Http.request({ method: "POST", url: `https://securetoken.googleapis.com/v1/token?key=${firebaseConfig.apiKey}`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" }, data: { grant_type: "refresh_token", refresh_token: S.u.refreshToken } });
+    const d = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+    tok = { v: d.id_token, exp: Date.now() + Number(d.expires_in) * 1000 };
+    return tok.v;
+  }
+}
+async function enviarUbicacion(lat, lng, precision, forzar = false) {
+  const ahora = Date.now();
+  const mov = C.km(ultimoEnvio, { lat, lng }) * 1000;
+  if (!forzar && (enviando || (ahora - ultimoEnvio.t < 15000 && mov < 150))) return;
+  enviando = true;
+  try {
+    const campos = { lat: { doubleValue: lat }, lng: { doubleValue: lng }, t: { integerValue: String(ahora) }, enTurno: { booleanValue: true }, nombre: { stringValue: S.perfil?.nombre || "" }, precision: { doubleValue: precision || 0 } };
+    if (Http) {
+      const mask = Object.keys(campos).map(k => "updateMask.fieldPaths=" + k).join("&");
+      const r = await Http.request({ method: "PATCH",
+        url: `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/ubicaciones/${S.u.uid}?${mask}`,
+        headers: { Authorization: "Bearer " + await token(), "Content-Type": "application/json" }, data: { fields: campos } });
+      if (r.status >= 400) throw new Error("HTTP " + r.status);
+    } else {
+      await setDoc(doc(db, "ubicaciones", S.u.uid), { lat, lng, t: ahora, enTurno: true, nombre: S.perfil?.nombre || "", precision: precision || 0 }, { merge: true });
+    }
+    ultimoEnvio = { t: ahora, lat, lng };
+    S.ultimaSenal = ahora;
+  } catch (e) { S.errorSenal = String(e.message || e); }
+  enviando = false;
+}
+async function iniciarTurno(silencioso = false) {
+  if (S.turno) return;
+  if (!nativo) { toast("La ubicación en segundo plano solo funciona en la app instalada."); return; }
+  try { await Notif?.requestPermissions(); } catch {}
+  try {
+    S.watcher = await BG.addWatcher({
+      backgroundTitle: "Mensajería Prueba · en turno",
+      backgroundMessage: "Compartiendo tu ubicación con despacho y clientes.",
+      requestPermissions: true, stale: false, distanceFilter: 25
+    }, (loc, err) => {
+      if (err) {
+        if (err.code === "NOT_AUTHORIZED") { S.sinPermiso = true; terminarTurno(); ruta(true); }
+        return;
+      }
+      if (!loc) return;
+      S.pos = { lat: loc.latitude, lng: loc.longitude, t: loc.time };
+      enviarUbicacion(loc.latitude, loc.longitude, loc.accuracy);
+      if (location.hash === "#inicio") pintarInicio();
+    });
+    S.turno = true; S.sinPermiso = false; ls.set("turno", "1");
+    await setDoc(doc(db, "ubicaciones", S.u.uid), { enTurno: true, nombre: S.perfil.nombre, inicio: Date.now() }, { merge: true });
+    if (!silencioso) toast("Turno iniciado");
+  } catch (e) { toast("No se pudo iniciar el turno: " + C.mensajeError(e)); }
+  ruta(true);
+}
+async function terminarTurno() {
+  if (S.watcher != null) { try { await BG.removeWatcher({ id: S.watcher }); } catch {} }
+  S.watcher = null; S.turno = false; ls.set("turno", "0");
+  if (S.u) { try { await setDoc(doc(db, "ubicaciones", S.u.uid), { enTurno: false, fin: Date.now() }, { merge: true }); } catch {} }
+  ruta(true);
+}
+
+/* ---------- escritura ---------- */
+async function guardar(g, cambios) {
+  const nueva = { ...g, ...cambios };
+  const b = writeBatch(db);
+  b.update(doc(db, "guias", g.numero), { ...cambios, actualizado: Date.now() });
+  b.set(doc(db, "rastreo", g.numero), C.vistaPublica(nueva));
+  await b.commit();
+  return nueva;
+}
+async function tomar(numero) {
+  const ref = doc(db, "guias", numero);
+  await runTransaction(db, async tx => {
+    const s = await tx.get(ref);
+    if (!s.exists()) throw new Error("La guía ya no existe.");
+    const g = { numero, ...s.data() };
+    if (g.estado !== "disponible" || g.mensajeroId) throw new Error("Otro mensajero ya tomó este pedido.");
+    const cambios = { estado: "tomada", mensajeroId: S.u.uid, mensajeroNombre: S.perfil.nombre, mensajeroPlaca: S.perfil.placa || "", eventos: [...(g.eventos || []), C.evento("tomada", "", S.perfil.nombre)], actualizado: Date.now() };
+    tx.update(ref, cambios);
+    tx.set(doc(db, "rastreo", numero), C.vistaPublica({ ...g, ...cambios }));
+  });
+}
+
+/* ---------- rutas ---------- */
+addEventListener("hashchange", () => ruta());
+let ultimaRuta = "";
+function ruta(soloDatos = false) {
+  const h = location.hash || "#inicio";
+  if (!S.u) { if (h.startsWith("#registro")) pintarRegistro(); else pintarIngreso(); return; }
+  if (!S.perfil?.activo) return;
+  // Al recibir datos nuevos no redibujar formularios en curso
+  if (soloDatos && (h.startsWith("#entregar") || h.startsWith("#novedad") || h.startsWith("#aviso"))) { insignias(); return; }
+  if (soloDatos && h === ultimaRuta && h === "#perfil") { insignias(); return; }
+  ultimaRuta = h;
+  document.querySelectorAll(".barra-abajo a").forEach(a => a.setAttribute("aria-current", h.startsWith("#" + a.dataset.r) || (a.dataset.r === "mios" && /^#(g|entregar|novedad|aviso)\//.test(h)) ? "page" : "false"));
+  insignias();
+  const [r, n, x] = h.slice(1).split("/");
+  if (r === "inicio") pintarInicio();
+  else if (r === "disponibles") pintarDisponibles();
+  else if (r === "mios") pintarMios();
+  else if (r === "perfil") pintarPerfil();
+  else if (r === "g") pintarGuia(decodeURIComponent(n));
+  else if (r === "entregar") pintarEntregar(decodeURIComponent(n));
+  else if (r === "novedad") pintarNovedad(decodeURIComponent(n));
+  else if (r === "aviso") pintarAviso(decodeURIComponent(n), x);
+  else location.hash = "#inicio";
+}
+const zonas = () => S.perfil?.zonas || [];
+const disponiblesMias = () => S.disp.filter(g => !zonas().length || (g.zonas || []).some(z => zonas().includes(z))).sort((a, b) => a.creado - b.creado);
+const activos = () => S.mios.filter(g => ["tomada", "recogida", "en_camino"].includes(g.estado)).sort((a, b) => a.actualizado - b.actualizado);
+function insignias() {
+  const d = disponiblesMias().length, m = activos().length;
+  $("#nDisp").hidden = !d; $("#nDisp").textContent = d;
+  $("#nMios").hidden = !m; $("#nMios").textContent = m;
+}
+function saldo() {
+  const ef = S.mios.filter(g => g.estado === "entregada" && g.recaudo?.medio === "efectivo").reduce((s, g) => s + (g.recaudo.valor || 0), 0);
+  const ent = S.entregas.reduce((s, e) => s + (e.valor || 0), 0);
+  return ef - ent;
+}
+let mapaG = null;
+function limpiarMapa() { if (mapaG) { mapaG.remove(); mapaG = null; } }
+function pantalla(html) { limpiarMapa(); $("#raiz").innerHTML = `<section class="pantalla">${html}</section>`; }
+
+/* ---------- ingreso / registro ---------- */
+function pantallaMensaje(titulo, texto, salir) {
+  $("#barra").hidden = true;
+  pantalla(`<h1>Mensajería <span class="marca">Prueba</span></h1><div class="panel"><h2>${esc(titulo)}</h2><p class="nota">${esc(texto)}</p>${salir ? `<button class="btn sec" id="bSalir">Salir</button>` : ""}</div>`);
+  if (salir) $("#bSalir").onclick = () => A.signOut(auth);
+}
+function pintarIngreso() {
+  $("#barra").hidden = true;
+  pantalla(`<h1>Mensajería <span class="marca">Prueba</span></h1>
+    <form class="panel" id="fIng"><h2>Entrar</h2>
+      <label>Correo<input id="iCor" type="email" autocomplete="username" required></label>
+      <label>Contraseña<input id="iCla" type="password" autocomplete="current-password" required></label>
+      <button class="btn ancho" type="submit">Entrar</button><div class="error" id="iErr"></div></form>
+    <div class="panel"><p class="nota" style="margin:0">¿Primera vez? Necesitas el código de invitación que te envió despacho.</p><a class="btn sec ancho" href="#registro">Crear cuenta con código</a></div>`);
+  $("#fIng").onsubmit = async e => {
+    e.preventDefault(); $("#iErr").textContent = "";
+    try { await A.signInWithEmailAndPassword(auth, $("#iCor").value.trim(), $("#iCla").value); }
+    catch (err) { $("#iErr").textContent = C.mensajeError(err); }
+  };
+}
+function chipsZonas(sel = []) {
+  return `<div class="chips">${C.NOMBRES_LOCALIDADES.map((z, i) => `<label><input type="checkbox" name="zona" value="${esc(z)}" ${sel.includes(z) ? "checked" : ""}>${esc(z)}</label>`).join("")}</div>`;
+}
+const zonasMarcadas = () => [...document.querySelectorAll('input[name="zona"]:checked')].map(i => i.value);
+function pintarRegistro() {
+  $("#barra").hidden = true;
+  pantalla(`<a class="btn sec chico volver" href="#ingreso">← Volver</a><h1>Crear cuenta</h1>
+    <form class="panel" id="fReg">
+      <label>Código de invitación<input id="rCod" required autocapitalize="characters" style="font-family:var(--f-mono);letter-spacing:.1em;text-transform:uppercase"></label>
+      <label>Nombre completo<input id="rNom" required autocomplete="name"></label>
+      <div class="fila"><label>Cédula<input id="rCed" inputmode="numeric" required></label><label>Celular<input id="rTel" inputmode="tel" required></label></div>
+      <label>Placa del vehículo<input id="rPla" autocapitalize="characters" required placeholder="ABC12D"></label>
+      <label>Correo<input id="rCor" type="email" required autocomplete="username"></label>
+      <label>Contraseña (mínimo 6 caracteres)<input id="rCla" type="password" minlength="6" required autocomplete="new-password"></label>
+      <h3>Zonas donde trabajas</h3><p class="nota" style="margin:0">Solo verás pedidos que se recogen o entregan en estas zonas. Puedes cambiarlas después.</p>
+      ${chipsZonas()}
+      <button class="btn ancho" type="submit" id="rBtn">Crear cuenta</button><div class="error" id="rErr"></div>
+    </form>`);
+  $("#fReg").onsubmit = async e => {
+    e.preventDefault(); $("#rErr").textContent = "";
+    const codigo = $("#rCod").value.trim().toUpperCase();
+    if (!zonasMarcadas().length) { $("#rErr").textContent = "Marca al menos una zona."; return; }
+    $("#rBtn").disabled = true; S.registrando = true;
+    let cred = null;
+    try {
+      cred = await A.createUserWithEmailAndPassword(auth, $("#rCor").value.trim(), $("#rCla").value);
+      const inv = await getDoc(doc(db, "invitaciones", codigo)).catch(() => null);
+      if (!inv || !inv.exists() || inv.data().usada) throw Object.assign(new Error("El código de invitación no existe o ya fue usado. Pídele uno nuevo a despacho."), { invalida: true });
+      const uid = cred.user.uid;
+      const b = writeBatch(db);
+      b.set(doc(db, "usuarios", uid), { rol: "mensajero", activo: true, nombre: $("#rNom").value.trim(), cedula: $("#rCed").value.trim(), telefono: $("#rTel").value.trim(), placa: $("#rPla").value.trim().toUpperCase(), email: cred.user.email, zonas: zonasMarcadas(), invitacion: codigo, creado: Date.now() });
+      b.update(doc(db, "invitaciones", codigo), { usada: true, usadaPor: uid, usadaEn: Date.now() });
+      await b.commit();
+      S.registrando = false;
+      location.hash = "#inicio";
+      location.reload();
+    } catch (err) {
+      S.registrando = false;
+      if (cred) { try { await cred.user.delete(); } catch { await A.signOut(auth); } }
+      $("#rErr").textContent = err.invalida ? err.message : C.mensajeError(err);
+      $("#rBtn").disabled = false;
+    }
+  };
+}
+
+/* ---------- inicio ---------- */
+function pintarInicio() {
+  const act = activos(), disp = disponiblesMias();
+  const hoy = new Date().toDateString();
+  const entregadasHoy = S.mios.filter(g => g.estado === "entregada" && new Date(g.actualizado).toDateString() === hoy).length;
+  pantalla(`<h1>Hola, ${esc(C.primerNombre(S.perfil.nombre))}</h1>
+    <div class="turno ${S.turno ? "activo" : ""}">
+      <span class="pill ${S.turno ? "en-linea" : ""}" style="align-self:flex-start">${S.turno ? "En turno" : "Fuera de turno"}</span>
+      <div class="grande">${S.turno ? "Despacho y tus clientes ven tu ubicación" : "Inicia turno para recibir pedidos"}</div>
+      ${S.turno ? `<div class="nota">${S.ultimaSenal ? "Última ubicación enviada " + C.hace(S.ultimaSenal) : "Buscando señal GPS…"}${S.errorSenal ? ` · <span class="error">no se pudo enviar: ${esc(S.errorSenal)}</span>` : ""}</div>` : ""}
+      ${S.sinPermiso ? `<div class="aviso"><b>La app no tiene permiso de ubicación.</b><span>Abre los ajustes, entra a Permisos > Ubicación y escoge “Permitir solo mientras se usa la app” o “Permitir todo el tiempo”.</span><button class="btn sec chico" id="bAjustes">Abrir ajustes</button></div>` : ""}
+      <button class="btn btn-turno ${S.turno ? "sec" : "ok"}" id="bTurno">${S.turno ? "Terminar turno" : "Iniciar turno"}</button>
+    </div>
+    <div class="cifras"><div><b>${act.length}</b><span>Pedidos en curso</span></div><div><b>${disp.length}</b><span>Disponibles en tus zonas</span></div><div><b>${entregadasHoy}</b><span>Entregados hoy</span></div></div>
+    <div class="panel"><h3>Dinero en mano</h3><div class="saldo">${C.cop(saldo())}</div><p class="nota" style="margin:0">Efectivo cobrado que aún no le has entregado a despacho.</p></div>
+    ${ls.get("bateriaOk") === "1" ? "" : `<div class="aviso"><b>Antes de tu primer turno</b><span>Para que tu ubicación no se corte con el celular bloqueado, desactiva el ahorro de batería para esta app: Ajustes > Batería (o Aplicaciones) > Mensajería Prueba > Batería > <b>Sin restricciones</b>. En Xiaomi activa también <b>Inicio automático</b>.</span><div class="btns"><button class="btn sec chico" id="bAjustes2">Abrir ajustes de la app</button><button class="btn sec chico" id="bBatOk">Ya lo hice</button></div></div>`}`);
+  $("#bTurno").onclick = () => S.turno ? terminarTurno() : iniciarTurno();
+  const aj = () => BG?.openSettings();
+  $("#bAjustes") && ($("#bAjustes").onclick = aj);
+  $("#bAjustes2") && ($("#bAjustes2").onclick = aj);
+  $("#bBatOk") && ($("#bBatOk").onclick = () => { ls.set("bateriaOk", "1"); pintarInicio(); });
+}
+
+/* ---------- listas ---------- */
+function tarjeta(g, accion) {
+  const d = S.pos && g.destino ? C.km(S.pos, g.destino) : null;
+  return `<div class="item">
+    <div class="arriba"><span class="guia">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
+    <div class="meta"><b style="color:var(--ink)">Recoge:</b> ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div>
+    <div class="meta"><b style="color:var(--ink)">Entrega:</b> ${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${d != null ? ` · a ${d.toFixed(1)} km de ti` : ""}</div>
+    <div class="meta">${g.valor ? "Cobrar " + C.cop(g.valor) : "Ya pagado"}${g.contenido ? " · " + esc(g.contenido) : ""}</div>
+    ${accion}
+  </div>`;
+}
+function pintarDisponibles() {
+  const l = disponiblesMias();
+  pantalla(`<h1>Disponibles</h1>
+    <p class="nota" style="margin:0">${zonas().length ? "Pedidos sin mensajero en tus zonas: " + esc(zonas().join(", ")) + "." : "No has elegido zonas; ves todos los pedidos."}</p>
+    <div class="lista">${l.length ? l.map(g => tarjeta(g, `<button class="btn ancho" data-tomar="${esc(g.numero)}">Tomar pedido</button>`)).join("") : `<div class="vacio">No hay pedidos disponibles en tus zonas. Cuando despacho cree uno, aparecerá aquí.</div>`}</div>`);
+  $("#raiz").onclick = async e => {
+    const b = e.target.closest("[data-tomar]"); if (!b) return;
+    if (!S.turno) { toast("Inicia turno antes de tomar pedidos"); return; }
+    b.disabled = true; b.textContent = "Tomando…";
+    try { await tomar(b.dataset.tomar); toast("Pedido tomado"); location.hash = "#g/" + b.dataset.tomar; }
+    catch (err) { toast(err.message?.startsWith("Otro") || err.message?.startsWith("La guía") ? err.message : C.mensajeError(err)); b.disabled = false; b.textContent = "Tomar pedido"; }
+  };
+}
+function pintarMios() {
+  const l = activos();
+  const nov = S.mios.filter(g => g.estado === "novedad");
+  pantalla(`<h1>Mis pedidos</h1>
+    <div class="lista">${l.length ? l.map(g => tarjeta(g, `<a class="btn ancho" href="#g/${esc(g.numero)}">Ver pedido</a>`)).join("") : `<div class="vacio">No tienes pedidos en curso. Toma uno en “Disponibles”.</div>`}</div>
+    ${nov.length ? `<h3>Con novedad (esperando a despacho)</h3><div class="lista">${nov.map(g => tarjeta(g, "")).join("")}</div>` : ""}`);
+  $("#raiz").onclick = null;
+}
+
+/* ---------- detalle de pedido ---------- */
+const urlMaps = (lat, lng) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+const urlMapsTexto = t => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(t)}`;
+const urlWaze = (lat, lng) => `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`;
+const buscar = n => S.mios.find(g => g.numero === n);
+function pintarGuia(n) {
+  const g = buscar(n);
+  if (!g) { pantalla(`<a class="btn sec chico volver" href="#mios">← Mis pedidos</a><div class="vacio">Este pedido ya no está asignado a ti.</div>`); return; }
+  const recogiendo = g.estado === "tomada";
+  const sig = { tomada: ["recogida", "Ya recogí el paquete"], recogida: ["en_camino", "Salir a entregar"], en_camino: ["entregar", "Entregar pedido"] }[g.estado];
+  const textoOrigen = `${g.origen?.direccion}, ${g.origen?.localidad}, Bogotá`;
+  pantalla(`<a class="btn sec chico volver" href="#mios">← Mis pedidos</a>
+    <div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="guia" style="font-size:20px">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
+    <div id="mapaG" class="mapa mini-mapa"></div>
+    <div class="panel">
+      <h3>${recogiendo ? "Ahora: recoger" : "Ahora: entregar"}</h3>
+      ${recogiendo ? `<div><b>${esc(g.remitente)}</b></div><div class="meta">${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div>
+        <div class="btns"><button class="btn sec chico" data-ext="${esc(urlMapsTexto(textoOrigen))}">Google Maps</button><button class="btn sec chico" data-ext="${esc("https://waze.com/ul?q=" + encodeURIComponent(textoOrigen) + "&navigate=yes")}">Waze</button></div>`
+      : `<div><b>${esc(g.cliente)}</b> · ${esc(g.telefono)}</div><div class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</div>
+        <div class="btns"><button class="btn sec chico" data-ext="tel:${esc(String(g.telefono).replace(/[^\d+]/g, ""))}">Llamar</button><button class="btn sec chico" data-ext="${esc(urlMaps(g.destino.lat, g.destino.lng))}">Google Maps</button><button class="btn sec chico" data-ext="${esc(urlWaze(g.destino.lat, g.destino.lng))}">Waze</button></div>`}
+    </div>
+    <div class="panel"><dl class="kv">
+      <dt>Cobrar</dt><dd><b>${g.valor ? C.cop(g.valor) : "Ya pagado"}</b></dd>
+      <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
+      ${g.nota ? `<dt>Notas</dt><dd>${esc(g.nota)}</dd>` : ""}
+      ${recogiendo ? `<dt>Entrega</dt><dd>${esc(g.cliente)} · ${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</dd>` : `<dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)}</dd>`}
+    </dl></div>
+    <button class="btn btn-turno ${sig[0] === "entregar" ? "ok" : ""}" id="bSig">${sig[1]}</button>
+    <a class="btn peligro ancho" href="#novedad/${esc(g.numero)}">Reportar novedad</a>`);
+  $("#raiz").onclick = e => { const b = e.target.closest("[data-ext]"); if (b) abrirExterno(b.dataset.ext); };
+  $("#bSig").onclick = async () => {
+    if (sig[0] === "entregar") { location.hash = "#entregar/" + g.numero; return; }
+    $("#bSig").disabled = true;
+    try {
+      const ng = await guardar(g, { estado: sig[0], eventos: [...(g.eventos || []), C.evento(sig[0], "", S.perfil.nombre)] });
+      if (sig[0] === "en_camino") location.hash = `#aviso/${g.numero}/camino`;
+      else toast("Paquete recogido");
+    } catch (err) { toast(C.mensajeError(err)); $("#bSig").disabled = false; }
+  };
+  // mapa
+  mapaG = L.map("mapaG", { zoomControl: false, attributionControl: true });
+  C.capaMapa(L).addTo(mapaG);
+  const pts = [];
+  if (g.destino) { L.marker([g.destino.lat, g.destino.lng], { icon: C.icono(L, "destino", "") }).addTo(mapaG); pts.push([g.destino.lat, g.destino.lng]); }
+  if (S.pos) { L.marker([S.pos.lat, S.pos.lng], { icon: C.icono(L, "mensajero", C.iniciales(S.perfil.nombre)) }).addTo(mapaG); pts.push([S.pos.lat, S.pos.lng]); }
+  if (pts.length > 1) mapaG.fitBounds(L.latLngBounds(pts).pad(0.3)); else if (pts.length) mapaG.setView(pts[0], 14);
+}
+
+/* ---------- aviso por WhatsApp ---------- */
+function pintarAviso(n, tipo) {
+  const g = buscar(n) || S.ultimaEntregada;
+  if (!g) { location.hash = "#mios"; return; }
+  const texto = tipo === "entregado" ? C.mensajeEntregado(g) : C.mensajeEnCamino(g);
+  pantalla(`<h1>${tipo === "entregado" ? "Avísale al cliente que llegó" : "Avísale al cliente que vas en camino"}</h1>
+    <div class="panel"><h3>Mensaje</h3><p style="margin:0;white-space:pre-wrap">${esc(texto)}</p></div>
+    <button class="btn btn-turno ok" id="bWa">Enviar por WhatsApp a ${esc(C.primerNombre(g.cliente))}</button>
+    <p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar y vuelve a la app.</p>
+    <button class="btn sec ancho" id="bSeguir" disabled>Continuar</button>`);
+  $("#bWa").onclick = () => { $("#bSeguir").disabled = false; abrirExterno(C.linkWhatsApp(g.telefono, texto)); };
+  $("#bSeguir").onclick = () => { location.hash = tipo === "entregado" ? "#mios" : "#g/" + n; };
+}
+
+/* ---------- entrega ---------- */
+function pintarEntregar(n) {
+  const g = buscar(n);
+  if (!g || g.estado !== "en_camino") { location.hash = "#mios"; return; }
+  let foto = null;
+  pantalla(`<a class="btn sec chico volver" href="#g/${esc(n)}">← Volver</a><h1>Entregar ${esc(n)}</h1>
+    <label class="foto-btn" id="lFoto"><input type="file" accept="image/*" capture="environment" id="fFoto"><span id="tFoto">Tomar foto del paquete entregado</span></label>
+    <img class="foto-entrega" id="vFoto" alt="Foto de entrega" hidden>
+    <div class="panel">
+      <h3>Pago</h3>
+      ${g.valor ? `<p style="margin:0">Debes cobrar <b>${C.cop(g.valor)}</b></p>` : `<p style="margin:0">Este pedido ya estaba pago.</p>`}
+      <div class="medios">
+        <label><input type="radio" name="medio" value="efectivo" ${g.valor ? "checked" : ""}>Efectivo</label>
+        <label><input type="radio" name="medio" value="nequi">Nequi</label>
+        <label><input type="radio" name="medio" value="pagado" ${g.valor ? "" : "checked"}>Ya pago</label>
+      </div>
+      <label id="lVal" ${g.valor ? "" : "hidden"}>Valor recibido (COP)<input id="eVal" inputmode="numeric" value="${g.valor}"></label>
+      <label id="lMot" hidden>¿Por qué el valor es diferente?<input id="eMot" placeholder="Ej. el cliente pagó una parte por Nequi"></label>
+    </div>
+    <button class="btn btn-turno ok" id="bEnt">Confirmar entrega</button>
+    <div class="error" id="eErr"></div>`);
+  const medio = () => document.querySelector('input[name="medio"]:checked')?.value;
+  const valor = () => medio() === "pagado" ? 0 : (parseInt(($("#eVal").value || "0").replace(/\D/g, ""), 10) || 0);
+  const revisar = () => {
+    $("#lVal").hidden = medio() === "pagado";
+    $("#lMot").hidden = !(g.valor && valor() !== g.valor);
+  };
+  document.querySelectorAll('input[name="medio"]').forEach(i => i.onchange = revisar);
+  $("#eVal").oninput = revisar;
+  $("#fFoto").onchange = async e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    $("#tFoto").textContent = "Procesando foto…";
+    try { foto = await C.comprimirImagen(f); $("#vFoto").src = foto; $("#vFoto").hidden = false; $("#tFoto").textContent = "Cambiar foto"; }
+    catch { $("#tFoto").textContent = "No se pudo leer la foto. Intenta de nuevo."; }
+  };
+  $("#bEnt").onclick = async () => {
+    $("#eErr").textContent = "";
+    if (!foto) { $("#eErr").textContent = "Toma la foto de entrega antes de confirmar."; return; }
+    if (!medio()) { $("#eErr").textContent = "Escoge cómo pagó el cliente."; return; }
+    const v = valor(), mot = $("#eMot").value.trim();
+    if (g.valor && v !== g.valor && !mot) { $("#eErr").textContent = "Escribe por qué el valor recibido es diferente."; return; }
+    $("#bEnt").disabled = true; $("#bEnt").textContent = "Guardando…";
+    try {
+      await setDoc(doc(db, "fotos", n), { imagen: foto, t: Date.now(), mensajeroId: S.u.uid });
+      const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot };
+      S.ultimaEntregada = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] });
+      location.hash = `#aviso/${n}/entregado`;
+    } catch (err) { $("#eErr").textContent = C.mensajeError(err); $("#bEnt").disabled = false; $("#bEnt").textContent = "Confirmar entrega"; }
+  };
+}
+
+/* ---------- novedad ---------- */
+function pintarNovedad(n) {
+  const g = buscar(n);
+  if (!g) { location.hash = "#mios"; return; }
+  pantalla(`<a class="btn sec chico volver" href="#g/${esc(n)}">← Volver</a><h1>Novedad en ${esc(n)}</h1>
+    <div class="rapidas">${["Cliente no contesta", "Dirección errada", "Cliente no estaba", "Cliente rechazó el pedido", "Paquete dañado"].map(t => `<button data-t="${t}">${t}</button>`).join("")}</div>
+    <label>Describe lo que pasó<textarea id="nTxt" required></textarea></label>
+    <p class="nota" style="margin:0">Despacho decide si el pedido vuelve a quedar disponible o se devuelve a la tienda.</p>
+    <button class="btn btn-turno" id="bNov">Reportar novedad</button><div class="error" id="nErr"></div>`);
+  document.querySelector(".rapidas").onclick = e => { const b = e.target.closest("[data-t]"); if (b) $("#nTxt").value = b.dataset.t; };
+  $("#bNov").onclick = async () => {
+    const t = $("#nTxt").value.trim(); if (!t) { $("#nErr").textContent = "Describe la novedad."; return; }
+    $("#bNov").disabled = true;
+    try { await guardar(g, { estado: "novedad", eventos: [...(g.eventos || []), C.evento("novedad", t, S.perfil.nombre)] }); toast("Novedad reportada a despacho"); location.hash = "#mios"; }
+    catch (err) { $("#nErr").textContent = C.mensajeError(err); $("#bNov").disabled = false; }
+  };
+}
+
+/* ---------- perfil ---------- */
+function pintarPerfil() {
+  const p = S.perfil;
+  pantalla(`<h1>Perfil</h1>
+    <form class="panel" id="fPer">
+      <label>Nombre<input id="pNom" value="${esc(p.nombre)}" required></label>
+      <div class="fila"><label>Celular<input id="pTel" value="${esc(p.telefono)}"></label><label>Placa<input id="pPla" value="${esc(p.placa)}"></label></div>
+      <h3>Zonas donde trabajas</h3>${chipsZonas(p.zonas || [])}
+      <button class="btn" type="submit">Guardar cambios</button>
+    </form>
+    <div class="panel"><h3>Ubicación y batería</h3><p class="nota" style="margin:0">Si tu ubicación se corta con la pantalla apagada, quita el ahorro de batería para esta app y dale permiso de ubicación “todo el tiempo”.</p><button class="btn sec" id="pAj">Abrir ajustes de la app</button></div>
+    <div class="panel"><dl class="kv"><dt>Correo</dt><dd>${esc(p.email)}</dd><dt>Cédula</dt><dd>${esc(p.cedula)}</dd></dl><button class="btn peligro" id="pSalir">Cerrar sesión</button></div>`);
+  $("#pAj").onclick = () => BG?.openSettings();
+  $("#pSalir").onclick = async () => { await terminarTurno(); A.signOut(auth); };
+  $("#fPer").onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const cambios = { nombre: $("#pNom").value.trim(), telefono: $("#pTel").value.trim(), placa: $("#pPla").value.trim().toUpperCase(), zonas: zonasMarcadas() };
+      await F.updateDoc(doc(db, "usuarios", S.u.uid), cambios); toast("Perfil guardado");
+    } catch (err) { toast(C.mensajeError(err)); }
+  };
+}
+setInterval(() => { if (S.u && location.hash === "#inicio") pintarInicio(); }, 30000);
+</script>
+</body>
+</html>

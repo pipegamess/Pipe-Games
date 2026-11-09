@@ -1,0 +1,124 @@
+rules_version = '2';
+
+// Reglas de seguridad de Mensajería Prueba.
+// Se pegan en Firebase > Firestore Database > Reglas > Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() { return request.auth != null; }
+
+    // Felipe: único administrador (despacho).
+    function esAdmin() {
+      return autenticado() && request.auth.uid == '8xMsK91tEja5hzhBtjqDIgCP0423';
+    }
+
+    function rutaUsuario() { return /databases/$(database)/documents/usuarios/$(request.auth.uid); }
+
+    // Mensajero con perfil activo (registrado con invitación y no desactivado).
+    function esMensajero() {
+      return autenticado() && exists(rutaUsuario())
+        && get(rutaUsuario()).data.rol == 'mensajero'
+        && get(rutaUsuario()).data.activo == true;
+    }
+
+    function soloCambia(campos) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
+    }
+
+    // ---------- Perfiles ----------
+    match /usuarios/{uid} {
+      allow read: if esAdmin() || (autenticado() && request.auth.uid == uid);
+
+      // El mensajero crea su propio perfil usando un código de invitación sin usar.
+      allow create: if esAdmin() || (
+        autenticado() && request.auth.uid == uid
+        && request.resource.data.rol == 'mensajero'
+        && request.resource.data.activo == true
+        && request.resource.data.keys().hasOnly(['rol', 'activo', 'nombre', 'cedula', 'placa', 'telefono', 'email', 'zonas', 'invitacion', 'creado'])
+        && request.resource.data.invitacion is string
+        && exists(/databases/$(database)/documents/invitaciones/$(request.resource.data.invitacion))
+        && get(/databases/$(database)/documents/invitaciones/$(request.resource.data.invitacion)).data.usada == false
+        && getAfter(/databases/$(database)/documents/invitaciones/$(request.resource.data.invitacion)).data.usadaPor == uid
+      );
+
+      allow update: if esAdmin() || (
+        esMensajero() && request.auth.uid == uid
+        && soloCambia(['nombre', 'placa', 'telefono', 'zonas'])
+      );
+      allow delete: if esAdmin();
+    }
+
+    // ---------- Invitaciones ----------
+    match /invitaciones/{codigo} {
+      allow list, create, delete: if esAdmin();
+      allow get: if autenticado();
+      allow update: if esAdmin() || (
+        autenticado()
+        && resource.data.usada == false
+        && request.resource.data.usada == true
+        && request.resource.data.usadaPor == request.auth.uid
+        && soloCambia(['usada', 'usadaPor', 'usadaEn'])
+        && getAfter(rutaUsuario()).data.invitacion == codigo
+      );
+    }
+
+    // ---------- Guías (datos completos, privados) ----------
+    match /guias/{numero} {
+      allow read: if esAdmin() || esMensajero();
+      allow create, delete: if esAdmin();
+      allow update: if esAdmin() || (esMensajero() && (
+        // Tomar un pedido disponible
+        (resource.data.estado == 'disponible'
+          && resource.data.mensajeroId == null
+          && request.resource.data.estado == 'tomada'
+          && request.resource.data.mensajeroId == request.auth.uid
+          && soloCambia(['estado', 'mensajeroId', 'mensajeroNombre', 'mensajeroPlaca', 'eventos', 'actualizado']))
+        ||
+        // Avanzar un pedido propio
+        (resource.data.mensajeroId == request.auth.uid
+          && request.resource.data.mensajeroId == request.auth.uid
+          && resource.data.estado in ['tomada', 'recogida', 'en_camino']
+          && request.resource.data.estado in ['recogida', 'en_camino', 'entregada', 'novedad']
+          && soloCambia(['estado', 'eventos', 'recaudo', 'actualizado']))
+      ));
+    }
+
+    // ---------- Rastreo público (solo lo que ve el cliente) ----------
+    match /rastreo/{numero} {
+      allow get: if true;
+      allow list: if esAdmin();
+      allow create, delete: if esAdmin();
+      allow update: if esAdmin() || (
+        esMensajero()
+        && request.resource.data.mensajeroId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/guias/$(numero)).data.mensajeroId == request.auth.uid
+      );
+    }
+
+    // ---------- Ubicación de mensajeros ----------
+    match /ubicaciones/{uid} {
+      // El público solo ve la ubicación de un mensajero que está en turno.
+      allow get: if esAdmin() || (autenticado() && request.auth.uid == uid) || resource.data.enTurno == true;
+      allow list: if esAdmin();
+      allow write: if esMensajero() && request.auth.uid == uid;
+    }
+
+    // ---------- Fotos de entrega ----------
+    match /fotos/{numero} {
+      allow get: if true;
+      allow create, update: if esAdmin() || (
+        esMensajero()
+        && get(/databases/$(database)/documents/guias/$(numero)).data.mensajeroId == request.auth.uid
+        && request.resource.data.imagen is string
+        && request.resource.data.imagen.size() < 900000
+      );
+      allow delete: if esAdmin();
+    }
+
+    // ---------- Dinero que el mensajero entrega a despacho ----------
+    match /entregasDinero/{id} {
+      allow read: if esAdmin() || (esMensajero() && resource.data.mensajeroId == request.auth.uid);
+      allow write: if esAdmin();
+    }
+  }
+}
