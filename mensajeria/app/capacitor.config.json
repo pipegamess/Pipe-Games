@@ -1,0 +1,8 @@
+{
+  "appId": "co.mensajeriaprueba.mensajero",
+  "appName": "Mensajería Prueba",
+  "webDir": "www",
+  "android": {
+    "useLegacyBridge": true
+  }
+}

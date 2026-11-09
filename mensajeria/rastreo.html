@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Rastrea tu pedido · Mensajería Prueba</title>
+<meta name="description" content="Sigue tu pedido en tiempo real con tu número de guía.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="estilos.css">
+<style>
+.envoltura{max-width:720px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+.buscar{display:flex;gap:8px}
+.buscar input{font-family:var(--f-mono);text-transform:uppercase;letter-spacing:.06em}
+#mapa{height:min(46vh,420px);min-height:260px}
+.estado-grande{font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1.1}
+.pie{font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<main class="envoltura">
+  <header><h1>Mensajería <span class="marca">Prueba</span></h1><p class="nota" style="margin:4px 0 0">Rastrea tu pedido con el número de guía.</p></header>
+  <form class="buscar" id="fBuscar">
+    <input id="guia" placeholder="BOG-7K2M9Q" autocomplete="off" aria-label="Número de guía" required>
+    <button class="btn" type="submit">Rastrear</button>
+  </form>
+  <div id="salida"></div>
+  <div id="mapa" class="mapa" hidden></div>
+  <div id="salida2"></div>
+  <p class="pie">Mensajería Prueba · Bogotá</p>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js";
+import * as C from "./comun.js";
+const V = FIREBASE_VERSION;
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+const { getFirestore, doc, onSnapshot, getDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+const db = getFirestore(initializeApp(firebaseConfig));
+const $ = s => document.querySelector(s);
+const { esc } = C;
+
+let unsubG = null, unsubU = null, g = null, u = null, foto = null, mapa = null, capa = null, ajustado = "";
+
+$("#fBuscar").onsubmit = e => { e.preventDefault(); buscar($("#guia").value); };
+const inicial = new URLSearchParams(location.search).get("g");
+if (inicial) buscar(inicial);
+
+function buscar(raw) {
+  const n = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!n) return;
+  $("#guia").value = n;
+  history.replaceState(null, "", "?g=" + encodeURIComponent(n));
+  unsubG?.(); unsubU?.(); g = u = foto = null; ajustado = "";
+  $("#salida").innerHTML = `<div class="vacio">Buscando ${esc(n)}…</div>`; $("#salida2").innerHTML = ""; $("#mapa").hidden = true;
+  unsubG = onSnapshot(doc(db, "rastreo", n), s => {
+    if (!s.exists()) { g = null; $("#mapa").hidden = true; $("#salida2").innerHTML = ""; $("#salida").innerHTML = `<div class="vacio error">No encontramos la guía <span class="guia">${esc(n)}</span>. Revisa que el número esté completo, por ejemplo BOG-7K2M9Q.</div>`; return; }
+    const antes = g;
+    g = s.data();
+    seguirMensajero(antes);
+    if (g.estado === "entregada" && !foto) getDoc(doc(db, "fotos", n)).then(f => { foto = f.exists() ? f.data().imagen : "sin"; pintar(); }).catch(() => { foto = "sin"; pintar(); });
+    pintar();
+  }, () => { $("#mapa").hidden = true; $("#salida").innerHTML = `<div class="vacio error">No pudimos consultar la guía. Revisa tu conexión e intenta de nuevo.</div>`; });
+}
+function seguirMensajero(antes) {
+  const enRuta = g && g.mensajeroId && ["recogida", "en_camino"].includes(g.estado);
+  if (antes && antes.mensajeroId === g.mensajeroId && !!unsubU === !!enRuta) return;
+  unsubU?.(); unsubU = null; u = null;
+  if (enRuta) unsubU = onSnapshot(doc(db, "ubicaciones", g.mensajeroId), s => { u = s.exists() ? s.data() : null; pintar(); }, () => { u = null; pintar(); });
+}
+const titular = {
+  disponible: "Preparando tu envío", tomada: "Mensajero asignado", recogida: "Tu pedido fue recogido",
+  en_camino: "Tu pedido va en camino", entregada: "Pedido entregado", novedad: "Tu envío tiene una novedad",
+  devuelta: "El envío fue devuelto a la tienda", cancelada: "Este envío fue cancelado"
+};
+function pintar() {
+  if (!g) return;
+  const enRuta = ["recogida", "en_camino"].includes(g.estado) && u && u.enTurno && u.lat != null;
+  const d = enRuta ? C.km(u, g.destino) : null;
+  const pasos = C.PASOS.map(k => {
+    const e = [...(g.eventos || [])].reverse().find(x => x.estado === k);
+    const i = C.PASOS.indexOf(g.estado), j = C.PASOS.indexOf(k);
+    const cls = i < 0 ? (e ? "hecho" : "") : j < i ? "hecho" : j === i ? "ahora" : "";
+    const etiqueta = { disponible: "Guía creada", tomada: "Mensajero asignado", recogida: "Paquete recogido", en_camino: "En camino", entregada: "Entregado" }[k];
+    return `<li class="${cls}"><div>${etiqueta}</div><div></div><div class="t">${e ? C.fecha(e.t) : ""}</div></li>`;
+  }).join("");
+  const extra = (g.eventos || []).filter(e => ["novedad", "devuelta", "cancelada"].includes(e.estado)).map(e => `<li class="mal"><div>${C.ESTADOS[e.estado]}</div><div></div><div class="t">${C.fecha(e.t)}</div></li>`).join("");
+  $("#salida").innerHTML = `
+    <div class="panel">
+      <div class="item" style="border:0;padding:0"><div class="arriba"><span class="guia">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div></div>
+      <div class="estado-grande">${titular[g.estado] || C.ESTADOS[g.estado]}</div>
+      ${enRuta ? `<div class="cifras"><div><b>${d.toFixed(1)} km</b><span>Distancia al destino</span></div><div><b>~${Math.max(3, Math.round(d / 18 * 60))} min</b><span>Tiempo aproximado</span></div><div><b>${C.hace(u.t)}</b><span>Última ubicación</span></div></div>` : ""}
+      <dl class="kv">
+        <dt>Para</dt><dd>${esc(g.clienteNombre)} · ${esc(g.localidad)}</dd>
+        <dt>Tienda</dt><dd>${esc(g.remitente)}</dd>
+        ${g.mensajeroNombre ? `<dt>Mensajero</dt><dd>${esc(C.primerNombre(g.mensajeroNombre))}${g.mensajeroPlaca ? " · placa " + esc(g.mensajeroPlaca) : ""}</dd>` : ""}
+        <dt>Pago</dt><dd>${g.valor ? "Pagas " + C.cop(g.valor) + " al recibir (efectivo o Nequi)" : "Ya está pago"}</dd>
+      </dl>
+    </div>
+`;
+  $("#salida2").innerHTML = `
+    ${g.estado === "entregada" ? (foto && foto !== "sin" ? `<div class="panel"><h3>Foto de entrega</h3><img class="foto-entrega" alt="Foto de la entrega del pedido" src="${foto}"></div>` : foto === "sin" ? "" : `<div class="vacio">Cargando foto de entrega…</div>`) : ""}
+    <div class="panel"><h3>Historial</h3><ol class="tl">${pasos}${extra}</ol></div>`;
+  pintarMapa(enRuta);
+}
+function pintarMapa(enRuta) {
+  const el = $("#mapa");
+  el.hidden = ["entregada", "cancelada", "devuelta"].includes(g.estado);
+  if (el.hidden) return;
+  if (!mapa) { mapa = L.map(el); C.capaMapa(L).addTo(mapa); capa = L.layerGroup().addTo(mapa); }
+  setTimeout(() => mapa.invalidateSize(), 50);
+  capa.clearLayers();
+  const pts = [];
+  if (g.destino) { L.marker([g.destino.lat, g.destino.lng], { icon: C.icono(L, "destino", "") }).bindTooltip("Destino").addTo(capa); pts.push([g.destino.lat, g.destino.lng]); }
+  if (enRuta) {
+    L.marker([u.lat, u.lng], { icon: C.icono(L, "mensajero", C.iniciales(g.mensajeroNombre)), zIndexOffset: 500 }).bindTooltip("Tu mensajero").addTo(capa);
+    L.polyline([[u.lat, u.lng], [g.destino.lat, g.destino.lng]], { color: getComputedStyle(document.documentElement).getPropertyValue("--route").trim(), weight: 3, dashArray: "6 7" }).addTo(capa);
+    pts.push([u.lat, u.lng]);
+  }
+  const clave = g.numero + g.estado + pts.length;
+  if (clave === ajustado) return;
+  ajustado = clave;
+  if (pts.length > 1) mapa.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 16 });
+  else if (pts.length === 1) mapa.setView(pts[0], 14);
+  else mapa.setView([C.BOGOTA.lat, C.BOGOTA.lng], 11);
+}
+</script>
+</body>
+</html>
