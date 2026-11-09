@@ -5,6 +5,7 @@
   "description": "App Android del mensajero de Mensajería Prueba",
   "dependencies": {
     "@capacitor-community/background-geolocation": "1.2.26",
+    "@capacitor-mlkit/barcode-scanning": "7.5.0",
     "@capacitor/android": "7.6.10",
     "@capacitor/core": "7.6.10",
     "@capacitor/local-notifications": "7.0.7"
