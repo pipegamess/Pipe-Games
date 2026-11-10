@@ -188,7 +188,7 @@ const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
 const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
-const { getFirestore, collection, doc, getDoc, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc } = F;
+const { getFirestore, collection, doc, getDoc, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc, deleteField } = F;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -374,6 +374,7 @@ function pintarDetalle() {
   if (["novedad", "tomada", "recogida", "en_camino"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="liberar">Volver a dejar disponible</button>`);
   if (["novedad", "recogida", "en_camino"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="devolver">Marcar devuelta a la tienda</button>`);
   if (["disponible", "novedad"].includes(g.estado)) acciones.push(`<button class="btn peligro chico" data-acc="cancelar">Cancelar guía</button>`);
+  if (g.estado !== "disponible") acciones.push(`<button class="btn sec chico" data-acc="reiniciar" title="Para pruebas: la guía vuelve a quedar disponible para escanear">Reiniciar guía (pruebas)</button>`);
   $("#hojaDetalle").innerHTML = `
     <button class="btn sec chico cerrar" data-acc="cerrar">Cerrar</button>
     <div class="arriba" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><span class="guia" style="font-size:22px">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
@@ -419,6 +420,17 @@ $("#hojaDetalle").addEventListener("click", async e => {
     } else if (a === "devolver") {
       ev.push(C.evento("devuelta", "Devuelta a la tienda", "despacho"));
       await guardarGuia(n, { estado: "devuelta", eventos: ev }); toast("Guía marcada como devuelta");
+    } else if (a === "reiniciar") {
+      const eventos = [C.evento("disponible", "Guía creada", "despacho"), C.evento("disponible", "Guía reiniciada para pruebas", "despacho")];
+      eventos[0].t = g.creado || Date.now();
+      const limpia = { estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "", eventos };
+      const lote = writeBatch(db);
+      lote.update(doc(db, "guias", n), { ...limpia, recaudo: deleteField(), actualizado: Date.now() });
+      lote.set(doc(db, "rastreo", n), C.vistaPublica({ ...g, ...limpia, recaudo: null }));
+      lote.delete(doc(db, "fotos", n));
+      await lote.commit();
+      delete fotoCache[n];
+      toast("Guía reiniciada: ya se puede volver a escanear");
     } else if (a === "cancelar") {
       ev.push(C.evento("cancelada", "Cancelada por despacho", "despacho"));
       await guardarGuia(n, { estado: "cancelada", eventos: ev }); toast("Guía cancelada");
