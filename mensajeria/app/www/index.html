@@ -60,6 +60,7 @@ body.escaneando>*:not(#capaEscaner){visibility:hidden!important}
 .lista-recogidos .item{flex-direction:row;align-items:center;gap:12px}
 .lista-recogidos input{width:22px;height:22px;flex:none}
 .rapidas button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 11px;font-size:13px}
+.senal{position:fixed;left:0;right:0;top:0;z-index:2500;background:var(--warn);color:#1b1b1b;font-size:13px;font-weight:600;text-align:center;padding:calc(6px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px))}
 </style>
 </head>
 <body>
@@ -82,6 +83,7 @@ body.escaneando>*:not(#capaEscaner){visibility:hidden!important}
   <a href="#perfil" data-r="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Perfil</a>
 </nav>
 <div class="toast" id="toast" hidden></div>
+<div class="senal" id="senal" hidden></div>
 <div id="capaEscaner" hidden>
   <div class="esc-arriba"><b id="escCuenta">0 guías recogidas</b><div class="msg" id="escMsg">Apunta al código QR o al código de barras de cada guía.</div></div>
   <div class="esc-visor" aria-hidden="true"></div>
@@ -96,11 +98,14 @@ const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
 const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
-const { getFirestore, doc, getDoc, getDocs, setDoc, onSnapshot, collection, query, where, limit, writeBatch, runTransaction } = F;
+const { getFirestore, initializeFirestore, persistentLocalCache, waitForPendingWrites, doc, getDoc, getDocs, setDoc, onSnapshot, collection, query, where, limit, writeBatch, runTransaction } = F;
 
 const app = initializeApp(firebaseConfig);
 const auth = A.initializeAuth(app, { persistence: [A.indexedDBLocalPersistence, A.browserLocalPersistence] });
-const db = getFirestore(app);
+// Caché en el celular: sin señal, los pedidos se siguen viendo y las entregas quedan
+// guardadas para enviarse solas cuando vuelva la conexión.
+let db;
+try { db = initializeFirestore(app, { localCache: persistentLocalCache() }); } catch { db = getFirestore(app); }
 const $ = s => document.querySelector(s);
 const { esc } = C;
 
@@ -117,6 +122,32 @@ const Escaner = nativo && registrar ? registrar("BarcodeScanner") : null;
 const S = { u: null, perfil: null, disp: [], mios: [], entregas: [], pos: null, turno: false, watcher: null };
 let subs = [];
 const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+/* ---------- sin señal ---------- */
+let porEnviar = 0;
+function pintarSenal() {
+  const el = $("#senal");
+  if (porEnviar > 0) { el.textContent = navigator.onLine ? "Enviando cambios guardados en el celular…" : `Sin señal · ${porEnviar} cambio${porEnviar === 1 ? "" : "s"} guardado${porEnviar === 1 ? "" : "s"} en el celular. Se envían solos al volver la señal.`; el.hidden = false; }
+  else if (!navigator.onLine) { el.textContent = "Sin señal. Puedes seguir entregando; los cambios se envían solos al volver la conexión."; el.hidden = false; }
+  else el.hidden = true;
+}
+addEventListener("online", pintarSenal); addEventListener("offline", pintarSenal); pintarSenal();
+// Espera a que el servidor confirme; si no hay señal, deja el cambio en cola y sigue.
+async function enviar(p) {
+  const tarde = e => toast("Un cambio no se pudo guardar: " + C.mensajeError(e));
+  let t;
+  const r = navigator.onLine
+    ? await Promise.race([p.then(() => "ok"), new Promise(ok => t = setTimeout(() => ok("pendiente"), 6000))])
+    : "pendiente";
+  clearTimeout(t);
+  if (r === "pendiente") {
+    p.catch(tarde);
+    porEnviar++; pintarSenal();
+    waitForPendingWrites(db).then(() => { if (porEnviar) { porEnviar = 0; pintarSenal(); toast("Cambios enviados a despacho"); } }).catch(() => {});
+  }
+  return r;
+}
+const msgGuardado = (pend, ok) => pend ? "Guardado en el celular: se envía al volver la señal" : ok;
 
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
 function abrirExterno(url) { window.location.href = url; }
@@ -224,7 +255,7 @@ async function guardar(g, cambios, foto) {
   b.update(doc(db, "guias", g.numero), { ...cambios, actualizado: Date.now() });
   // El rastreo vive en "NUMERO_CLAVE": solo lo ve quien tiene el código secreto.
   if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(nueva, foto), { merge: true });
-  await b.commit();
+  nueva.pendiente = (await enviar(b.commit())) === "pendiente";
   return nueva;
 }
 async function tomar(numero) {
@@ -407,7 +438,7 @@ async function recibirGuia(n) {
   if (ya?.estado === "en_camino") return { ok: false, msg: n + " ya va en camino" };
   if (ya?.estado === "entregada") return { ok: false, msg: n + " ya la entregaste" };
   try { S.ultimaGuia = await tomar(n); return { ok: true, msg: n + " recogida" }; }
-  catch (err) { return { ok: false, msg: /^(Otro|La guía|Esta guía)/.test(err.message || "") ? n + ": " + err.message : C.mensajeError(err) }; }
+  catch (err) { return { ok: false, msg: /^(Otro|La guía|Esta guía)/.test(err.message || "") ? n + ": " + err.message : !navigator.onLine ? "Sin señal: para recibir una guía necesitas conexión." : C.mensajeError(err) }; }
 }
 
 /* ---------- escaneo continuo: varias guías sin cerrar la cámara ---------- */
@@ -679,12 +710,18 @@ function pintarEntregar(n) {
       </div>` : `<p style="margin:0"><b>Sin cobro.</b> No debes recibir dinero.</p><input type="radio" name="medio" value="pagado" checked hidden>`}
       <label id="lVal" ${g.valor ? "" : "hidden"}>Valor recibido (COP)<input id="eVal" inputmode="numeric" value="${g.valor}"></label>
       <label id="lMot" hidden>¿Por qué el valor es diferente?<input id="eMot" placeholder="Ej. el cliente pagó una parte por Nequi"></label>
+      <div id="cajaComp" class="lista" hidden>
+        <label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="fComp"><span id="tComp">Tomar foto del comprobante de Nequi</span></label>
+        <img class="foto-entrega" id="vComp" alt="Comprobante de Nequi" hidden>
+      </div>
     </div>
     <button class="btn btn-turno ok" id="bEnt">Confirmar entrega</button>
     <div class="error" id="eErr"></div>`);
   const medio = () => document.querySelector('input[name="medio"]:checked')?.value;
   const valor = () => medio() === "pagado" ? 0 : (parseInt(($("#eVal").value || "0").replace(/\D/g, ""), 10) || 0);
+  let comp = null;
   const revisar = () => {
+    $("#cajaComp").hidden = medio() !== "nequi";
     $("#lVal").hidden = medio() === "pagado";
     $("#lMot").hidden = !(g.valor && valor() !== g.valor);
   };
@@ -701,20 +738,27 @@ function pintarEntregar(n) {
     try { foto = await C.comprimirImagen(f); $("#vFoto").src = foto; $("#vFoto").hidden = false; $("#tFoto").textContent = "Cambiar foto"; }
     catch { $("#tFoto").textContent = "No se pudo leer la foto. Intenta de nuevo."; }
   };
+  $("#fComp").onchange = async e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    $("#tComp").textContent = "Procesando foto…";
+    try { comp = await C.comprimirImagen(f); $("#vComp").src = comp; $("#vComp").hidden = false; $("#tComp").textContent = "Cambiar foto del comprobante"; }
+    catch { $("#tComp").textContent = "No se pudo leer la foto. Intenta de nuevo."; }
+  };
   $("#bEnt").onclick = async () => {
     $("#eErr").textContent = "";
     if (!foto) { $("#eErr").textContent = "Toma la foto de entrega antes de confirmar."; return; }
     if (!medio()) { $("#eErr").textContent = "Escoge cómo pagó el cliente."; return; }
+    if (medio() === "nequi" && !comp) { $("#eErr").textContent = "Toma la foto del comprobante de Nequi que te muestra el cliente."; return; }
     const recNom = $("#eRecNom").value.trim();
     if (recibe() !== "cliente" && !recNom) { $("#eErr").textContent = "Escribe el nombre de quien recibe."; return; }
     const v = valor(), mot = $("#eMot").value.trim();
     if (g.valor && v !== g.valor && !mot) { $("#eErr").textContent = "Escribe por qué el valor recibido es diferente."; return; }
     $("#bEnt").disabled = true; $("#bEnt").textContent = "Guardando…";
     try {
-      await setDoc(doc(db, "fotos", n), { imagen: foto, tipo: "entrega", t: Date.now(), mensajeroId: S.u.uid });
+      await enviar(setDoc(doc(db, "fotos", n), { imagen: foto, tipo: "entrega", t: Date.now(), mensajeroId: S.u.uid, ...(medio() === "nequi" && comp ? { comprobante: comp } : {}) }));
       const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot, recibe: { tipo: recibe(), nombre: recibe() === "cliente" ? g.cliente : recNom } };
       S.ultimaGuia = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] }, foto);
-      toast("Pedido entregado"); location.hash = "#mios";
+      toast(msgGuardado(S.ultimaGuia.pendiente, "Pedido entregado")); location.hash = "#mios";
     } catch (err) { $("#eErr").textContent = C.mensajeError(err); $("#bEnt").disabled = false; $("#bEnt").textContent = "Confirmar entrega"; }
   };
 }
@@ -742,8 +786,8 @@ function pintarNovedad(n) {
     const t = $("#nTxt").value.trim(); if (!t) { $("#nErr").textContent = "Describe la novedad."; return; }
     $("#bNov").disabled = true;
     try {
-      if (fotoNov) await setDoc(doc(db, "fotos", n), { imagen: fotoNov, tipo: "novedad", t: Date.now(), mensajeroId: S.u.uid });
-      await guardar(g, { estado: "novedad", eventos: [...(g.eventos || []), C.evento("novedad", t, S.perfil.nombre)] }); toast("Novedad reportada a despacho"); location.hash = "#mios";
+      if (fotoNov) await enviar(setDoc(doc(db, "fotos", n), { imagen: fotoNov, tipo: "novedad", t: Date.now(), mensajeroId: S.u.uid }));
+      const r = await guardar(g, { estado: "novedad", eventos: [...(g.eventos || []), C.evento("novedad", t, S.perfil.nombre)] }); toast(msgGuardado(r.pendiente, "Novedad reportada a despacho")); location.hash = "#mios";
     }
     catch (err) { $("#nErr").textContent = C.mensajeError(err); $("#bNov").disabled = false; }
   };
