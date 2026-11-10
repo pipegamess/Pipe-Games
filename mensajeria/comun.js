@@ -34,7 +34,7 @@ export const ESTADOS = {
   devuelta: "Devuelta",
   cancelada: "Cancelada"
 };
-export const PASOS = ["disponible", "tomada", "recogida", "en_camino", "entregada"];
+export const PASOS = ["disponible", "en_camino", "entregada"];
 export const ACTIVOS = ["disponible", "tomada", "recogida", "en_camino", "novedad"];
 
 export const MEDIOS = { efectivo: "Efectivo", nequi: "Nequi", pagado: "Sin cobro" };
