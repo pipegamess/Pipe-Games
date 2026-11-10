@@ -7,10 +7,11 @@
 <meta name="description" content="Sigue tu pedido en tiempo real con tu número de guía.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109n">
+<link rel="stylesheet" href="estilos.css?v=20261109o">
 <style>
 .envoltura{max-width:720px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
-.buscar{display:flex;gap:8px}
+.buscar{display:flex;gap:8px;flex-wrap:wrap}
+.buscar #guia{flex:1 1 12em;min-width:0}
 .buscar input{font-family:var(--f-mono);text-transform:uppercase;letter-spacing:.06em}
 #mapa{height:min(46vh,420px);min-height:260px}
 .estado-grande{font-family:var(--f-display);font-size:30px;font-weight:700;line-height:1.1}
@@ -19,9 +20,10 @@
 </head>
 <body>
 <main class="envoltura">
-  <header><h1><a href="rastreo.html" id="inicio" style="color:inherit;text-decoration:none">Mensajería <span class="marca">Prueba</span></a></h1><p class="nota" style="margin:4px 0 0">Rastrea tu pedido con el número de guía.</p></header>
+  <header><h1><a href="rastreo.html" id="inicio" style="color:inherit;text-decoration:none">Mensajería <span class="marca">Prueba</span></a></h1><p class="nota" style="margin:4px 0 0">Rastrea tu pedido con el número de guía y el código de rastreo que te enviamos.</p></header>
   <form class="buscar" id="fBuscar">
     <input id="guia" placeholder="PIPEGAMES-00001" autocomplete="off" aria-label="Número de guía" required>
+    <input id="clave" placeholder="CÓDIGO" autocomplete="off" aria-label="Código de rastreo" maxlength="6" required style="max-width:8.5em">
     <button class="btn" type="submit">Rastrear</button>
   </form>
   <div id="salida"></div>
@@ -32,43 +34,45 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109n";
-import * as C from "./comun.js?v=20261109n";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109o";
+import * as C from "./comun.js?v=20261109o";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
-const { getFirestore, doc, onSnapshot, getDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+const { getFirestore, doc, onSnapshot } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
 const db = getFirestore(initializeApp(firebaseConfig));
 const $ = s => document.querySelector(s);
 const { esc } = C;
 
 let unsubG = null, unsubU = null, g = null, u = null, foto = null, mapa = null, capa = null, ajustado = "";
 
-$("#fBuscar").onsubmit = e => { e.preventDefault(); buscar($("#guia").value); };
-const inicial = new URLSearchParams(location.search).get("g");
-if (inicial) buscar(inicial);
+$("#fBuscar").onsubmit = e => { e.preventDefault(); buscar($("#guia").value, $("#clave").value); };
+const qs = new URLSearchParams(location.search);
+if (qs.get("g")) { $("#guia").value = qs.get("g"); if (qs.get("c")) buscar(qs.get("g"), qs.get("c")); else $("#clave").focus(); }
 
 // Volver al inicio: borrar la guía consultada para buscar otra.
 function limpiar() {
   unsubG?.(); unsubU?.(); unsubG = unsubU = null; g = u = foto = null; ajustado = "";
   $("#salida").innerHTML = ""; $("#salida2").innerHTML = ""; $("#mapa").hidden = true; $("#otra").hidden = true;
-  $("#guia").value = ""; history.replaceState(null, "", location.pathname);
+  $("#guia").value = ""; $("#clave").value = ""; history.replaceState(null, "", location.pathname);
   window.scrollTo({ top: 0, behavior: "smooth" }); $("#guia").focus();
 }
 $("#otra").onclick = limpiar;
 $("#inicio").onclick = e => { e.preventDefault(); limpiar(); };
-function buscar(raw) {
+function buscar(raw, rawClave) {
   const n = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
+  const c = String(rawClave || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!n) return;
-  $("#guia").value = n;
-  history.replaceState(null, "", "?g=" + encodeURIComponent(n));
+  $("#guia").value = n; $("#clave").value = c;
+  if (!/^[A-Z0-9-]+$/.test(n) || !/^[A-Z0-9]{6}$/.test(c)) { $("#salida").innerHTML = `<div class="vacio error">Escribe el número de guía y el código de rastreo de 6 caracteres. Los encuentras en el mensaje que te enviamos o en la etiqueta del paquete.</div>`; return; }
+  history.replaceState(null, "", "?g=" + encodeURIComponent(n) + "&c=" + encodeURIComponent(c));
   unsubG?.(); unsubU?.(); g = u = foto = null; ajustado = "";
   $("#salida").innerHTML = `<div class="vacio">Buscando ${esc(n)}…</div>`; $("#salida2").innerHTML = ""; $("#mapa").hidden = true; $("#otra").hidden = false;
-  unsubG = onSnapshot(doc(db, "rastreo", n), s => {
-    if (!s.exists()) { g = null; $("#mapa").hidden = true; $("#salida2").innerHTML = ""; $("#salida").innerHTML = `<div class="vacio error">No encontramos la guía <span class="guia">${esc(n)}</span>. Revisa que el número esté completo, por ejemplo PIPEGAMES-00001.</div>`; return; }
+  unsubG = onSnapshot(doc(db, "rastreo", n + "_" + c), s => {
+    if (!s.exists()) { g = null; $("#mapa").hidden = true; $("#salida2").innerHTML = ""; $("#salida").innerHTML = `<div class="vacio error">No encontramos la guía <span class="guia">${esc(n)}</span> con ese código. Revisa el número de guía y el código de rastreo.</div>`; return; }
     const antes = g;
     g = s.data();
     seguirMensajero(antes);
-    if (g.estado === "entregada" && !foto) getDoc(doc(db, "fotos", n)).then(f => { foto = f.exists() ? f.data().imagen : "sin"; pintar(); }).catch(() => { foto = "sin"; pintar(); });
+    foto = g.estado === "entregada" ? (g.foto || "sin") : null;
     pintar();
   }, () => { $("#mapa").hidden = true; $("#salida").innerHTML = `<div class="vacio error">No pudimos consultar la guía. Revisa tu conexión e intenta de nuevo.</div>`; });
 }

@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109n";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109o";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -235,7 +235,10 @@ export function nuevoCodigo() {
   for (let i = 0; i < 6; i++) s += A[v[i] % A.length];
   return s;
 }
-export const linkRastreo = numero => `${URL_RASTREO}?g=${encodeURIComponent(numero)}`;
+// Código secreto de rastreo: sin él no se puede ver la guía (los números van en orden).
+export const nuevaClave = nuevoCodigo;
+export const idRastreo = g => `${g.numero}_${g.clave}`;
+export const linkRastreo = g => `${URL_RASTREO}?g=${encodeURIComponent(g.numero)}&c=${encodeURIComponent(g.clave || "")}`;
 
 // Número colombiano a formato internacional para WhatsApp.
 export function telWhatsApp(tel) {
@@ -250,18 +253,19 @@ export function linkWhatsApp(tel, texto) {
 export function primerNombre(n) { return String(n || "").trim().split(/\s+/)[0] || ""; }
 
 export function mensajeEnCamino(g, linkFn = linkRastreo) {
-  let t = `Hola ${primerNombre(g.cliente)}, tu pedido ${g.numero} de ${g.remitente || "la tienda"} va en camino con ${primerNombre(g.mensajeroNombre) || "nuestro mensajero"}. Síguelo aquí: ${linkFn(g.numero)}`;
+  let t = `Hola ${primerNombre(g.cliente)}, tu pedido ${g.numero} de ${g.remitente || "la tienda"} va en camino con ${primerNombre(g.mensajeroNombre) || "nuestro mensajero"}. Síguelo aquí: ${linkFn(g)}`;
   if (g.valor > 0) t += `. Valor a pagar: ${cop(g.valor)}.`;
   else t += ".";
   return t;
 }
 export function mensajeEntregado(g, linkFn = linkRastreo) {
-  return `Hola ${primerNombre(g.cliente)}, tu pedido ${g.numero} fue entregado. Puedes ver la foto de entrega aquí: ${linkFn(g.numero)}. ¡Gracias por tu compra!`;
+  return `Hola ${primerNombre(g.cliente)}, tu pedido ${g.numero} fue entregado. Puedes ver la foto de entrega aquí: ${linkFn(g)}. ¡Gracias por tu compra!`;
 }
 
 // Vista pública de una guía (lo que se guarda en /rastreo).
-export function vistaPublica(g) {
-  return {
+// Si se pasa `foto` (o null para borrarla), se incluye; si no, la que haya se conserva (escribir con merge).
+export function vistaPublica(g, foto) {
+  const v = {
     numero: g.numero,
     estado: g.estado,
     remitente: g.remitente || "",
@@ -278,6 +282,8 @@ export function vistaPublica(g) {
     recibe: g.estado === "entregada" && g.recaudo?.recibe ? g.recaudo.recibe.tipo : "",
     actualizado: Date.now()
   };
+  if (foto !== undefined) v.foto = foto;
+  return v;
 }
 
 export function evento(estado, nota = "", por = "") {
