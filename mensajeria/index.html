@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css">
+<link rel="stylesheet" href="estilos.css?v=20261109b">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -189,8 +189,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js";
-import * as C from "./comun.js";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109b";
+import * as C from "./comun.js?v=20261109b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -732,6 +732,8 @@ $("#fNueva").onsubmit = async e => {
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${numero}. Síguelo aquí: ${link}`)}">Enviar guía al cliente</a></div></div>`;
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
     $("#rImp").onclick = () => imprimirGuia(g);
+    // Abrir la impresión de la guía apenas se crea
+    setTimeout(() => imprimirGuia(g), 300);
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro"].forEach(id => $("#" + id).value = "");
     $("#nTipo").value = "Directo"; ponerCobro(); $("#lTipoOtro").hidden = true;
     S.pin = null; ultimaBuscada = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
