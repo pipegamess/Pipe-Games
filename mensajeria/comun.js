@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109m";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109n";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -186,14 +186,33 @@ export function leerEtiquetaML(lineas) {
   const direccion = partes.join(", ");
   const flex = /\bFLEX\b/.test(t);
   const zona = campo(/(ZONA\s*\d+)/i);
-  return { envio, nombre, usuario, direccion, localidadTxt, barrio, referencia: [barrio, ...refs].filter(Boolean).join(" · "), flex, zona };
+  return { canal: "Mercado Libre", envio, nombre, usuario, telefono: "", direccion, localidadTxt, barrio, referencia: [barrio, ...refs].filter(Boolean).join(" · "), nota: usuario ? "Usuario Mercado Libre: " + usuario : "", flex, zona };
 }
 
-// QR de Mercado Envíos ({"id":"48475358507","sender_id":…}) o número de envío escrito
+// Etiqueta de Falabella (Despacho directo): DIRECCION, CLIENTE, F.PACTADA, TELEFONO, REFERENCIA y número del código de barras.
+export function leerEtiquetaFalabella(lineas) {
+  const t = lineas.join("\n");
+  const ETIQ = ["DIRECCION", "DIRECCIÓN", "CLIENTE", "F\\.PACTADA", "TELEFONO", "TELÉFONO", "N° DE BULTOS", "Nº DE BULTOS", "REFERENCIA"];
+  const sig = `(?=\\n?\\s*(?:${ETIQ.join("|")}):|\\n\\s*\\d{12,22}\\s*$|$)`;
+  const campo = nombre => { const m = t.match(new RegExp(`(?:${nombre}):[ \\t]*([\\s\\S]*?)${sig}`, "i")); return m ? m[1].replace(/\s+/g, " ").trim() : ""; };
+  const envio = (t.match(/(?:^|\n)\s*(\d{12,22})\s*(?:\n|$)/g) || []).map(x => x.trim()).pop() || "";
+  const direccionTxt = campo("DIRECCION|DIRECCIÓN");
+  const nombre = campo("CLIENTE");
+  if (!envio || !direccionTxt) return null;
+  // "carrera 53 # 103b - 70 , Torres de Penuel II Apto 506" → dirección y complemento
+  const [direccion, ...resto] = direccionTxt.split(/\s*,\s*/);
+  const pactada = campo("F\\.PACTADA");
+  const fecha = pactada && !isNaN(Date.parse(pactada)) ? new Date(pactada).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : pactada;
+  const referencia = [resto.join(", "), campo("REFERENCIA")].filter(Boolean).join(" · ");
+  return { canal: "Falabella", envio, nombre, telefono: campo("TELEFONO|TELÉFONO").replace(/[^\d+]/g, ""), direccion: direccion.trim(), localidadTxt: "", referencia, nota: fecha ? "Entrega pactada con Falabella: " + fecha : "", bultos: campo("N° DE BULTOS|Nº DE BULTOS") };
+}
+
+// Código de la etiqueta del marketplace: QR de Mercado Envíos ({"id":"48475358507",…}) o número de envío / código de barras de Falabella
 export function envioMLDesdeEscaneo(v) {
   const s = String(v || "").trim();
-  try { const j = JSON.parse(s); if (j && j.id && /^\d{8,15}$/.test(String(j.id))) return String(j.id); } catch {}
-  return /^\d{10,13}$/.test(s.replace(/\s/g, "")) ? s.replace(/\s/g, "") : null;
+  try { const j = JSON.parse(s); if (j && j.id && /^\d{8,22}$/.test(String(j.id))) return String(j.id); } catch {}
+  const d = s.replace(/\s/g, "");
+  return /^\d{10,22}$/.test(d) ? d : null;
 }
 
 // Número de guía con el nombre de la tienda y consecutivo de 5 cifras: PIPEGAMES-00001
