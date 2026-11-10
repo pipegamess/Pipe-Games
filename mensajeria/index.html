@@ -126,7 +126,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           </div>
           <label>Dirección de entrega<input id="nDir" required placeholder="Cra 15 # 93-47, apto 502"></label>
           <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
-          <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Sin ubicar todavía. Si no la ubicas, se busca sola al crear la guía.</span></div>
+          <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección completa (ej. Cra 15 # 93-47) y se ubica sola en el mapa.</span></div>
           <div class="lista" id="nCands"></div>
           <label>Coordenadas o link de Google Maps (opcional)<input id="nCoord" placeholder="4.6789, -74.0456" autocomplete="off"></label>
           <p class="nota" style="margin:0">Para la ubicación exacta: busca la dirección en Google Maps, mantén presionado el punto y copia las coordenadas que aparecen. Pégalas aquí.</p>
@@ -421,7 +421,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
 });
 
 /* ---------- NUEVA GUÍA ---------- */
-const TXT_SIN_UBICAR = "Sin ubicar todavía. Si no la ubicas, se busca sola al crear la guía.";
+const TXT_SIN_UBICAR = "Escribe la dirección completa (ej. Cra 15 # 93-47) y se ubica sola en el mapa.";
 /* Punto de recogida fijo (se guarda en el perfil de despacho) */
 function pintarRecogida() {
   const r = S.recogida;
@@ -452,6 +452,13 @@ $("#rBuscar").onclick = async () => {
   } catch { $("#rPinTxt").textContent = "No se pudo buscar. Toca el mapa o pega las coordenadas."; }
   b.disabled = false; b.textContent = "Ubicar en el mapa";
 };
+let timerRec = null, ultimaRec = "";
+$("#rDir").addEventListener("input", () => {
+  clearTimeout(timerRec);
+  const t = $("#rDir").value;
+  if (!direccionCompleta(t)) return;
+  timerRec = setTimeout(() => { const k = C.normalizarDireccion(t).texto.toLowerCase(); if (k !== ultimaRec) { ultimaRec = k; $("#rBuscar").click(); } }, 1500);
+});
 $("#rGuardar").onclick = async () => {
   const remitente = $("#rRem").value.trim(), direccion = $("#rDir").value.trim();
   if (!remitente || !direccion) { toast("Escribe el remitente y la dirección de recogida"); return; }
@@ -526,11 +533,18 @@ async function ubicar(dir) {
   // Quitar duplicados cercanos
   return cands.filter((c, i) => cands.findIndex(d => C.km(c, d) < 0.05) === i).slice(0, 5);
 }
-$("#nBuscar").onclick = async () => {
-  const dir = $("#nDir").value.trim(); if (!dir) { toast("Escribe primero la dirección de entrega"); return; }
+let ultimaBuscada = "", buscando = false, timerDir = null;
+async function buscarDestino(auto = false) {
+  const dir = $("#nDir").value.trim();
+  if (!dir) { if (!auto) toast("Escribe primero la dirección de entrega"); return; }
+  const clave = C.normalizarDireccion(dir).texto.toLowerCase();
+  if (auto && (clave === ultimaBuscada || buscando)) return;
+  ultimaBuscada = clave; buscando = true;
   const btn = $("#nBuscar"); btn.disabled = true; btn.textContent = "Buscando…"; $("#nCands").innerHTML = "";
+  $("#nPin").textContent = "Ubicando la dirección en el mapa…";
   try {
     const cands = await ubicar(dir);
+    if ($("#nDir").value.trim() !== dir) { buscando = false; btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa"; return; }
     if (!cands.length) { $("#nPin").textContent = "No encontré la dirección. Pega las coordenadas de Google Maps o toca el mapa en el sitio exacto."; }
     else {
       ponerPin(cands[0], cands[0].cruce ? "Ubicada por el cruce de vías. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Revisa el marcador y arrástralo si hace falta.");
@@ -540,8 +554,16 @@ $("#nBuscar").onclick = async () => {
       }
     }
   } catch { $("#nPin").textContent = "No se pudo buscar la dirección. Pega las coordenadas de Google Maps o toca el mapa."; }
-  btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa";
-};
+  buscando = false; btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa";
+}
+$("#nBuscar").onclick = () => buscarDestino(false);
+// Al terminar de escribir una dirección completa (ej. Cra 15 # 93-47), ubicarla sola en el mapa.
+const direccionCompleta = t => !!C.normalizarDireccion(t).via;
+$("#nDir").addEventListener("input", () => {
+  clearTimeout(timerDir);
+  if (direccionCompleta($("#nDir").value)) timerDir = setTimeout(() => buscarDestino(true), 1500);
+});
+$("#nDir").addEventListener("blur", () => { clearTimeout(timerDir); if (direccionCompleta($("#nDir").value)) buscarDestino(true); });
 $("#fNueva").onsubmit = async e => {
   e.preventDefault(); $("#nError").textContent = "";
   const btn = $("#nBtn"); btn.disabled = true;
@@ -583,7 +605,7 @@ $("#fNueva").onsubmit = async e => {
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
     $("#rImp").onclick = () => imprimirGuia(g);
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota"].forEach(id => $("#" + id).value = "");
-    S.pin = null; $("#nCoord").value = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
+    S.pin = null; ultimaBuscada = ""; $("#nCoord").value = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
   } catch (err) { $("#nError").textContent = err.message?.startsWith("Primero") || err.message?.startsWith("No pude") ? err.message : C.mensajeError(err); if (!S.pin) $("#nPin").textContent = TXT_SIN_UBICAR; }
   btn.disabled = false;
