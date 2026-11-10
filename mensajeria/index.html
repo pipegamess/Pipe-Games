@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109o">
+<link rel="stylesheet" href="estilos.css?v=20261110a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -85,6 +85,17 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 </style>
 </head>
 <body>
+
+<!-- Contraseña de acceso (número de documento de la empresa) -->
+<section class="login" id="vAcceso" hidden>
+  <div class="panel">
+    <form id="fAcceso" class="lista">
+      <label>Contraseña<input id="aClave" type="password" inputmode="numeric" autocomplete="off" required></label>
+      <button class="btn" type="submit">Continuar</button>
+      <div class="error" id="aError"></div>
+    </form>
+  </div>
+</section>
 
 <!-- Ingreso -->
 <section class="login" id="vLogin" hidden>
@@ -184,6 +195,15 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <div class="btns"><button class="btn chico" id="genInv">Generar invitación</button></div>
         <div id="invNueva"></div>
         <div class="lista" id="listaInv"></div>
+        <h3>Contraseña de acceso al panel</h3>
+        <p class="nota">Antes de iniciar sesión, el panel pide el número de documento (NIT o cédula) de una empresa registrada aquí. Solo se guarda una huella cifrada, nunca el número.</p>
+        <form id="fAccesoNuevo" class="lista">
+          <label>Empresa<input id="acEmpresa" placeholder="Pipe Games" required></label>
+          <label>Número de documento<input id="acDoc" type="password" inputmode="numeric" autocomplete="off" required></label>
+          <button class="btn chico" type="submit">Agregar empresa</button>
+          <div class="error" id="acError"></div>
+        </form>
+        <div class="lista" id="listaAcceso"></div>
       </section>
 
       <!-- RECAUDO -->
@@ -209,8 +229,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109o";
-import * as C from "./comun.js?v=20261109o";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261110a";
+import * as C from "./comun.js?v=20261110a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -236,14 +256,39 @@ $("#fLogin").onsubmit = async e => {
   catch (err) { $("#lError").textContent = C.mensajeError(err); }
 };
 $("#salir").onclick = () => signOut(auth);
+
+// Primer candado: antes del inicio de sesión se pide el número de documento de la empresa.
+// Queda abierto solo mientras esta pestaña siga abierta.
+const ss = { get: k => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} } };
+let intentosAcceso = 0;
+async function mostrarIngreso() {
+  $("#vPanel").hidden = true;
+  let activo = false;
+  if (ss.get("acceso") !== "ok") { try { activo = (await getDoc(doc(db, "acceso", "_activo"))).exists(); } catch {} }
+  $("#vAcceso").hidden = !activo; $("#vLogin").hidden = activo;
+  if (activo) $("#aClave").focus();
+}
+$("#fAcceso").onsubmit = async e => {
+  e.preventDefault(); $("#aError").textContent = "";
+  const v = $("#aClave").value.replace(/\D/g, "");
+  if (intentosAcceso >= 5) { $("#aError").textContent = "Demasiados intentos. Cierra la página y vuelve a intentarlo más tarde."; return; }
+  const b = e.submitter || $("#fAcceso button"); b.disabled = true;
+  try {
+    const ok = v.length >= 5 && (await getDoc(doc(db, "acceso", await C.huellaAcceso(v)))).exists();
+    if (ok) { ss.set("acceso", "ok"); $("#aClave").value = ""; $("#vAcceso").hidden = true; $("#vLogin").hidden = false; $("#lCorreo").focus(); }
+    else { intentosAcceso++; $("#aError").textContent = "Contraseña incorrecta."; }
+  } catch { $("#aError").textContent = "No se pudo comprobar. Revisa tu conexión."; }
+  b.disabled = false;
+};
+
 onAuthStateChanged(auth, async u => {
   subs.forEach(f => f()); subs = [];
-  if (!u) { $("#vLogin").hidden = false; $("#vPanel").hidden = true; return; }
+  if (!u) { mostrarIngreso(); return; }
   if (u.uid !== ADMIN_UID) {
     $("#lError").textContent = "Esta cuenta no es de despacho. Los mensajeros usan la app de Android.";
     await signOut(auth); return;
   }
-  $("#vLogin").hidden = true; $("#vPanel").hidden = false;
+  $("#vLogin").hidden = true; $("#vAcceso").hidden = true; $("#vPanel").hidden = false;
   $("#quien").textContent = u.email;
   iniciarMapa();
   escuchar();
@@ -256,6 +301,7 @@ function escuchar() {
   }, err));
   subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubic = {}; s.forEach(d => S.ubic[d.id] = d.data()); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); pintar(); }, err));
+  subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
@@ -346,18 +392,22 @@ function irA(t) {
 /* ---------- código secreto de rastreo para guías antiguas ---------- */
 let migrando = false;
 async function migrarClaves() {
-  const sin = Object.values(S.guias).filter(g => !g.clave);
+  const sin = Object.values(S.guias).filter(g => !g.clave || g.clave !== C.claveDeseada(g));
   if (migrando || !sin.length) return;
   migrando = true;
   try {
     for (const g of sin) {
-      const clave = C.nuevaClave();
+      const clave = C.claveDeseada(g);
+      const viejo = g.clave ? C.idRastreo(g) : g.numero;
       let foto = null;
-      if (g.estado === "entregada") try { const f = await getDoc(doc(db, "fotos", g.numero)); if (f.exists() && f.data().tipo !== "novedad") foto = f.data().imagen; } catch {}
+      if (g.estado === "entregada") {
+        try { const r = await getDoc(doc(db, "rastreo", viejo)); if (r.exists() && r.data().foto) foto = r.data().foto; } catch {}
+        if (!foto) try { const f = await getDoc(doc(db, "fotos", g.numero)); if (f.exists() && f.data().tipo !== "novedad") foto = f.data().imagen; } catch {}
+      }
       const b = writeBatch(db);
       b.update(doc(db, "guias", g.numero), { clave });
       b.set(doc(db, "rastreo", C.idRastreo({ ...g, clave })), C.vistaPublica(g, foto));
-      b.delete(doc(db, "rastreo", g.numero));
+      b.delete(doc(db, "rastreo", viejo));
       await b.commit();
     }
   } catch (e) { console.warn("migración de claves", e); }
@@ -467,7 +517,7 @@ function pintarDetalle() {
         <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</dd>
         <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
         <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
-        <dt>Código de rastreo</dt><dd class="guia">${esc(g.clave || "generando…")}</dd>
+        <dt>Clave de rastreo</dt><dd><span class="guia">${esc(g.clave || "generando…")}</span>${g.clave ? (C.esClaveCodigo(g.clave) ? " · código impreso en la etiqueta" : " · últimos 4 dígitos del celular") : ""}</dd>
         ${g.tipoEnvio ? `<dt>Tipo de envío</dt><dd>${esc(C.textoTipoEnvio(g))}</dd>` : ""}
         ${C.textoMarketplace(g) ? `<dt>Marketplace</dt><dd>${esc(C.textoMarketplace(g))}</dd>` : ""}
         <dt>Cobro</dt><dd>${C.textoCobro(g)}</dd>
@@ -879,7 +929,7 @@ async function guardarNuevaGuia(g, prefijo) {
     numero = C.numeroGuia(prefijo, k);
     for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
     g.numero = numero;
-    g.clave = C.nuevaClave();
+    g.clave = C.claveDeseada(g);
     tx.set(refA, { consecutivos: { [prefijo]: k } }, { merge: true });
     tx.set(doc(db, "guias", numero), g);
     tx.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(g));
@@ -998,7 +1048,7 @@ function imprimirGuia(g) {
     <div class="et-sec"><div class="et-rot">De</div>
       <div><b>${esc(g.remitente)}</b></div>${C.textoMarketplace(g) ? `<div>${esc(C.textoMarketplace(g))}</div>` : ""}</div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
-    <div class="et-sec et-pie"><div class="et-qr">${qr}</div>${g.clave ? `<div class="et-clave">Código de<br>rastreo<b>${esc(g.clave)}</b></div>` : ""}
+    <div class="et-sec et-pie"><div class="et-qr">${qr}</div>${C.esClaveCodigo(g.clave) ? `<div class="et-clave">Código de<br>rastreo<b>${esc(g.clave)}</b></div>` : ""}
       <div class="et-cobro"><span class="et-rot">Tipo de envío: ${esc(C.textoTipoEnvio(g) || (g.valor ? "Contra entrega" : "Directo"))}</span><b>${g.valor ? "COBRAR " + C.cop(g.valor) : "SIN COBRO"}</b></div></div>
   </div>`;
   try { JsBarcode("#etBarras", g.numero, { format: "CODE128", displayValue: false, margin: 0, height: 60, width: 2 }); } catch { $("#etBarras").remove(); }
@@ -1022,6 +1072,36 @@ function pintarMensajeros() {
     <div class="btns"><button class="btn sec chico" data-copinv="${esc(i.codigo)}">Copiar mensaje</button><button class="btn peligro chico" data-delinv="${esc(i.codigo)}">Eliminar</button></div></div>`).join("") : `<div class="nota">No hay invitaciones pendientes.</div>`;
 }
 const textoInvitacion = c => `Hola, te invito a trabajar con Mensajería Prueba.\n1. Descarga la app (archivo .apk) aquí: ${URL_APK}\n2. Instálala y toca "Crear cuenta".\n3. Usa este código de invitación: ${c}`;
+/* ---------- contraseña de acceso (empresas) ---------- */
+function pintarAcceso() {
+  const el = $("#listaAcceso"); if (!el) return;
+  if (S.acceso === null) { el.innerHTML = `<div class="vacio">Para usar esta opción, publica las reglas nuevas en Firebase.</div>`; return; }
+  const l = S.acceso || [];
+  el.innerHTML = l.length ? l.map(a => `<div class="item"><div class="arriba"><span>${esc(a.empresa)}</span><button class="btn sec chico" data-delacc="${a.id}">Quitar</button></div></div>`).join("")
+    : `<div class="vacio">Sin empresas: el panel muestra el inicio de sesión directamente.</div>`;
+}
+$("#fAccesoNuevo").onsubmit = async e => {
+  e.preventDefault(); $("#acError").textContent = "";
+  const d = $("#acDoc").value.replace(/\D/g, ""), emp = $("#acEmpresa").value.trim();
+  if (d.length < 5) { $("#acError").textContent = "Escribe el número de documento completo, solo números."; return; }
+  try {
+    const b = writeBatch(db);
+    b.set(doc(db, "acceso", await C.huellaAcceso(d)), { empresa: emp, creado: Date.now() });
+    b.set(doc(db, "acceso", "_activo"), { activo: true });
+    await b.commit();
+    $("#acDoc").value = ""; $("#acEmpresa").value = ""; toast("Empresa agregada. El panel ya pide la contraseña.");
+  } catch (err) { $("#acError").textContent = C.mensajeError(err); }
+};
+$("#listaAcceso").addEventListener("click", async e => {
+  const b = e.target.closest("[data-delacc]"); if (!b) return;
+  try {
+    const bt = writeBatch(db);
+    bt.delete(doc(db, "acceso", b.dataset.delacc));
+    if ((S.acceso || []).length <= 1) bt.delete(doc(db, "acceso", "_activo"));
+    await bt.commit(); toast("Empresa quitada");
+  } catch (err) { toast(C.mensajeError(err)); }
+});
+
 $("#genInv").onclick = async () => {
   const c = C.nuevoCodigo();
   try {

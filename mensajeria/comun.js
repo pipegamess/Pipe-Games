@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109o";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261110a";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -235,8 +235,25 @@ export function nuevoCodigo() {
   for (let i = 0; i < 6; i++) s += A[v[i] % A.length];
   return s;
 }
-// Código secreto de rastreo: sin él no se puede ver la guía (los números van en orden).
+// Clave de rastreo: sin ella no se puede ver la guía (los números van en orden).
+// Si la guía tiene celular, son sus últimos 4 dígitos; si no (Mercado Libre, Falabella),
+// un código de 6 caracteres que va impreso en la etiqueta.
 export const nuevaClave = nuevoCodigo;
+export function claveDeseada(g) {
+  const d = String(g.telefono || "").replace(/\D/g, "");
+  if (d.length >= 7) return d.slice(-4);
+  return g.clave && g.clave.length === 6 ? g.clave : nuevoCodigo();
+}
+export const esClaveCodigo = c => /^[A-Z0-9]{6}$/.test(c || "");
+
+// Contraseña de acceso al panel (número de documento de la empresa), guardada solo como huella.
+export async function huellaAcceso(numeroDocumento) {
+  const d = String(numeroDocumento || "").replace(/\D/g, "");
+  const te = new TextEncoder();
+  const k = await crypto.subtle.importKey("raw", te.encode(d), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: te.encode("mensajeria-acceso-v1"), iterations: 150000 }, k, 256);
+  return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
 export const idRastreo = g => `${g.numero}_${g.clave}`;
 export const linkRastreo = g => `${URL_RASTREO}?g=${encodeURIComponent(g.numero)}&c=${encodeURIComponent(g.clave || "")}`;
 
