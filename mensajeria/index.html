@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109l">
+<link rel="stylesheet" href="estilos.css?v=20261109m">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -34,7 +34,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .tabla th{font-size:12px;color:var(--muted);font-weight:600}
 .num{text-align:right!important}
 .scroll{overflow-x:auto}
-.ml-caja{border-color:#E6C619;background:color-mix(in srgb,#FFE600 10%,var(--surface))}
+.ml-caja{border-color:#E6C619;background:color-mix(in srgb,#FFE600 10%,var(--surface));transition:box-shadow .15s,border-color .15s}
+.ml-caja.arrastrando{border:2px dashed #C9A800;box-shadow:0 0 0 4px color-mix(in srgb,#FFE600 35%,transparent)}
 .ml-lista{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .ml-lista .fila-ml{display:flex;flex-direction:row;color:var(--ink);font-weight:400;gap:10px;align-items:flex-start;font-size:13px;border-top:1px solid var(--line);padding-top:6px}
 .ml-lista input{width:20px;height:20px;flex:none;margin-top:2px}
@@ -130,7 +131,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <label class="formato" for="fmtImp">Formato de impresión <select id="fmtImp"><option value="etiqueta">Etiqueta 10 × 15 cm</option><option value="carta">Hoja carta</option></select></label></div>
         <div class="item ml-caja" id="mlCaja">
           <b>Envíos Flex de Mercado Libre</b>
-          <span class="nota">Sube el PDF de etiquetas que descargas de Mercado Libre y las guías se crean solas. El mensajero las recibe escaneando el QR de la etiqueta de Mercado Libre.</span>
+          <span class="nota">Arrastra aquí el PDF de etiquetas que descargas de Mercado Libre, o toca el botón. Las guías se crean solas y el mensajero las recibe escaneando el QR de la etiqueta de Mercado Libre.</span>
           <label class="btn sec chico" style="align-self:flex-start;flex-direction:row">Cargar etiquetas (PDF)<input type="file" id="mlPdf" accept="application/pdf" multiple hidden></label>
           <div id="mlRes"></div>
         </div>
@@ -206,8 +207,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109l";
-import * as C from "./comun.js?v=20261109l";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109m";
+import * as C from "./comun.js?v=20261109m";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -762,8 +763,27 @@ async function leerEtiquetasPdf(file) {
 }
 const guiaPorEnvio = envio => Object.values(S.guias).find(g => g.marketplace?.envio === envio);
 let mlPendientes = [];
-$("#mlPdf").onchange = async e => {
-  const files = [...(e.target.files || [])]; e.target.value = "";
+$("#mlPdf").onchange = e => { const files = [...(e.target.files || [])]; e.target.value = ""; procesarArchivosML(files); };
+// Arrastrar y soltar los PDF sobre el recuadro amarillo
+(() => {
+  const caja = $("#mlCaja");
+  let dentro = 0;
+  const esArchivo = e => [...(e.dataTransfer?.types || [])].includes("Files");
+  caja.addEventListener("dragenter", e => { if (!esArchivo(e)) return; e.preventDefault(); dentro++; caja.classList.add("arrastrando"); });
+  caja.addEventListener("dragover", e => { if (!esArchivo(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  caja.addEventListener("dragleave", () => { dentro = Math.max(0, dentro - 1); if (!dentro) caja.classList.remove("arrastrando"); });
+  caja.addEventListener("drop", e => {
+    e.preventDefault(); dentro = 0; caja.classList.remove("arrastrando");
+    const files = [...(e.dataTransfer?.files || [])];
+    const pdfs = files.filter(f => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+    if (!pdfs.length) { $("#mlRes").innerHTML = `<div class="error">Suelta archivos PDF de etiquetas de Mercado Libre.</div>`; return; }
+    procesarArchivosML(pdfs);
+  });
+  // Evitar que el navegador abra el PDF si se suelta fuera del recuadro
+  window.addEventListener("dragover", e => { if (esArchivo(e)) e.preventDefault(); });
+  window.addEventListener("drop", e => { if (esArchivo(e) && !caja.contains(e.target)) e.preventDefault(); });
+})();
+async function procesarArchivosML(files) {
   if (!files.length) return;
   $("#mlRes").innerHTML = `<div class="nota">Leyendo etiquetas…</div>`;
   try {
@@ -775,7 +795,7 @@ $("#mlPdf").onchange = async e => {
     if (!mlPendientes.length) { $("#mlRes").innerHTML = `<div class="error">No encontré etiquetas de Mercado Libre en ese PDF.</div>`; return; }
     pintarMlPendientes();
   } catch (err) { $("#mlRes").innerHTML = `<div class="error">${esc(err.message || "No se pudo leer el PDF.")}</div>`; }
-};
+}
 function pintarMlPendientes() {
   const nuevas = mlPendientes.filter(d => !guiaPorEnvio(d.envio));
   $("#mlRes").innerHTML = `<div class="ml-lista">${mlPendientes.map((d, i) => { const ya = guiaPorEnvio(d.envio); return `<label class="fila-ml"><input type="checkbox" data-ml="${i}" ${ya ? "disabled" : "checked"}><span><b>${esc(d.nombre)}</b> · Envío ${esc(d.envio)}<br><span class="meta">${esc(d.direccion)}${d.localidadTxt ? ", " + esc(d.localidadTxt) : ""} · ${esc(d.referencia)}</span>${ya ? `<br><span class="pill entregada">Ya existe: ${esc(ya.numero)}</span>` : ""}</span></label>`; }).join("")}</div>
