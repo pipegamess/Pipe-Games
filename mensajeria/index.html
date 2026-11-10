@@ -76,6 +76,13 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .et-cobro b{display:block;font-family:var(--f-display);font-size:19pt;line-height:1.15;margin-top:1mm}
 .formato{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .formato select{width:auto;padding:6px 8px}
+.et-hoja{break-after:page;page-break-after:always}
+.et-hoja:last-child{break-after:auto;page-break-after:auto}
+.frecuente{display:flex;flex-direction:column;gap:6px}
+.frecuente .item{cursor:pointer}
+.chk{display:flex;flex-direction:row!important;gap:10px;align-items:flex-start;font-weight:400;color:var(--ink);padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.chk input{width:auto;margin-top:3px}
+.chk:last-child{border-bottom:0}
 @media print{
   /* Solo la etiqueta: lo demás no ocupa espacio, así no salen hojas en blanco */
   body > *:not(#etiqueta){display:none!important}
@@ -135,6 +142,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <div class="cifras" id="cifras"></div>
         <div class="buscar"><input id="busca" placeholder="Buscar por guía, cliente, dirección o número de venta" aria-label="Buscar"></div>
         <div class="filtros" id="filtros"></div>
+        <div class="btns"><button class="btn sec chico" id="bImpVarias">Imprimir varias guías</button></div>
+        <div id="impVarias" class="item" hidden></div>
         <div class="lista" id="listaGuias"><div class="vacio">Cargando guías…</div></div>
       </section>
 
@@ -163,6 +172,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label>Destinatario<input id="nCli" required placeholder="Nombre completo"></label>
             <label>Celular<input id="nTel" inputmode="tel" required placeholder="300 123 4567"></label>
           </div>
+          <div class="frecuente" id="nFrec" hidden></div>
           <div class="sug-caja"><label>Dirección de entrega<input id="nDir" required placeholder="Cra 15 # 93-47, apto 502" autocomplete="off"></label><div class="sugerencias" id="nSug" hidden></div></div>
           <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
           <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección y escoge una opción de la lista, o toca el mapa.</span></div>
@@ -214,6 +224,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <div id="formEntrega"></div>
         <h3>Entregas de dinero registradas</h3>
         <div class="lista" id="listaEntregas"></div>
+        <h3>Cierre del día</h3>
+        <div class="btns" style="align-items:flex-end"><label style="max-width:12em">Día<input type="date" id="cDia"></label><button class="btn chico" type="button" id="cExcel">Descargar Excel</button></div>
+        <div id="cierre"></div>
       </section>
     </div>
   </div>
@@ -424,7 +437,16 @@ async function guardarGuia(numero, cambios) {
 }
 
 /* ---------- GUÍAS ---------- */
-const FILTROS = [["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+// Guías quietas: llevan demasiado tiempo en el mismo estado.
+const LIMITE_QUIETA = { disponible: 24, tomada: 3, recogida: 3, en_camino: 4, novedad: 12 }; // horas
+const TXT_QUIETA = { disponible: "sin recoger", tomada: "recogida sin salir a ruta", recogida: "recogida sin salir a ruta", en_camino: "en camino", novedad: "novedad sin resolver" };
+function desdeEstado(g) { const e = [...(g.eventos || [])].reverse().find(x => x.estado === g.estado); return e?.t || g.actualizado || g.creado; }
+const horasQuieta = g => (Date.now() - desdeEstado(g)) / 36e5;
+const quieta = g => LIMITE_QUIETA[g.estado] != null && horasQuieta(g) >= LIMITE_QUIETA[g.estado];
+const textoHoras = h => h < 48 ? Math.floor(h) + " h" : Math.floor(h / 24) + " días";
+setInterval(() => { if (S.tab === "guias") pintarGuias(); }, 120000);
+
+const FILTROS = [["quietas", "Atrasadas"], ["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
 $("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
 $("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
 $("#listaGuias").addEventListener("click", e => { if (e.target.closest("a[data-aviso]")) return; const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
@@ -432,12 +454,13 @@ function pintarGuias() {
   const todas = Object.values(S.guias);
   const n = k => todas.filter(g => g.estado === k).length;
   const turno = Object.values(S.ubic).filter(u => u.enTurno).length;
-  $("#cifras").innerHTML = `<div><b>${todas.filter(g => C.ACTIVOS.includes(g.estado)).length}</b><span>Activas</span></div><div><b>${n("disponible")}</b><span>Sin mensajero</span></div><div><b>${n("en_camino")}</b><span>En camino</span></div><div><b>${n("novedad")}</b><span>Novedades</span></div><div><b>${turno}</b><span>En turno</span></div><div><b>${todas.filter(porAvisar).length}</b><span>Por avisar al cliente</span></div>`;
+  $("#cifras").innerHTML = `<div><b>${todas.filter(g => C.ACTIVOS.includes(g.estado)).length}</b><span>Activas</span></div><div><b>${n("disponible")}</b><span>Sin mensajero</span></div><div><b>${n("en_camino")}</b><span>En camino</span></div><div><b>${n("novedad")}</b><span>Novedades</span></div><div><b>${turno}</b><span>En turno</span></div><div><b>${todas.filter(porAvisar).length}</b><span>Por avisar al cliente</span></div><div${todas.some(quieta) ? ' style="color:var(--bad)"' : ""}><b>${todas.filter(quieta).length}</b><span>Atrasadas</span></div>`;
   $("#filtros").innerHTML = FILTROS.map(([k, l]) => `<button data-f="${k}" aria-pressed="${S.filtro === k}">${l}</button>`).join("");
   let lista = todas.filter(g => {
     if (S.filtro === "activas") return C.ACTIVOS.includes(g.estado);
     if (S.filtro === "avisar") return porAvisar(g);
     if (S.filtro === "comprobar") return porComprobar(g);
+    if (S.filtro === "quietas") return quieta(g);
     if (S.filtro === "ruta") return ["tomada", "recogida", "en_camino"].includes(g.estado);
     if (S.filtro === "todas") return true;
     return g.estado === S.filtro;
@@ -445,7 +468,7 @@ function pintarGuias() {
   if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre, g.marketplace?.venta, g.marketplace?.envio].join(" ").toLowerCase().includes(S.busca));
   $("#listaGuias").innerHTML = lista.length ? lista.map(g => `
     <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
-      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${porComprobar(g) ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
+      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${quieta(g) ? `<span class="pill novedad" title="${TXT_QUIETA[g.estado]}">Atrasada · ${textoHoras(horasQuieta(g))}</span>` : ""}${porComprobar(g) ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
       <div><b>${esc(g.cliente)}</b> · <span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</span></div>
       <div class="meta">${C.fecha(g.creado)}${g.tipoEnvio ? " · " + esc(C.textoTipoEnvio(g)) : ""} · ${C.textoCobro(g)}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
       ${porAvisar(g) ? `<div class="btns">${botonAviso(g, true)}</div>` : ""}
@@ -535,7 +558,7 @@ function pintarDetalle() {
       <div class="btns"><button class="btn chico" data-acc="guardarUbic" ${S.corr ? "" : "disabled"}>Guardar ubicación</button><button class="btn sec chico" data-acc="ubicOk">La ubicación está bien</button></div></div>` : ""}
     ${tipoAviso(g) && g.telefono ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
     <div class="btns">
-      <button class="btn chico" data-acc="imprimir">Imprimir guía</button>
+      ${imprimible(g) ? `<button class="btn chico" data-acc="imprimir">Imprimir guía</button>` : ""}
       <button class="btn sec chico" data-acc="link">Copiar link de rastreo</button>
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkRastreo(g)}">Abrir rastreo</a>
       <a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(C.direccionTexto(g.destino))}">Ver dirección en Google Maps</a>
@@ -561,7 +584,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
     return;
   }
   if (a === "link") return copiar(C.linkRastreo(S.guias[n]), "Link de rastreo copiado");
-  if (a === "imprimir") return imprimirGuia(g);
+  if (a === "imprimir") return imprimible(g) && imprimirGuias([g]);
   if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para confirmar"; return; }
   b.disabled = true;
   try {
@@ -993,13 +1016,13 @@ $("#fNueva").onsubmit = async e => {
     const link = C.linkRastreo(g);
     $("#nResultado").innerHTML = `<div class="item"><div class="arriba"><span>Guía creada</span><span class="pill disponible">Disponible</span></div>
       <div class="codigo">${numero}</div>
-      <div class="meta">Entrega en ${esc(locDestino)}. Imprímela y pégala en el paquete; el mensajero la recibe escaneando el código.</div>
-      <div class="btns"><button class="btn chico" id="rImp">Imprimir guía</button><button class="btn sec chico" id="rCopia">Copiar link de rastreo</button>
+      <div class="meta">Entrega en ${esc(locDestino)}. ${imprimible(g) ? "Imprímela y pégala en el paquete; el mensajero la recibe escaneando el código." : "No se imprime: el mensajero escanea la etiqueta de " + esc(g.tipoEnvio) + " del paquete."}</div>
+      <div class="btns">${imprimible(g) ? `<button class="btn chico" id="rImp">Imprimir guía</button>` : ""}<button class="btn sec chico" id="rCopia">Copiar link de rastreo</button>
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${numero}. Síguelo aquí: ${link}`)}">Enviar guía al cliente</a></div></div>`;
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
-    $("#rImp").onclick = () => imprimirGuia(g);
-    // Abrir la impresión de la guía apenas se crea
-    setTimeout(() => imprimirGuia(g), 300);
+    // Abrir la impresión de la guía apenas se crea (las de Mercado Libre y Falabella no se imprimen)
+    if (imprimible(g)) { $("#rImp").onclick = () => imprimirGuias([g]); setTimeout(() => imprimirGuias([g]), 300); }
+    $("#nFrec").hidden = true;
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro", "nMktVenta", "nMktEnvio"].forEach(id => $("#" + id).value = "");
     $("#filaMkt").hidden = true;
     $("#nTipo").value = "Directo"; ponerCobro(); $("#lTipoOtro").hidden = true;
@@ -1032,14 +1055,14 @@ $("#nTipo").onchange = () => {
 /* ---------- IMPRESIÓN ---------- */
 try { const f = localStorage.getItem("formatoImp"); if (f) $("#fmtImp").value = f; } catch {}
 $("#fmtImp").onchange = () => { try { localStorage.setItem("formatoImp", $("#fmtImp").value); } catch {} };
-function imprimirGuia(g) {
-  const carta = $("#fmtImp").value === "carta";
-  $("#estiloPagina").textContent = carta ? "@page{size:letter;margin:12mm}" : "@page{size:100mm 150mm;margin:2mm}";
+// Las guías de Mercado Libre y Falabella llevan la etiqueta del marketplace: no se imprimen.
+const imprimible = g => !g.marketplace && !["Mercado Libre", "Falabella"].includes(g.tipoEnvio);
+function htmlEtiqueta(g, i) {
   let qr = "";
   try { const q = qrcode(0, "M"); q.addData(C.linkRastreo(g)); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
-  $("#etiqueta").innerHTML = `<div class="et">
+  return `<div class="et-hoja"><div class="et">
     <div class="et-sec et-cab"><span class="et-marca">Mensajería Prueba</span><span>${C.fecha(g.creado)}</span></div>
-    <div class="et-sec"><div class="et-num">${esc(g.numero)}</div><svg class="et-barras" id="etBarras"></svg></div>
+    <div class="et-sec"><div class="et-num">${esc(g.numero)}</div><svg class="et-barras" id="etBarras${i}"></svg></div>
     <div class="et-sec"><div class="et-rot">Para</div>
       <div class="et-nombre">${esc(g.cliente)}</div>
       ${g.telefono ? `<div>Cel. ${esc(g.telefono)}</div>` : ""}
@@ -1050,10 +1073,67 @@ function imprimirGuia(g) {
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
     <div class="et-sec et-pie"><div class="et-qr">${qr}</div>${C.esClaveCodigo(g.clave) ? `<div class="et-clave">Código de<br>rastreo<b>${esc(g.clave)}</b></div>` : ""}
       <div class="et-cobro"><span class="et-rot">Tipo de envío: ${esc(C.textoTipoEnvio(g) || (g.valor ? "Contra entrega" : "Directo"))}</span><b>${g.valor ? "COBRAR " + C.cop(g.valor) : "SIN COBRO"}</b></div></div>
-  </div>`;
-  try { JsBarcode("#etBarras", g.numero, { format: "CODE128", displayValue: false, margin: 0, height: 60, width: 2 }); } catch { $("#etBarras").remove(); }
+  </div></div>`;
+}
+function imprimirGuias(lista) {
+  lista = lista.filter(imprimible);
+  if (!lista.length) { toast("No hay guías para imprimir"); return; }
+  const carta = $("#fmtImp").value === "carta";
+  $("#estiloPagina").textContent = carta ? "@page{size:letter;margin:12mm}" : "@page{size:100mm 150mm;margin:2mm}";
+  $("#etiqueta").innerHTML = lista.map(htmlEtiqueta).join("");
+  lista.forEach((g, i) => { try { JsBarcode("#etBarras" + i, g.numero, { format: "CODE128", displayValue: false, margin: 0, height: 60, width: 2 }); } catch { document.getElementById("etBarras" + i)?.remove(); } });
+  // Marcar como impresas, para saber cuáles faltan
+  const b = writeBatch(db), t = Date.now();
+  lista.forEach(g => b.update(doc(db, "guias", g.numero), { impresa: t }));
+  b.commit().catch(() => {});
   setTimeout(() => window.print(), 150);
 }
+
+/* Imprimir varias: guías propias (no marketplace) que aún no salen a ruta */
+$("#bImpVarias").onclick = () => {
+  const el = $("#impVarias");
+  if (!el.hidden) { el.hidden = true; return; }
+  const l = Object.values(S.guias).filter(g => imprimible(g) && ["disponible", "tomada", "recogida"].includes(g.estado)).sort((a, b) => a.creado - b.creado);
+  el.innerHTML = `<div class="arriba"><b>Imprimir varias guías</b><span class="meta">${l.length} sin salir a ruta</span></div>
+    <p class="nota" style="margin:0">Las guías de Mercado Libre y Falabella no aparecen: llevan la etiqueta del marketplace. Quedan marcadas las que aún no se han impreso.</p>
+    ${l.length ? `<div>${l.map(g => `<label class="chk"><input type="checkbox" value="${esc(g.numero)}" ${g.impresa ? "" : "checked"}><span><span class="guia">${esc(g.numero)}</span> · <b>${esc(g.cliente)}</b><br><span class="meta">${esc(g.destino?.direccion)} · ${C.textoCobro(g)}${g.impresa ? " · impresa " + C.fecha(g.impresa) : " · sin imprimir"}</span></span></label>`).join("")}</div>
+    <div class="btns"><button class="btn chico" id="ivImp">Imprimir seleccionadas</button><button class="btn sec chico" id="ivTodas">Marcar todas</button><button class="btn sec chico" id="ivNinguna">Quitar todas</button></div>` : `<div class="vacio">No hay guías pendientes por imprimir.</div>`}`;
+  el.hidden = false;
+  const marcar = v => el.querySelectorAll("input[type=checkbox]").forEach(c => c.checked = v);
+  $("#ivTodas") && ($("#ivTodas").onclick = () => marcar(true));
+  $("#ivNinguna") && ($("#ivNinguna").onclick = () => marcar(false));
+  $("#ivImp") && ($("#ivImp").onclick = () => {
+    const sel = [...el.querySelectorAll("input:checked")].map(c => S.guias[c.value]).filter(Boolean);
+    if (!sel.length) { toast("Marca al menos una guía"); return; }
+    el.hidden = true; imprimirGuias(sel);
+  });
+};
+
+/* ---------- CLIENTES FRECUENTES ---------- */
+// Al escribir el celular, se ofrecen los datos de entregas anteriores a ese número.
+const soloDig = t => String(t || "").replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
+function pintarFrecuente() {
+  const tel = soloDig($("#nTel").value), el = $("#nFrec");
+  if (tel.length < 10) { el.hidden = true; return; }
+  const vistas = new Set();
+  const prev = Object.values(S.guias).filter(g => soloDig(g.telefono) === tel && g.destino?.lat != null && !g.destino?.verificar)
+    .sort((a, b) => b.creado - a.creado)
+    .filter(g => { const k = (g.destino.direccion || "").toLowerCase().replace(/\s+/g, ""); if (vistas.has(k)) return false; vistas.add(k); return true; })
+    .slice(0, 3);
+  if (!prev.length) { el.hidden = true; return; }
+  el.innerHTML = `<span class="nota"><b>Cliente frecuente.</b> Toca una dirección para llenar los datos:</span>` + prev.map(g => `<div class="item" data-frec="${esc(g.numero)}" tabindex="0"><b>${esc(g.cliente)}</b><span class="meta">${esc(g.destino.direccion)}${g.destino.referencia ? " · " + esc(g.destino.referencia) : ""} · ${esc(g.destino.localidad)} · último envío ${C.fecha(g.creado)}</span></div>`).join("");
+  el.hidden = false;
+}
+$("#nTel").addEventListener("input", pintarFrecuente);
+$("#nFrec").addEventListener("click", e => {
+  const it = e.target.closest("[data-frec]"); if (!it) return;
+  const g = S.guias[it.dataset.frec]; if (!g) return;
+  $("#nCli").value = g.cliente || ""; $("#nDir").value = g.destino.direccion || ""; $("#nRef").value = g.destino.referencia || "";
+  ultimaBuscada = $("#nDir").value.trim(); $("#nCands").innerHTML = "";
+  ponerPin({ lat: g.destino.lat, lng: g.destino.lng, aprox: false }, "Ubicación de la entrega anterior a este cliente. Revisa el marcador.");
+  if (mapa) mapa.setView([g.destino.lat, g.destino.lng], 16);
+  $("#nFrec").hidden = true; $("#nCont").focus();
+});
 
 /* ---------- MENSAJEROS ---------- */
 function pintarMensajeros() {
@@ -1158,11 +1238,61 @@ $("#t-recaudo").addEventListener("click", e => {
   };
 });
 
+/* ---------- CIERRE DEL DÍA ---------- */
+const hoyISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+$("#cDia").value = hoyISO();
+$("#cDia").onchange = () => pintarCierre();
+function datosCierre() {
+  const [y, m, d] = ($("#cDia").value || hoyISO()).split("-").map(Number);
+  const ini = new Date(y, m - 1, d).getTime(), fin = ini + 864e5;
+  const enDia = t => t >= ini && t < fin;
+  const evDia = (g, est) => (g.eventos || []).find(e => e.estado === est && enDia(e.t));
+  const todas = Object.values(S.guias);
+  const creadas = todas.filter(g => enDia(g.creado));
+  const entregadas = todas.filter(g => g.estado === "entregada" && evDia(g, "entregada"));
+  const novedades = todas.filter(g => evDia(g, "novedad"));
+  const pendientes = todas.filter(g => C.ACTIVOS.includes(g.estado));
+  const porMens = {};
+  const fila = id => porMens[id] ||= { nombre: S.mens[id]?.nombre || "Sin mensajero", entregas: 0, efectivo: 0, nequi: 0, novedades: 0, recibido: 0 };
+  entregadas.forEach(g => { const f = fila(g.mensajeroId); f.entregas++; if (g.recaudo?.medio === "efectivo") f.efectivo += g.recaudo.valor || 0; if (g.recaudo?.medio === "nequi") f.nequi += g.recaudo.valor || 0; });
+  novedades.forEach(g => fila(g.mensajeroId).novedades++);
+  S.entregas.filter(e => enDia(e.t)).forEach(e => fila(e.mensajeroId).recibido += e.valor || 0);
+  const tocadas = [...new Set([...creadas, ...entregadas, ...novedades])];
+  return { dia: $("#cDia").value, creadas, entregadas, novedades, pendientes, porMens, tocadas, evDia,
+    efectivo: Object.values(porMens).reduce((s, f) => s + f.efectivo, 0), nequi: Object.values(porMens).reduce((s, f) => s + f.nequi, 0) };
+}
+function pintarCierre() {
+  const c = datosCierre(), filas = Object.values(c.porMens);
+  $("#cierre").innerHTML = `<div class="cifras"><div><b>${c.creadas.length}</b><span>Guías creadas</span></div><div><b>${c.entregadas.length}</b><span>Entregadas</span></div><div><b>${c.novedades.length}</b><span>Novedades</span></div><div><b>${c.pendientes.length}</b><span>Pendientes ahora</span></div><div><b>${C.cop(c.efectivo)}</b><span>Efectivo cobrado</span></div><div><b>${C.cop(c.nequi)}</b><span>Nequi</span></div></div>
+    ${filas.length ? `<div class="scroll"><table class="tabla"><thead><tr><th>Mensajero</th><th class="num">Entregas</th><th class="num">Novedades</th><th class="num">Efectivo</th><th class="num">Nequi</th><th class="num">Dinero recibido</th></tr></thead><tbody>${filas.map(f => `<tr><td>${esc(f.nombre)}</td><td class="num">${f.entregas}</td><td class="num">${f.novedades}</td><td class="num">${C.cop(f.efectivo)}</td><td class="num">${C.cop(f.nequi)}</td><td class="num">${C.cop(f.recibido)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="nota">Sin entregas ni novedades este día.</div>`}`;
+}
+const hora = t => t ? new Date(t).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }) : "";
+$("#cExcel").onclick = async () => {
+  const b = $("#cExcel"); b.disabled = true; b.textContent = "Preparando…";
+  try {
+    if (!window.XLSX) await new Promise((ok, mal) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; sc.onload = ok; sc.onerror = mal; document.head.appendChild(sc); });
+    const c = datosCierre();
+    const resumen = [["Cierre del día", c.dia], [], ["Guías creadas", c.creadas.length], ["Entregadas", c.entregadas.length], ["Novedades", c.novedades.length], ["Pendientes (activas ahora)", c.pendientes.length], ["Efectivo cobrado", c.efectivo], ["Nequi", c.nequi], [],
+      ["Mensajero", "Entregas", "Novedades", "Efectivo", "Nequi", "Dinero recibido por despacho", "Saldo del día"],
+      ...Object.values(c.porMens).map(f => [f.nombre, f.entregas, f.novedades, f.efectivo, f.nequi, f.recibido, f.efectivo - f.recibido])];
+    const detalle = [["Guía", "Creada", "Cliente", "Celular", "Dirección", "Localidad", "Tipo de envío", "Valor a cobrar", "Estado actual", "Mensajero", "Hora de entrega", "Recibió", "Medio de pago", "Valor recibido", "Novedad"],
+      ...c.tocadas.sort((a, b) => a.creado - b.creado).map(g => { const ent = c.evDia(g, "entregada"), nov = c.evDia(g, "novedad"); return [g.numero, C.fecha(g.creado), g.cliente || "", g.telefono || "", g.destino?.direccion || "", g.destino?.localidad || "", C.textoTipoEnvio(g) || "", g.valor || 0, C.ESTADOS[g.estado] || g.estado, g.mensajeroNombre || "", ent ? hora(ent.t) : "", g.recaudo?.recibe ? C.textoRecibe(g.recaudo.recibe) : "", g.recaudo ? (C.MEDIOS[g.recaudo.medio] || g.recaudo.medio || "") : "", g.recaudo?.valor || 0, nov ? nov.nota || "" : ""]; })];
+    const pend = [["Guía", "Estado", "Desde", "Cliente", "Dirección", "Mensajero", "Valor a cobrar"],
+      ...c.pendientes.map(g => [g.numero, C.ESTADOS[g.estado] || g.estado, C.fecha(desdeEstado(g)), g.cliente || "", g.destino?.direccion || "", g.mensajeroNombre || "", g.valor || 0])];
+    const wb = XLSX.utils.book_new();
+    [["Resumen", resumen, [28, 12, 12, 14, 14, 26, 14]], ["Guías del día", detalle, [18, 16, 24, 14, 34, 16, 16, 14, 14, 18, 14, 24, 14, 14, 30]], ["Pendientes", pend, [18, 14, 16, 24, 34, 18, 14]]].forEach(([n, d, w]) => {
+      const ws = XLSX.utils.aoa_to_sheet(d); ws["!cols"] = w.map(wch => ({ wch })); XLSX.utils.book_append_sheet(wb, ws, n);
+    });
+    XLSX.writeFile(wb, `cierre-${c.dia}.xlsx`);
+  } catch { toast("No se pudo generar el Excel. Revisa tu conexión."); }
+  b.disabled = false; b.textContent = "Descargar Excel";
+};
+
 /* ---------- render ---------- */
 function pintar() {
   if (S.tab === "guias") pintarGuias();
   if (S.tab === "mensajeros") pintarMensajeros();
-  if (S.tab === "recaudo") pintarRecaudo();
+  if (S.tab === "recaudo") { pintarRecaudo(); pintarCierre(); }
   if (S.abierta) pintarDetalle();
   pintarMapa();
 }
