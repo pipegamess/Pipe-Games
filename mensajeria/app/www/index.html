@@ -181,7 +181,9 @@ function escuchar() {
 }
 
 /* ---------- ubicación en segundo plano ---------- */
-let tok = { v: null, exp: 0 }, ultimoEnvio = { t: 0, lat: 0, lng: 0 }, enviando = false;
+let tok = { v: null, exp: 0 }, ultimoEnvio = { t: 0, lat: 0, lng: 0 }, enviando = 0;
+// Ninguna petición puede quedarse colgada: si no responde, se abandona y se reintenta.
+const conLimite = (p, ms, que) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(que + " sin respuesta")), ms))]);
 async function token() {
   if (tok.v && Date.now() < tok.exp - 5 * 60000) return tok.v;
   try {
@@ -191,8 +193,8 @@ async function token() {
     return tok.v;
   } catch {
     // En segundo plano, renueva el token por HTTP nativo.
-    const r = await Http.request({ method: "POST", url: `https://securetoken.googleapis.com/v1/token?key=${firebaseConfig.apiKey}`,
-      headers: { "Content-Type": "application/x-www-form-urlencoded" }, data: { grant_type: "refresh_token", refresh_token: S.u.refreshToken } });
+    const r = await conLimite(Http.request({ method: "POST", url: `https://securetoken.googleapis.com/v1/token?key=${firebaseConfig.apiKey}`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" }, data: { grant_type: "refresh_token", refresh_token: S.u.refreshToken } }), 15000, "renovar sesión");
     const d = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
     tok = { v: d.id_token, exp: Date.now() + Number(d.expires_in) * 1000 };
     return tok.v;
@@ -201,23 +203,26 @@ async function token() {
 async function enviarUbicacion(lat, lng, precision, forzar = false) {
   const ahora = Date.now();
   const mov = C.km(ultimoEnvio, { lat, lng }) * 1000;
-  if (!forzar && (enviando || (ahora - ultimoEnvio.t < 15000 && mov < 150))) return;
-  enviando = true;
+  // Se envía si se movió 50 m (cada 15 s como máximo) o, quieto, cada minuto para que despacho vea que sigue activo.
+  if (enviando && ahora - enviando < 30000) return;
+  if (!forzar && !((mov >= 50 && ahora - ultimoEnvio.t >= 15000) || ahora - ultimoEnvio.t >= 60000)) return;
+  enviando = ahora;
   try {
     const campos = { lat: { doubleValue: lat }, lng: { doubleValue: lng }, t: { integerValue: String(ahora) }, enTurno: { booleanValue: true }, nombre: { stringValue: S.perfil?.nombre || "" }, precision: { doubleValue: precision || 0 } };
     if (Http) {
       const mask = Object.keys(campos).map(k => "updateMask.fieldPaths=" + k).join("&");
-      const r = await Http.request({ method: "PATCH",
+      const r = await conLimite(Http.request({ method: "PATCH",
         url: `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/ubicaciones/${S.u.uid}?${mask}`,
-        headers: { Authorization: "Bearer " + await token(), "Content-Type": "application/json" }, data: { fields: campos } });
+        headers: { Authorization: "Bearer " + await token(), "Content-Type": "application/json" }, data: { fields: campos } }), 20000, "servidor");
+      if (r.status === 401 || r.status === 403) tok = { v: null, exp: 0 }; // sesión vencida: renovar en el próximo envío
       if (r.status >= 400) throw new Error("HTTP " + r.status);
     } else {
       await setDoc(doc(db, "ubicaciones", S.u.uid), { lat, lng, t: ahora, enTurno: true, nombre: S.perfil?.nombre || "", precision: precision || 0 }, { merge: true });
     }
     ultimoEnvio = { t: ahora, lat, lng };
-    S.ultimaSenal = ahora;
+    S.ultimaSenal = ahora; S.errorSenal = "";
   } catch (e) { S.errorSenal = String(e.message || e); }
-  enviando = false;
+  enviando = 0;
 }
 async function iniciarTurno(silencioso = false) {
   if (S.turno) return;
@@ -227,7 +232,7 @@ async function iniciarTurno(silencioso = false) {
     S.watcher = await BG.addWatcher({
       backgroundTitle: "Mensajería Prueba · en turno",
       backgroundMessage: "Compartiendo tu ubicación con despacho y clientes.",
-      requestPermissions: true, stale: false, distanceFilter: 25
+      requestPermissions: true, stale: false, distanceFilter: 0
     }, (loc, err) => {
       if (err) {
         if (err.code === "NOT_AUTHORIZED") { S.sinPermiso = true; terminarTurno(); ruta(true); }
@@ -244,6 +249,8 @@ async function iniciarTurno(silencioso = false) {
   } catch (e) { toast("No se pudo iniciar el turno: " + C.mensajeError(e)); }
   ruta(true);
 }
+// Al volver a abrir la app, enviar de inmediato la última posición
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S.turno && S.pos) enviarUbicacion(S.pos.lat, S.pos.lng, 0, true); });
 async function terminarTurno() {
   if (S.watcher != null) { try { await BG.removeWatcher({ id: S.watcher }); } catch {} }
   S.watcher = null; S.turno = false; ls.set("turno", "0");
