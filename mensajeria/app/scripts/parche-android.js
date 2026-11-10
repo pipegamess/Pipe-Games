@@ -34,6 +34,12 @@ if (!mf.includes("android.permission.CAMERA")) {
   mf = mf.replace("<application", `<uses-permission android:name="android.permission.CAMERA" />
     <application`);
 }
+// Ubicación "todo el tiempo": sin este permiso Android solo ofrece "solo con la app en uso",
+// y algunas marcas (Tecno, Infinix, Xiaomi...) cortan la ubicación con la pantalla apagada.
+if (!mf.includes("android.permission.ACCESS_BACKGROUND_LOCATION")) {
+  mf = mf.replace("<application", `<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <application`);
+}
 if (!mf.includes("com.google.mlkit.vision.DEPENDENCIES")) {
   mf = mf.replace("</application>", `    <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
     </application>`);
