@@ -1,20 +1,17 @@
 rules_version = '2';
+// Mensajería Prueba. Explicación de cada bloque en la ficha técnica.
 
-// Reglas de seguridad de Mensajería Prueba.
-// Se pegan en Firebase > Firestore Database > Reglas > Publicar.
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function autenticado() { return request.auth != null; }
 
-    // Felipe: único administrador (despacho).
     function esAdmin() {
       return autenticado() && request.auth.uid == '8xMsK91tEja5hzhBtjqDIgCP0423';
     }
 
     function rutaUsuario() { return /databases/$(database)/documents/usuarios/$(request.auth.uid); }
 
-    // Mensajero con perfil activo (registrado con invitación y no desactivado).
     function esMensajero() {
       return autenticado() && exists(rutaUsuario())
         && get(rutaUsuario()).data.rol == 'mensajero'
@@ -25,11 +22,9 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
     }
 
-    // ---------- Perfiles ----------
     match /usuarios/{uid} {
       allow read: if esAdmin() || (autenticado() && request.auth.uid == uid);
 
-      // El mensajero crea su propio perfil usando un código de invitación sin usar.
       allow create: if esAdmin() || (
         autenticado() && request.auth.uid == uid
         && request.resource.data.rol == 'mensajero'
@@ -48,7 +43,6 @@ service cloud.firestore {
       allow delete: if esAdmin();
     }
 
-    // ---------- Invitaciones ----------
     match /invitaciones/{codigo} {
       allow list, create, delete: if esAdmin();
       allow get: if autenticado();
@@ -62,19 +56,16 @@ service cloud.firestore {
       );
     }
 
-    // ---------- Guías (datos completos, privados) ----------
     match /guias/{numero} {
       allow read: if esAdmin() || esMensajero();
       allow create, delete: if esAdmin();
       allow update: if esAdmin() || (esMensajero() && (
-        // Tomar un pedido disponible
         (resource.data.estado == 'disponible'
           && resource.data.mensajeroId == null
           && request.resource.data.estado == 'tomada'
           && request.resource.data.mensajeroId == request.auth.uid
           && soloCambia(['estado', 'mensajeroId', 'mensajeroNombre', 'mensajeroPlaca', 'eventos', 'actualizado']))
         ||
-        // Avanzar un pedido propio
         (resource.data.mensajeroId == request.auth.uid
           && request.resource.data.mensajeroId == request.auth.uid
           && resource.data.estado in ['tomada', 'recogida', 'en_camino']
@@ -83,10 +74,6 @@ service cloud.firestore {
       ));
     }
 
-    // ---------- Rastreo (solo lo que ve el cliente) ----------
-    // El documento se llama NUMERO_CLAVE. La clave son los últimos 4 dígitos del
-    // celular del cliente (o un código de 6 caracteres si no hay celular).
-    // Sin ella no se puede abrir, y nadie puede listar la colección salvo despacho.
     function guiaDe(numero) { return /databases/$(database)/documents/guias/$(numero); }
     match /rastreo/{id} {
       allow get: if id.matches('^[A-Z0-9-]+_([0-9]{4}|[A-Z0-9]{6})$');
@@ -100,24 +87,17 @@ service cloud.firestore {
       );
     }
 
-    // ---------- Contraseña de acceso al panel ----------
-    // Cada documento es la huella cifrada del número de documento de una empresa.
     match /acceso/{id} {
       allow get: if true;
       allow list, write: if esAdmin();
     }
 
-    // ---------- Ubicación de mensajeros ----------
     match /ubicaciones/{uid} {
-      // El público solo ve la ubicación de un mensajero que está en turno.
       allow get: if esAdmin() || (autenticado() && request.auth.uid == uid) || resource.data.enTurno == true;
       allow list: if esAdmin();
       allow write: if esMensajero() && request.auth.uid == uid;
     }
 
-    // ---------- Fotos de entrega ----------
-    // Privadas: solo despacho y el mensajero del pedido. El cliente ve la foto
-    // de entrega dentro de su documento de rastreo.
     match /fotos/{numero} {
       allow get: if esAdmin() || (esMensajero() && get(guiaDe(numero)).data.mensajeroId == request.auth.uid);
       allow create, update: if esAdmin() || (
@@ -129,7 +109,6 @@ service cloud.firestore {
       allow delete: if esAdmin();
     }
 
-    // ---------- Dinero que el mensajero entrega a despacho ----------
     match /entregasDinero/{id} {
       allow read: if esAdmin() || (esMensajero() && resource.data.mensajeroId == request.auth.uid);
       allow write: if esAdmin();
