@@ -40,6 +40,12 @@ body{padding-top:env(safe-area-inset-top,0px)}
 .manual input{font-family:var(--f-mono);text-transform:uppercase;letter-spacing:.06em}
 .tel{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:var(--chip);color:var(--ink);text-decoration:none;font-family:var(--f-mono);font-weight:600;font-size:20px;letter-spacing:.03em}
 .tel svg{color:var(--ok);flex:none}
+.tel{width:100%;border:0;cursor:pointer;text-align:left}
+.contacto{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ruta-mapa{height:300px}
+.num-entrega{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 6px;border-radius:99px;background:var(--route);color:#fff;font-family:var(--f-display);font-weight:700;font-size:17px}
+.orden{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.orden select{width:auto;padding:6px 8px}
 .rapidas button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 11px;font-size:13px}
 </style>
 </head>
@@ -355,10 +361,10 @@ function pintarInicio() {
 }
 
 /* ---------- listas ---------- */
-function tarjeta(g, accion) {
+function tarjeta(g, accion, numero) {
   const d = S.pos && g.destino ? C.km(S.pos, g.destino) : null;
   return `<div class="item">
-    <div class="arriba"><span class="guia">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
+    <div class="arriba"><span style="display:flex;align-items:center;gap:8px">${numero ? `<span class="num-entrega">${numero}</span>` : ""}<span class="guia">${esc(g.numero)}</span></span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
     <div class="meta"><b style="color:var(--ink)">Recoge:</b> ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div>
     <div class="meta"><b style="color:var(--ink)">Entrega:</b> ${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${d != null ? ` · a ${d.toFixed(1)} km de ti` : ""}</div>
     <div class="meta">${g.tipoEnvio ? esc(C.textoTipoEnvio(g)) + " · " : ""}${C.textoCobro(g)}${g.contenido ? " · " + esc(g.contenido) : ""}</div>
@@ -407,13 +413,82 @@ function pintarDisponibles() {
   $("#bScan").onclick = async () => { const n = await escanear(); if (n) recibirGuia(n); };
   $("#fMan").onsubmit = e => { e.preventDefault(); recibirGuia($("#mNum").value); };
 }
+/* ---------- ruta: orden de entregas (se guarda en este celular) ---------- */
+const claveOrden = () => "orden:" + (S.u?.uid || "");
+function leerOrden() { try { return JSON.parse(ls.get(claveOrden()) || "[]"); } catch { return []; } }
+function guardarOrden(nums) { ls.set(claveOrden(), JSON.stringify(nums)); }
+// Pedidos en curso en el orden de la ruta; los nuevos van al final.
+function enRuta() {
+  const l = activos(), orden = leerOrden();
+  const pos = n => { const i = orden.indexOf(n); return i < 0 ? 1e9 : i; };
+  return l.sort((a, b) => pos(a.numero) - pos(b.numero) || a.actualizado - b.actualizado);
+}
+// Sugerencia: el más cercano primero y luego se corrigen cruces (2-opt), en línea recta.
+function sugerirOrden(lista, inicio) {
+  const pts = lista.filter(g => g.destino?.lat != null);
+  if (pts.length < 2) return lista.map(g => g.numero);
+  let actual = inicio || pts[0].destino, rest = [...pts], ruta = [];
+  while (rest.length) {
+    let k = 0, d = Infinity;
+    rest.forEach((g, i) => { const x = C.km(actual, g.destino); if (x < d) { d = x; k = i; } });
+    ruta.push(rest[k]); actual = rest[k].destino; rest.splice(k, 1);
+  }
+  const largo = r => r.reduce((s, g, i) => s + C.km(i ? r[i - 1].destino : (inicio || r[0].destino), g.destino), 0);
+  let mejoro = true, vueltas = 0;
+  while (mejoro && vueltas++ < 50) {
+    mejoro = false;
+    for (let i = 0; i < ruta.length - 1; i++) for (let j = i + 1; j < ruta.length; j++) {
+      const nueva = [...ruta.slice(0, i), ...ruta.slice(i, j + 1).reverse(), ...ruta.slice(j + 1)];
+      if (largo(nueva) + 1e-9 < largo(ruta)) { ruta = nueva; mejoro = true; }
+    }
+  }
+  const sin = lista.filter(g => g.destino?.lat == null).map(g => g.numero);
+  return [...ruta.map(g => g.numero), ...sin];
+}
+function linkRutaGoogle(l) {
+  // Google Maps admite hasta 9 paradas intermedias: se abre la ruta de las primeras 10 entregas.
+  const tramo = l.slice(0, 10).map(g => C.direccionTexto(g.destino));
+  const destino = tramo.pop();
+  let u = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(destino)}`;
+  if (S.pos) u += `&origin=${S.pos.lat},${S.pos.lng}`;
+  if (tramo.length) u += `&waypoints=${encodeURIComponent(tramo.join("|"))}`;
+  return u;
+}
 function pintarMios() {
-  const l = activos();
+  const l = enRuta();
   const nov = S.mios.filter(g => g.estado === "novedad");
+  const opciones = i => l.map((_, k) => `<option value="${k}" ${k === i ? "selected" : ""}>${k + 1}</option>`).join("");
   pantalla(`<h1>Mis pedidos</h1>
-    <div class="lista">${l.length ? l.map(g => tarjeta(g, `<a class="btn ancho" href="#g/${esc(g.numero)}">Ver pedido</a>`)).join("") : `<div class="vacio">No tienes pedidos en curso. Toma uno en “Disponibles”.</div>`}</div>
+    ${l.length ? `<div id="mapaRuta" class="mapa ruta-mapa"></div>
+    <div class="btns">${l.length > 1 ? `<button class="btn chico" id="bSugerir" style="flex:1">Sugerir ruta</button>` : ""}<button class="btn sec chico" id="bRutaGoogle" style="flex:1">Abrir ruta en Google Maps</button></div>
+    ${l.length > 10 ? `<p class="nota" style="margin:0">Google Maps abre las primeras 10 entregas. Al terminarlas, vuelve a tocar el botón.</p>` : ""}` : ""}
+    <div class="lista">${l.length ? l.map((g, i) => tarjeta(g, `<div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><label class="orden">Entrega <select data-orden="${esc(g.numero)}" aria-label="Número de entrega de ${esc(g.numero)}">${opciones(i)}</select></label><a class="btn chico" href="#g/${esc(g.numero)}">Ver pedido</a></div>`, i + 1)).join("") : `<div class="vacio">No tienes pedidos en curso. Escanea una guía para empezar.</div>`}</div>
     ${nov.length ? `<h3>Con novedad (esperando a despacho)</h3><div class="lista">${nov.map(g => tarjeta(g, "")).join("")}</div>` : ""}`);
   $("#raiz").onclick = null;
+  if (!l.length) return;
+  $("#raiz").onchange = e => {
+    const sel = e.target.closest("[data-orden]"); if (!sel) return;
+    const nums = l.map(g => g.numero).filter(n => n !== sel.dataset.orden);
+    nums.splice(+sel.value, 0, sel.dataset.orden);
+    guardarOrden(nums); pintarMios();
+  };
+  $("#bSugerir") && ($("#bSugerir").onclick = () => {
+    guardarOrden(sugerirOrden(l, S.pos)); pintarMios();
+    toast(S.pos ? "Ruta sugerida desde tu ubicación" : "Ruta sugerida. Inicia turno para calcularla desde donde estás.");
+  });
+  $("#bRutaGoogle").onclick = () => abrirExterno(linkRutaGoogle(l));
+  // Mapa con cada entrega numerada y la línea de la ruta
+  mapaG = L.map("mapaRuta", { zoomControl: false });
+  C.capaMapa(L).addTo(mapaG);
+  const linea = [];
+  if (S.pos) { L.marker([S.pos.lat, S.pos.lng], { icon: C.icono(L, "mensajero", C.iniciales(S.perfil.nombre)), zIndexOffset: 500 }).addTo(mapaG); linea.push([S.pos.lat, S.pos.lng]); }
+  l.forEach((g, i) => {
+    if (g.destino?.lat == null) return;
+    L.marker([g.destino.lat, g.destino.lng], { icon: C.icono(L, "destino", String(i + 1)) }).on("click", () => location.hash = "#g/" + g.numero).addTo(mapaG);
+    linea.push([g.destino.lat, g.destino.lng]);
+  });
+  if (linea.length > 1) L.polyline(linea, { color: getComputedStyle(document.documentElement).getPropertyValue("--route").trim(), weight: 3, dashArray: "6 7" }).addTo(mapaG);
+  if (linea.length > 1) mapaG.fitBounds(L.latLngBounds(linea).pad(0.15)); else if (linea.length) mapaG.setView(linea[0], 14);
 }
 
 /* ---------- detalle de pedido ---------- */
@@ -438,10 +513,13 @@ function pintarGuia(n) {
     <div class="panel">
       <h3>Entregar a</h3>
       <div style="font-size:18px"><b>${esc(g.cliente)}</b></div>
-      <a class="tel" href="${esc(telLlamar(g.telefono))}" aria-label="Llamar a ${esc(g.cliente)}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg><span>${esc(g.telefono)}</span></a>
+      <button type="button" class="tel" id="bTel" aria-expanded="false" aria-label="Contactar a ${esc(g.cliente)}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg><span>${esc(g.telefono)}</span></button>
+      <div class="contacto" id="contacto" hidden>
+        <a class="btn ok" href="${esc(telLlamar(g.telefono))}">Llamar</a>
+        <button type="button" class="btn sec" data-ext="${esc(C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, te escribo de Mensajería Prueba por tu pedido ${g.numero}.`))}">WhatsApp</button>
+      </div>
       <div><b>${esc(g.destino?.direccion)}</b></div>
       <div class="meta">${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</div>
-      <button class="btn sec ancho" data-ext="${esc("https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(dirTxt))}">Ver dirección en Google Maps</button>
       <div class="btns"><button class="btn sec chico" style="flex:1" data-ext="${esc(urlMapsTexto(dirTxt))}">Cómo llegar (Google Maps)</button><button class="btn sec chico" style="flex:1" data-ext="${esc("https://waze.com/ul?q=" + encodeURIComponent(dirTxt) + "&navigate=yes")}">Waze</button></div>
     </div>
     <div class="panel"><dl class="kv">
@@ -454,6 +532,7 @@ function pintarGuia(n) {
     <button class="btn btn-turno ${sig[0] === "entregar" ? "ok" : ""}" id="bSig">${sig[1]}</button>
     <a class="btn peligro ancho" href="#novedad/${esc(g.numero)}">Reportar novedad</a>`);
   $("#raiz").onclick = e => { const b = e.target.closest("[data-ext]"); if (b) abrirExterno(b.dataset.ext); };
+  $("#bTel").onclick = () => { const c = $("#contacto"); c.hidden = !c.hidden; $("#bTel").setAttribute("aria-expanded", String(!c.hidden)); };
   $("#bSig").onclick = async () => {
     if (sig[0] === "entregar") { location.hash = "#entregar/" + g.numero; return; }
     $("#bSig").disabled = true;
