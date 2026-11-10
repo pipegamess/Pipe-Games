@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109e">
+<link rel="stylesheet" href="estilos.css?v=20261109f">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -189,8 +189,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109e";
-import * as C from "./comun.js?v=20261109e";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109f";
+import * as C from "./comun.js?v=20261109f";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -385,8 +385,9 @@ let fotoCache = {};
 async function abrirDetalle(n) {
   S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
   const g = S.guias[n];
-  if (g?.estado === "entregada" && !fotoCache[n]) {
-    try { const f = await getDoc(doc(db, "fotos", n)); fotoCache[n] = f.exists() ? f.data().imagen : "sin"; } catch { fotoCache[n] = "sin"; }
+  const kf = n + ":" + g?.estado;
+  if ((g?.estado === "entregada" || g?.estado === "novedad") && !fotoCache[kf]) {
+    try { const f = await getDoc(doc(db, "fotos", n)); const d = f.exists() ? f.data() : null; fotoCache[kf] = d && (g.estado === "entregada" ? d.tipo !== "novedad" : d.tipo === "novedad") ? d.imagen : "sin"; } catch { fotoCache[kf] = "sin"; }
     if (S.abierta === n) pintarDetalle();
   }
 }
@@ -417,7 +418,9 @@ function pintarDetalle() {
         ${r?.recibe ? `<dt>Recibió</dt><dd>${esc(C.textoRecibe(r.recibe))}</dd>` : ""}
       </dl>
     </div>
-    ${g.estado === "entregada" ? (fotoCache[g.numero] && fotoCache[g.numero] !== "sin" ? `<img class="foto-entrega" alt="Foto de entrega" src="${fotoCache[g.numero]}">` : `<div class="vacio">${fotoCache[g.numero] === "sin" ? "Sin foto de entrega." : "Cargando foto…"}</div>`) : ""}
+    ${(() => { const f = fotoCache[g.numero + ":" + g.estado]; const nom = g.estado === "novedad" ? "de la novedad" : "de entrega";
+      if (g.estado !== "entregada" && g.estado !== "novedad") return "";
+      return f && f !== "sin" ? `<div class="panel"><h3>Foto ${nom}</h3><img class="foto-entrega" alt="Foto ${nom}" src="${f}"></div>` : `<div class="vacio">${f === "sin" ? "Sin foto " + nom + "." : "Cargando foto…"}</div>`; })()}
     ${tipoAviso(g) ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
     <div class="btns">
       <button class="btn chico" data-acc="imprimir">Imprimir guía</button>
@@ -456,7 +459,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
       lote.set(doc(db, "rastreo", n), C.vistaPublica({ ...g, ...limpia, recaudo: null }));
       lote.delete(doc(db, "fotos", n));
       await lote.commit();
-      delete fotoCache[n];
+      Object.keys(fotoCache).forEach(k => { if (k.startsWith(n + ":")) delete fotoCache[k]; });
       toast("Guía reiniciada: ya se puede volver a escanear");
     } else if (a === "cancelar") {
       ev.push(C.evento("cancelada", "Cancelada por despacho", "despacho"));

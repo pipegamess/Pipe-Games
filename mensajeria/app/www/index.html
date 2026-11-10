@@ -6,7 +6,7 @@
 <title>Mensajería Prueba</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109e">
+<link rel="stylesheet" href="estilos.css?v=20261109f">
 <style>
 body{padding-top:env(safe-area-inset-top,0px)}
 .pantalla{padding:14px max(16px,env(safe-area-inset-right,0px)) calc(90px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
@@ -72,8 +72,8 @@ body{padding-top:env(safe-area-inset-top,0px)}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109e";
-import * as C from "./comun.js?v=20261109e";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109f";
+import * as C from "./comun.js?v=20261109f";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -222,9 +222,9 @@ async function tomar(numero) {
     tx.set(doc(db, "rastreo", numero), C.vistaPublica({ ...g, ...cambios }));
     tomada = { ...g, ...cambios, eventosAntes: g.eventos || [] };
   });
-  // Al escanear, el pedido sale de una vez "En camino".
+  // Al escanear, el pedido queda "Recogido" a nombre del mensajero.
   const { eventosAntes, ...g } = tomada;
-  return guardar(g, { estado: "en_camino", eventos: [...eventosAntes, C.evento("en_camino", "", S.perfil.nombre)] });
+  return guardar(g, { estado: "recogida", eventos: [...eventosAntes, C.evento("recogida", "", S.perfil.nombre)] });
 }
 
 /* ---------- rutas ---------- */
@@ -350,7 +350,7 @@ function tarjeta(g, accion, numero) {
   const d = S.pos && g.destino ? C.km(S.pos, g.destino) : null;
   return `<div class="item">
     <div class="arriba"><span style="display:flex;align-items:center;gap:8px">${numero ? `<span class="num-entrega">${numero}</span>` : ""}<span class="guia">${esc(g.numero)}</span></span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
-    <div class="meta"><b style="color:var(--ink)">Recoge:</b> ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div>
+    <div><b>${esc(g.cliente)}</b></div>
     <div class="meta"><b style="color:var(--ink)">Entrega:</b> ${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${d != null ? ` · a ${d.toFixed(1)} km de ti` : ""}</div>
     <div class="meta">${g.tipoEnvio ? esc(C.textoTipoEnvio(g)) + " · " : ""}${C.textoCobro(g)}${g.contenido ? " · " + esc(g.contenido) : ""}</div>
     ${accion}
@@ -383,12 +383,12 @@ async function recibirGuia(n) {
   if (buscar(n) && ["tomada", "recogida", "en_camino"].includes(buscar(n).estado)) { location.hash = "#g/" + n; return; }
   if (buscar(n)?.estado === "entregada") { toast("Esa guía ya la entregaste."); return; }
   if (!S.turno) { toast("Inicia turno antes de recibir pedidos."); location.hash = "#inicio"; return; }
-  try { S.ultimaGuia = await tomar(n); toast("Pedido " + n + " en camino"); location.hash = "#g/" + n; }
+  try { S.ultimaGuia = await tomar(n); toast("Pedido " + n + " recogido"); location.hash = "#g/" + n; }
   catch (err) { toast(/^(Otro|La guía|Esta guía)/.test(err.message || "") ? err.message : C.mensajeError(err)); }
 }
 function pintarDisponibles() {
   pantalla(`<h1>Recibir pedido</h1>
-    <p class="nota" style="margin:0">Escanea el código QR o el código de barras de la guía impresa. El pedido queda en camino a tu nombre.</p>
+    <p class="nota" style="margin:0">Escanea el código QR o el código de barras de la guía impresa. El pedido queda recogido a tu nombre; cuando salgas a ruta, márcalo En camino.</p>
     <button class="btn btn-escanear ok" id="bScan">Escanear guía</button>
     <form class="manual" id="fMan"><input id="mNum" placeholder="BOG-7K2M9Q" aria-label="Número de guía" autocomplete="off"><button class="btn sec" type="submit">Recibir</button></form>`);
   $("#raiz").onclick = null;
@@ -502,7 +502,11 @@ function pintarGuia(n) {
       </div>
       <div><b>${esc(g.destino?.direccion)}</b></div>
       <div class="meta">${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</div>
-      <div class="btns"><button class="btn sec chico" style="flex:1" data-ext="${esc(urlMapsTexto(dirTxt))}">Cómo llegar (Google Maps)</button><button class="btn sec chico" style="flex:1" data-ext="${esc("https://waze.com/ul?q=" + encodeURIComponent(dirTxt) + "&navigate=yes")}">Waze</button></div>
+      <button type="button" class="btn sec ancho" id="bLlegar" aria-expanded="false">Cómo llegar</button>
+      <div class="contacto" id="llegar" hidden>
+        <button type="button" class="btn sec" data-ext="${esc(urlMapsTexto(dirTxt))}">Google Maps</button>
+        <button type="button" class="btn sec" data-ext="${esc("https://waze.com/ul?q=" + encodeURIComponent(dirTxt) + "&navigate=yes")}">Waze</button>
+      </div>
     </div>
     <div class="panel"><dl class="kv">
       ${g.tipoEnvio ? `<dt>Tipo de envío</dt><dd>${esc(C.textoTipoEnvio(g))}</dd>` : ""}
@@ -514,6 +518,7 @@ function pintarGuia(n) {
     <button class="btn btn-turno ${sig[0] === "entregar" ? "ok" : ""}" id="bSig">${sig[1]}</button>
     <a class="btn peligro ancho" href="#novedad/${esc(g.numero)}">Reportar novedad</a>`);
   $("#raiz").onclick = e => { const b = e.target.closest("[data-ext]"); if (b) abrirExterno(b.dataset.ext); };
+  $("#bLlegar").onclick = () => { const c = $("#llegar"); c.hidden = !c.hidden; $("#bLlegar").setAttribute("aria-expanded", String(!c.hidden)); };
   $("#bTel").onclick = () => { const c = $("#contacto"); c.hidden = !c.hidden; $("#bTel").setAttribute("aria-expanded", String(!c.hidden)); };
   $("#bSig").onclick = async () => {
     if (sig[0] === "entregar") { location.hash = "#entregar/" + g.numero; return; }
@@ -590,7 +595,7 @@ function pintarEntregar(n) {
     if (g.valor && v !== g.valor && !mot) { $("#eErr").textContent = "Escribe por qué el valor recibido es diferente."; return; }
     $("#bEnt").disabled = true; $("#bEnt").textContent = "Guardando…";
     try {
-      await setDoc(doc(db, "fotos", n), { imagen: foto, t: Date.now(), mensajeroId: S.u.uid });
+      await setDoc(doc(db, "fotos", n), { imagen: foto, tipo: "entrega", t: Date.now(), mensajeroId: S.u.uid });
       const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot, recibe: { tipo: recibe(), nombre: recibe() === "cliente" ? g.cliente : recNom } };
       S.ultimaGuia = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] });
       toast("Pedido entregado"); location.hash = "#mios";
@@ -605,13 +610,25 @@ function pintarNovedad(n) {
   pantalla(`<a class="btn sec chico volver" href="#g/${esc(n)}">← Volver</a><h1>Novedad en ${esc(n)}</h1>
     <div class="rapidas">${["Cliente no contesta", "Dirección errada", "Cliente no estaba", "Cliente rechazó el pedido", "Paquete dañado"].map(t => `<button data-t="${t}">${t}</button>`).join("")}</div>
     <label>Describe lo que pasó<textarea id="nTxt" required></textarea></label>
+    <label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="nFoto"><span id="tNFoto">Tomar foto de la novedad (opcional)</span></label>
+    <img class="foto-entrega" id="vNFoto" alt="Foto de la novedad" hidden>
     <p class="nota" style="margin:0">Despacho decide si el pedido vuelve a quedar disponible o se devuelve a la tienda.</p>
     <button class="btn btn-turno" id="bNov">Reportar novedad</button><div class="error" id="nErr"></div>`);
   document.querySelector(".rapidas").onclick = e => { const b = e.target.closest("[data-t]"); if (b) $("#nTxt").value = b.dataset.t; };
+  let fotoNov = null;
+  $("#nFoto").onchange = async e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    $("#tNFoto").textContent = "Procesando foto…";
+    try { fotoNov = await C.comprimirImagen(f); $("#vNFoto").src = fotoNov; $("#vNFoto").hidden = false; $("#tNFoto").textContent = "Cambiar foto"; }
+    catch { $("#tNFoto").textContent = "No se pudo leer la foto. Intenta de nuevo."; }
+  };
   $("#bNov").onclick = async () => {
     const t = $("#nTxt").value.trim(); if (!t) { $("#nErr").textContent = "Describe la novedad."; return; }
     $("#bNov").disabled = true;
-    try { await guardar(g, { estado: "novedad", eventos: [...(g.eventos || []), C.evento("novedad", t, S.perfil.nombre)] }); toast("Novedad reportada a despacho"); location.hash = "#mios"; }
+    try {
+      if (fotoNov) await setDoc(doc(db, "fotos", n), { imagen: fotoNov, tipo: "novedad", t: Date.now(), mensajeroId: S.u.uid });
+      await guardar(g, { estado: "novedad", eventos: [...(g.eventos || []), C.evento("novedad", t, S.perfil.nombre)] }); toast("Novedad reportada a despacho"); location.hash = "#mios";
+    }
     catch (err) { $("#nErr").textContent = C.mensajeError(err); $("#bNov").disabled = false; }
   };
 }
