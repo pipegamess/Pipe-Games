@@ -29,11 +29,16 @@ fs.writeFileSync(path.join(dir, "ic_tracking.xml"),
 // Escáner de Google (ML Kit): descargar el módulo al instalar la app.
 const manifest = path.join(__dirname, "..", "android", "app", "src", "main", "AndroidManifest.xml");
 let mf = fs.readFileSync(manifest, "utf8");
+// Cámara para el escaneo continuo de guías.
+if (!mf.includes("android.permission.CAMERA")) {
+  mf = mf.replace("<application", `<uses-permission android:name="android.permission.CAMERA" />
+    <application`);
+}
 if (!mf.includes("com.google.mlkit.vision.DEPENDENCIES")) {
   mf = mf.replace("</application>", `    <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
     </application>`);
-  fs.writeFileSync(manifest, mf);
 }
+fs.writeFileSync(manifest, mf);
 
 // Versión visible de la app = número de compilación de GitHub.
 const gradle = path.join(__dirname, "..", "android", "app", "build.gradle");

@@ -7,7 +7,7 @@
 <meta name="description" content="Sigue tu pedido en tiempo real con tu número de guía.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109f">
+<link rel="stylesheet" href="estilos.css?v=20261109g">
 <style>
 .envoltura{max-width:720px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .buscar{display:flex;gap:8px}
@@ -19,20 +19,21 @@
 </head>
 <body>
 <main class="envoltura">
-  <header><h1>Mensajería <span class="marca">Prueba</span></h1><p class="nota" style="margin:4px 0 0">Rastrea tu pedido con el número de guía.</p></header>
+  <header><h1><a href="rastreo.html" id="inicio" style="color:inherit;text-decoration:none">Mensajería <span class="marca">Prueba</span></a></h1><p class="nota" style="margin:4px 0 0">Rastrea tu pedido con el número de guía.</p></header>
   <form class="buscar" id="fBuscar">
     <input id="guia" placeholder="BOG-7K2M9Q" autocomplete="off" aria-label="Número de guía" required>
     <button class="btn" type="submit">Rastrear</button>
   </form>
   <div id="salida"></div>
+  <button class="btn sec" id="otra" hidden>Buscar otra guía</button>
   <div id="mapa" class="mapa" hidden></div>
   <div id="salida2"></div>
   <p class="pie">Mensajería Prueba · Bogotá</p>
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109f";
-import * as C from "./comun.js?v=20261109f";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109g";
+import * as C from "./comun.js?v=20261109g";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, onSnapshot, getDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -46,13 +47,22 @@ $("#fBuscar").onsubmit = e => { e.preventDefault(); buscar($("#guia").value); };
 const inicial = new URLSearchParams(location.search).get("g");
 if (inicial) buscar(inicial);
 
+// Volver al inicio: borrar la guía consultada para buscar otra.
+function limpiar() {
+  unsubG?.(); unsubU?.(); unsubG = unsubU = null; g = u = foto = null; ajustado = "";
+  $("#salida").innerHTML = ""; $("#salida2").innerHTML = ""; $("#mapa").hidden = true; $("#otra").hidden = true;
+  $("#guia").value = ""; history.replaceState(null, "", location.pathname);
+  window.scrollTo({ top: 0, behavior: "smooth" }); $("#guia").focus();
+}
+$("#otra").onclick = limpiar;
+$("#inicio").onclick = e => { e.preventDefault(); limpiar(); };
 function buscar(raw) {
   const n = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
   if (!n) return;
   $("#guia").value = n;
   history.replaceState(null, "", "?g=" + encodeURIComponent(n));
   unsubG?.(); unsubU?.(); g = u = foto = null; ajustado = "";
-  $("#salida").innerHTML = `<div class="vacio">Buscando ${esc(n)}…</div>`; $("#salida2").innerHTML = ""; $("#mapa").hidden = true;
+  $("#salida").innerHTML = `<div class="vacio">Buscando ${esc(n)}…</div>`; $("#salida2").innerHTML = ""; $("#mapa").hidden = true; $("#otra").hidden = false;
   unsubG = onSnapshot(doc(db, "rastreo", n), s => {
     if (!s.exists()) { g = null; $("#mapa").hidden = true; $("#salida2").innerHTML = ""; $("#salida").innerHTML = `<div class="vacio error">No encontramos la guía <span class="guia">${esc(n)}</span>. Revisa que el número esté completo, por ejemplo BOG-7K2M9Q.</div>`; return; }
     const antes = g;
