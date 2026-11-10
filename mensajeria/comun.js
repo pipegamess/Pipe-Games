@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109j";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109k";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -41,6 +41,11 @@ export const MEDIOS = { efectivo: "Efectivo", nequi: "Nequi", pagado: "Sin cobro
 export const TIPOS_ENVIO = ["Directo", "Contra entrega", "Mercado Libre", "Falabella", "Otros"];
 // "Sin cobro" o "$215.000 contra entrega"
 export function textoCobro(g) { return g.valor ? `${cop(g.valor)} contra entrega` : "Sin cobro"; }
+// Referencia del marketplace: "Mercado Libre · Venta 2000… · Envío 4123…"
+export function textoMarketplace(g) {
+  const m = g.marketplace; if (!m || !m.venta) return "";
+  return `${m.canal} · ${m.canal === "Falabella" ? "Orden" : "Venta"} ${m.venta}${m.envio ? " · Envío " + m.envio : ""}`;
+}
 export function textoTipoEnvio(g) { return g.tipoEnvio === "Otros" && g.tipoEnvioOtro ? g.tipoEnvioOtro : (g.tipoEnvio || ""); }
 export const RECIBE = { cliente: "Cliente", porteria: "Portería", familiar: "Familiar" };
 export function textoRecibe(r) {
