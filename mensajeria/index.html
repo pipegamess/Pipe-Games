@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109i">
+<link rel="stylesheet" href="estilos.css?v=20261109j">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -143,6 +143,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
           <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección y escoge una opción de la lista, o toca el mapa.</span></div>
           <div class="lista" id="nCands"></div>
+          <div class="panel aviso-ubic" id="nComprobar" hidden><b>Ubicación cercana, comprobar manualmente.</b><span class="nota">No encontré la dirección exacta y puse un punto cercano en el mapa. Arrástralo al sitio correcto o toca el mapa donde es la entrega. Luego toca Crear guía.</span><div class="btns"><button type="button" class="btn sec chico" id="nUbicOk">El punto ya está bien</button><a class="btn sec chico" id="nVerGM" target="_blank" rel="noopener">Ver dirección en Google Maps</a></div></div>
           <h3>Paquete</h3>
           <div class="fila">
             <label>Tipo de envío<select id="nTipo"><option>Directo</option><option>Contra entrega</option><option>Mercado Libre</option><option>Falabella</option><option>Otros</option></select></label>
@@ -191,8 +192,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109i";
-import * as C from "./comun.js?v=20261109i";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109j";
+import * as C from "./comun.js?v=20261109j";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -255,7 +256,7 @@ function iniciarMapa() {
     const p = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
     if (S.editRec) { S.recPin = p; $("#rPinTxt").textContent = "Punto de recogida marcado. Toca Guardar."; pintarMapa(); return; }
     S.pin = p;
-    S.pin.aprox = false; $("#nCands").innerHTML = "";
+    S.pin.aprox = false; $("#nCands").innerHTML = ""; $("#nComprobar").hidden = true;
     $("#nPin").textContent = "Punto de entrega marcado en el mapa.";
     pintarMapa();
   });
@@ -296,7 +297,7 @@ function pintarMapa() {
     }
     if (S.pin && !S.editRec) {
       L.marker([S.pin.lat, S.pin.lng], { icon: C.icono(L, "destino", ""), draggable: true })
-        .on("dragend", e => { const ll = e.target.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; $("#nPin").textContent = "Punto de entrega marcado en el mapa."; })
+        .on("dragend", e => { const ll = e.target.getLatLng(); S.pin = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; $("#nComprobar").hidden = true; $("#nPin").textContent = "Punto de entrega marcado en el mapa."; })
         .addTo(capa);
     }
     aviso.textContent = S.editRec ? "Toca el mapa o arrastra la R al punto exacto de recogida." : "Toca el mapa o arrastra el marcador azul al punto exacto de entrega.";
@@ -335,7 +336,7 @@ async function guardarGuia(numero, cambios) {
 }
 
 /* ---------- GUÍAS ---------- */
-const FILTROS = [["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+const FILTROS = [["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
 $("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
 $("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
 $("#listaGuias").addEventListener("click", e => { if (e.target.closest("a[data-aviso]")) return; const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
@@ -501,6 +502,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
 });
 
 /* ---------- NUEVA GUÍA ---------- */
+$("#nUbicOk").onclick = () => { if (S.pin) { S.pin.aprox = false; $("#nComprobar").hidden = true; $("#nPin").textContent = "Ubicación comprobada. Ya puedes crear la guía."; } };
 const TXT_SIN_UBICAR = "Escribe la dirección y escoge una opción de la lista, o toca el mapa.";
 /* Punto de recogida fijo (se guarda en el perfil de despacho) */
 function pintarRecogida() {
@@ -542,6 +544,7 @@ $("#rGuardar").onclick = async () => {
   } catch (err) { toast(C.mensajeError(err)); }
 };
 function ponerPin(p, texto) {
+  $("#nComprobar").hidden = true;
   S.pin = { lat: p.lat, lng: p.lng, aprox: !!p.aprox };
   $("#nPin").textContent = texto;
   ajustado = ""; pintarMapa();
@@ -734,11 +737,22 @@ $("#fNueva").onsubmit = async e => {
       const c = await ubicar(dir);
       if (c.length) S.pin = { lat: c[0].lat, lng: c[0].lng, aprox: !c[0].cruce };
       else {
-        // Sin dirección exacta: punto cercano (la vía o la zona) y queda marcada para comprobar en Despacho.
+        // Sin dirección exacta: punto cercano (la vía o la zona) para que despacho lo ajuste
         const cerca = await tomtom(dir, "search").catch(() => []);
         const p0 = cerca[0] || C.BOGOTA;
         S.pin = { lat: p0.lat, lng: p0.lng, aprox: true };
       }
+    }
+    // Ubicación no exacta: despacho la comprueba aquí antes de crear la guía
+    if (S.pin.aprox) {
+      $("#nVerGM").href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(C.direccionTexto({ direccion: $("#nDir").value.trim() }));
+      $("#nComprobar").hidden = false;
+      $("#nPin").textContent = "Comprueba el punto en el mapa antes de crear la guía.";
+      ajustado = ""; pintarMapa();
+      if (mapa && S.pin) mapa.setView([S.pin.lat, S.pin.lng], 16);
+      $("#nComprobar").scrollIntoView({ behavior: "smooth", block: "center" });
+      btn.disabled = false;
+      return;
     }
     if (cobroElegido() === "contraentrega" && !valorCobro()) throw new Error("Escribe el valor a cobrar contra entrega.");
     if ($("#nTipo").value === "Otros" && !$("#nTipoOtro").value.trim()) throw new Error("Escribe cuál es el tipo de envío.");
@@ -750,7 +764,7 @@ $("#fNueva").onsubmit = async e => {
       numero, remitente: rec.remitente,
       origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
       cliente: $("#nCli").value.trim(), telefono: $("#nTel").value.trim(),
-      destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: !!p.aprox, verificar: !!p.aprox },
+      destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: false, verificar: false },
       contenido: $("#nCont").value.trim(), nota: $("#nNota").value.trim(),
       valor: cobroElegido() === "contraentrega" ? valorCobro() : 0,
       cobro: cobroElegido(),
@@ -785,7 +799,7 @@ $("#fNueva").onsubmit = async e => {
     setTimeout(() => imprimirGuia(g), 300);
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro"].forEach(id => $("#" + id).value = "");
     $("#nTipo").value = "Directo"; ponerCobro(); $("#lTipoOtro").hidden = true;
-    S.pin = null; ultimaBuscada = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
+    S.pin = null; ultimaBuscada = ""; $("#nComprobar").hidden = true; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
   } catch (err) { $("#nError").textContent = /^(Primero|No pude|Escribe)/.test(err.message || "") ? err.message : C.mensajeError(err); if (!S.pin) $("#nPin").textContent = TXT_SIN_UBICAR; }
   btn.disabled = false;
