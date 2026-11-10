@@ -6,7 +6,7 @@
 <title>Mensajería Prueba</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109f">
+<link rel="stylesheet" href="estilos.css?v=20261109g">
 <style>
 body{padding-top:env(safe-area-inset-top,0px)}
 .pantalla{padding:14px max(16px,env(safe-area-inset-right,0px)) calc(90px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
@@ -46,6 +46,19 @@ body{padding-top:env(safe-area-inset-top,0px)}
 .num-entrega{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 6px;border-radius:99px;background:var(--route);color:#fff;font-family:var(--f-display);font-weight:700;font-size:17px}
 .orden{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
 .orden select{width:auto;padding:6px 8px}
+html.escaneando,body.escaneando{background:transparent!important}
+body.escaneando>*:not(#capaEscaner){visibility:hidden!important}
+#capaEscaner{position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(20px + env(safe-area-inset-bottom,0px));pointer-events:none}
+#capaEscaner>*{pointer-events:auto}
+.esc-arriba{background:rgba(0,0,0,.72);color:#fff;border-radius:12px;padding:12px 16px;text-align:center;width:min(420px,100%)}
+.esc-arriba b{display:block;font-family:var(--f-display);font-size:26px}
+.esc-arriba .msg{font-size:14px;min-height:20px}
+.esc-arriba .msg.ok{color:#7CE3A3}.esc-arriba .msg.mal{color:#FF9C92}
+.esc-visor{width:min(70vw,300px);aspect-ratio:1;max-width:100%;border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 2000px rgba(0,0,0,.25);pointer-events:none!important}
+.esc-abajo{display:flex;gap:10px;width:min(420px,100%)}
+.esc-abajo .btn{flex:1;font-size:19px;padding:15px}
+.lista-recogidos .item{flex-direction:row;align-items:center;gap:12px}
+.lista-recogidos input{width:22px;height:22px;flex:none}
 .rapidas button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 11px;font-size:13px}
 </style>
 </head>
@@ -64,16 +77,21 @@ body{padding-top:env(safe-area-inset-top,0px)}
 <script src="capacitor.js"></script>
 <nav class="barra-abajo" id="barra" hidden>
   <a href="#inicio" data-r="inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
-  <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Escanear</a>
+  <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Escanear<span class="insignia" id="nEsc" hidden></span></a>
   <a href="#mios" data-r="mios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Mis pedidos<span class="insignia" id="nMios" hidden></span></a>
   <a href="#perfil" data-r="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Perfil</a>
 </nav>
 <div class="toast" id="toast" hidden></div>
+<div id="capaEscaner" hidden>
+  <div class="esc-arriba"><b id="escCuenta">0 guías recogidas</b><div class="msg" id="escMsg">Apunta al código QR o al código de barras de cada guía.</div></div>
+  <div class="esc-visor" aria-hidden="true"></div>
+  <div class="esc-abajo"><button class="btn sec" id="escLuz" type="button">Linterna</button><button class="btn ok" id="escFin" type="button">Finalizar escaneo</button></div>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109f";
-import * as C from "./comun.js?v=20261109f";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109g";
+import * as C from "./comun.js?v=20261109g";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -251,9 +269,11 @@ function ruta(soloDatos = false) {
   else location.hash = "#inicio";
 }
 const activos = () => S.mios.filter(g => ["tomada", "recogida", "en_camino"].includes(g.estado)).sort((a, b) => a.actualizado - b.actualizado);
+const recogidos = () => S.mios.filter(g => ["tomada", "recogida"].includes(g.estado)).sort((a, b) => a.actualizado - b.actualizado);
 function insignias() {
-  const m = activos().length;
+  const m = S.mios.filter(g => g.estado === "en_camino").length, r = recogidos().length;
   $("#nMios").hidden = !m; $("#nMios").textContent = m;
+  $("#nEsc").hidden = !r; $("#nEsc").textContent = r;
 }
 function saldo() {
   const ef = S.mios.filter(g => g.estado === "entregada" && g.recaudo?.medio === "efectivo").reduce((s, g) => s + (g.recaudo.valor || 0), 0);
@@ -377,23 +397,100 @@ async function escanear() {
     toast("No se pudo abrir el escáner: " + m); return null;
   }
 }
+// Recibe una guía: queda "Recogida" a nombre del mensajero. Devuelve { ok, msg }.
 async function recibirGuia(n) {
   n = C.guiaDesdeEscaneo(n) || String(n || "").trim().toUpperCase();
-  if (!/^BOG-[A-Z0-9]{6}$/.test(n)) { toast("Escribe el número completo, por ejemplo BOG-7K2M9Q."); return; }
-  if (buscar(n) && ["tomada", "recogida", "en_camino"].includes(buscar(n).estado)) { location.hash = "#g/" + n; return; }
-  if (buscar(n)?.estado === "entregada") { toast("Esa guía ya la entregaste."); return; }
-  if (!S.turno) { toast("Inicia turno antes de recibir pedidos."); location.hash = "#inicio"; return; }
-  try { S.ultimaGuia = await tomar(n); toast("Pedido " + n + " recogido"); location.hash = "#g/" + n; }
-  catch (err) { toast(/^(Otro|La guía|Esta guía)/.test(err.message || "") ? err.message : C.mensajeError(err)); }
+  if (!/^BOG-[A-Z0-9]{6}$/.test(n)) return { ok: false, msg: "Escribe el número completo, por ejemplo BOG-7K2M9Q." };
+  const ya = buscar(n);
+  if (ya && ["tomada", "recogida"].includes(ya.estado)) return { ok: true, msg: n + " ya estaba recogida", repetida: true };
+  if (ya?.estado === "en_camino") return { ok: false, msg: n + " ya va en camino" };
+  if (ya?.estado === "entregada") return { ok: false, msg: n + " ya la entregaste" };
+  try { S.ultimaGuia = await tomar(n); return { ok: true, msg: n + " recogida" }; }
+  catch (err) { return { ok: false, msg: /^(Otro|La guía|Esta guía)/.test(err.message || "") ? n + ": " + err.message : C.mensajeError(err) }; }
 }
+
+/* ---------- escaneo continuo: varias guías sin cerrar la cámara ---------- */
+const ESC = { activo: false, vistos: new Map(), cuenta: 0 };
+function escMsg(t, tipo = "") { const m = $("#escMsg"); m.textContent = t; m.className = "msg " + tipo; }
+async function iniciarEscaneo() {
+  if (!Escaner) { toast("El escáner solo funciona en la app instalada. Escribe el número de guía."); return; }
+  if (!S.turno) { toast("Inicia turno antes de recibir pedidos."); location.hash = "#inicio"; return; }
+  try {
+    const p = await Escaner.requestPermissions();
+    if (p.camera !== "granted" && p.camera !== "limited") { toast("La app necesita permiso de cámara para escanear. Actívalo en los ajustes de la app."); return; }
+  } catch {}
+  ESC.activo = true; ESC.vistos = new Map(); ESC.cuenta = 0;
+  $("#escCuenta").textContent = "0 guías recogidas"; escMsg("Apunta al código QR o al código de barras de cada guía.");
+  $("#capaEscaner").hidden = false;
+  document.documentElement.classList.add("escaneando"); document.body.classList.add("escaneando");
+  try {
+    await Escaner.addListener("barcodesScanned", ev => (ev?.barcodes || []).forEach(b => procesarCodigo(b.rawValue || b.displayValue)));
+    await Escaner.startScan({ formats: ["QR_CODE", "CODE_128"] });
+  } catch (e) { await finalizarEscaneo(); toast("No se pudo abrir la cámara: " + (e?.message || e)); }
+}
+async function procesarCodigo(v) {
+  if (!ESC.activo) return;
+  const n = C.guiaDesdeEscaneo(v);
+  if (!n) { escMsg("Ese código no es una guía de Mensajería Prueba.", "mal"); return; }
+  const antes = ESC.vistos.get(n);
+  if (antes === "ok" || antes === "procesando") return;            // ya leída: no repetir
+  if (typeof antes === "number" && Date.now() - antes < 4000) return; // falló hace poco: esperar antes de reintentar
+  ESC.vistos.set(n, "procesando");
+  escMsg("Recibiendo " + n + "…");
+  const r = await recibirGuia(n);
+  if (r.ok) {
+    ESC.vistos.set(n, "ok");
+    if (!r.repetida) ESC.cuenta++;
+    $("#escCuenta").textContent = ESC.cuenta + (ESC.cuenta === 1 ? " guía recogida" : " guías recogidas");
+    escMsg("✓ " + r.msg, "ok");
+    try { navigator.vibrate?.(120); } catch {}
+  } else {
+    ESC.vistos.set(n, Date.now());
+    escMsg("✗ " + r.msg, "mal");
+    try { navigator.vibrate?.([80, 60, 80]); } catch {}
+  }
+}
+async function finalizarEscaneo() {
+  ESC.activo = false;
+  try { await Escaner?.removeAllListeners(); } catch {}
+  try { await Escaner?.stopScan(); } catch {}
+  document.documentElement.classList.remove("escaneando"); document.body.classList.remove("escaneando");
+  $("#capaEscaner").hidden = true;
+  if (location.hash !== "#disponibles") location.hash = "#disponibles"; else ruta();
+}
+$("#escFin").onclick = () => finalizarEscaneo();
+$("#escLuz").onclick = async () => { try { await Escaner.toggleTorch(); } catch { toast("Este celular no tiene linterna disponible."); } };
+addEventListener("hashchange", () => { if (ESC.activo && location.hash !== "#disponibles") finalizarEscaneo(); });
 function pintarDisponibles() {
-  pantalla(`<h1>Recibir pedido</h1>
-    <p class="nota" style="margin:0">Escanea el código QR o el código de barras de la guía impresa. El pedido queda recogido a tu nombre; cuando salgas a ruta, márcalo En camino.</p>
-    <button class="btn btn-escanear ok" id="bScan">Escanear guía</button>
-    <form class="manual" id="fMan"><input id="mNum" placeholder="BOG-7K2M9Q" aria-label="Número de guía" autocomplete="off"><button class="btn sec" type="submit">Recibir</button></form>`);
+  const l = recogidos();
+  pantalla(`<h1>Recibir pedidos</h1>
+    <p class="nota" style="margin:0">Escanea todas las guías seguidas, sin cerrar la cámara. Cuando termines, toca <b>Finalizar escaneo</b>.</p>
+    <button class="btn btn-escanear ok" id="bScan">Escanear guías</button>
+    <form class="manual" id="fMan"><input id="mNum" placeholder="BOG-7K2M9Q" aria-label="Número de guía" autocomplete="off"><button class="btn sec" type="submit">Recibir</button></form>
+    <h3>Recogidas (${l.length})</h3>
+    ${l.length ? `<div class="lista lista-recogidos">${l.map(g => `<label class="item"><input type="checkbox" name="salir" value="${esc(g.numero)}" checked><span style="flex:1;min-width:0"><span class="guia">${esc(g.numero)}</span><br><b>${esc(g.cliente)}</b><br><span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)} · ${C.textoCobro(g)}</span></span></label>`).join("")}</div>
+    <button class="btn btn-turno" id="bSalir">Marcar en camino (${l.length})</button>` : `<div class="vacio">Aquí aparecen las guías que escanees. Cuando salgas a ruta, las marcas En camino y pasan a Mis pedidos.</div>`}`);
   $("#raiz").onclick = null;
-  $("#bScan").onclick = async () => { const n = await escanear(); if (n) recibirGuia(n); };
-  $("#fMan").onsubmit = e => { e.preventDefault(); recibirGuia($("#mNum").value); };
+  $("#bScan").onclick = () => iniciarEscaneo();
+  $("#fMan").onsubmit = async e => {
+    e.preventDefault();
+    if (!S.turno) { toast("Inicia turno antes de recibir pedidos."); location.hash = "#inicio"; return; }
+    const r = await recibirGuia($("#mNum").value); toast(r.msg); if (r.ok) { $("#mNum").value = ""; }
+  };
+  const actualizarBoton = () => { const k = document.querySelectorAll('input[name="salir"]:checked').length; if ($("#bSalir")) { $("#bSalir").textContent = `Marcar en camino (${k})`; $("#bSalir").disabled = !k; } };
+  document.querySelectorAll('input[name="salir"]').forEach(i => i.onchange = actualizarBoton);
+  $("#bSalir") && ($("#bSalir").onclick = async () => {
+    const nums = [...document.querySelectorAll('input[name="salir"]:checked')].map(i => i.value);
+    if (!nums.length) return;
+    $("#bSalir").disabled = true; $("#bSalir").textContent = "Marcando…";
+    let ok = 0;
+    for (const n of nums) {
+      const g = buscar(n); if (!g) continue;
+      try { await guardar(g, { estado: "en_camino", eventos: [...(g.eventos || []), C.evento("en_camino", "", S.perfil.nombre)] }); ok++; } catch {}
+    }
+    toast(ok === nums.length ? `${ok} pedido${ok === 1 ? "" : "s"} en camino` : `${ok} de ${nums.length} quedaron en camino. Revisa tu conexión e intenta de nuevo.`);
+    location.hash = "#mios";
+  });
 }
 /* ---------- ruta: orden de entregas (se guarda en este celular) ---------- */
 const claveOrden = () => "orden:" + (S.u?.uid || "");
@@ -401,7 +498,7 @@ function leerOrden() { try { return JSON.parse(ls.get(claveOrden()) || "[]"); } 
 function guardarOrden(nums) { ls.set(claveOrden(), JSON.stringify(nums)); }
 // Pedidos en curso en el orden de la ruta; los nuevos van al final.
 function enRuta() {
-  const l = activos(), orden = leerOrden();
+  const l = S.mios.filter(g => g.estado === "en_camino"), orden = leerOrden();
   const pos = n => { const i = orden.indexOf(n); return i < 0 ? 1e9 : i; };
   return l.sort((a, b) => pos(a.numero) - pos(b.numero) || a.actualizado - b.actualizado);
 }
@@ -444,7 +541,7 @@ function pintarMios() {
     ${l.length ? `<div id="mapaRuta" class="mapa ruta-mapa"></div>
     <div class="btns">${l.length > 1 ? `<button class="btn chico" id="bSugerir" style="flex:1">Sugerir ruta</button>` : ""}<button class="btn sec chico" id="bRutaGoogle" style="flex:1">Abrir ruta en Google Maps</button></div>
     ${l.length > 10 ? `<p class="nota" style="margin:0">Google Maps abre las primeras 10 entregas. Al terminarlas, vuelve a tocar el botón.</p>` : ""}` : ""}
-    <div class="lista">${l.length ? l.map((g, i) => tarjeta(g, `<div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><label class="orden">Entrega <select data-orden="${esc(g.numero)}" aria-label="Número de entrega de ${esc(g.numero)}">${opciones(i)}</select></label><a class="btn chico" href="#g/${esc(g.numero)}">Ver pedido</a></div>`, i + 1)).join("") : `<div class="vacio">No tienes pedidos en curso. Escanea una guía para empezar.</div>`}</div>
+    <div class="lista">${l.length ? l.map((g, i) => tarjeta(g, `<div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><label class="orden">Entrega <select data-orden="${esc(g.numero)}" aria-label="Número de entrega de ${esc(g.numero)}">${opciones(i)}</select></label><a class="btn chico" href="#g/${esc(g.numero)}">Ver pedido</a></div>`, i + 1)).join("") : `<div class="vacio">No tienes pedidos en camino. Escanea las guías en la pestaña Escanear y márcalas En camino.</div>`}</div>
     ${nov.length ? `<h3>Con novedad (esperando a despacho)</h3><div class="lista">${nov.map(g => tarjeta(g, "")).join("")}</div>` : ""}`);
   $("#raiz").onclick = null;
   if (!l.length) return;
