@@ -189,7 +189,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION } from "./config.js";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js";
 import * as C from "./comun.js";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
@@ -534,6 +534,10 @@ async function ubicar(dir) {
   const centro = C.BOGOTA;
   const n = C.normalizarDireccion(dir);
   const cands = [];
+  // 1) TomTom: número exacto o aproximado por cuadra
+  let tt = [];
+  try { tt = (await tomtom(dir, "geocode")).filter(x => x.tipo === "Point Address" || x.tipo === "Address Range"); } catch {}
+  tt.filter(x => x.tipo === "Point Address").forEach(x => cands.push({ lat: x.lat, lng: x.lng, etiqueta: x.titulo, lugar: x.lugar, cruce: true }));
   if (n.via) {
     try {
       const cruceTipos = n.tipo === "carrera" ? "Calle|Diagonal" : "Carrera|Transversal";
@@ -548,10 +552,11 @@ async function ubicar(dir) {
       if (e1) {
         let p = e1;
         if (e2 && C.km(e1, e2) < 0.5) { const f = Math.min(parseInt(p2, 10), 99) / 100; p = { lat: e1.lat + (e2.lat - e1.lat) * f, lng: e1.lng + (e2.lng - e1.lng) * f }; }
-        cands.push({ lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6), etiqueta: `${n.texto} (calculada por el cruce de vías)`, cruce: true });
+        cands.push({ lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6), etiqueta: `${n.texto} (calculada por el cruce de vías)`, lugar: "Calculada por el cruce de vías · " + C.localidadCercana(p), cruce: true });
       }
     } catch {}
   }
+  tt.filter(x => x.tipo === "Address Range").forEach(x => cands.push({ lat: x.lat, lng: x.lng, etiqueta: x.titulo, lugar: x.lugar, cruce: false }));
   const nom = async params => {
     const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=co&viewbox=-74.25,4.85,-73.99,4.45&bounded=1&" + params, { headers: { "Accept-Language": "es" } });
     const d = r.ok ? await r.json() : [];
@@ -593,16 +598,25 @@ async function buscarDestino(auto = false) {
 $("#nBuscar").onclick = () => buscarDestino(false);
 /* ---------- Sugerencias de direcciones mientras se escribe ---------- */
 const direccionCompleta = t => !!C.normalizarDireccion(t).via;
-async function photon(q) {
-  const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lat=${C.BOGOTA.lat}&lon=${C.BOGOTA.lng}&bbox=-74.25,4.45,-73.99,4.85`);
+/* TomTom: direcciones y lugares de Bogotá */
+const TT_TIPOS = { "Point Address": "Dirección exacta", "Address Range": "Dirección aproximada (por cuadra)", "Street": "Vía", "Cross Street": "Cruce de vías", "POI": "Lugar", "Geography": "Zona" };
+function ttConsulta(texto) {
+  const n = C.normalizarDireccion(texto);
+  return (n.via ? n.texto.replace(/\s*#\s*/, " ") : texto) + ", Bogotá";
+}
+async function tomtom(texto, modo = "search") {
+  if (!TOMTOM_KEY) return [];
+  const extra = modo === "search" ? "&typeahead=true&idxSet=PAD,Addr,Str,Xstr,POI" : "";
+  const url = `https://api.tomtom.com/search/2/${modo === "geocode" ? "geocode" : "search"}/${encodeURIComponent(ttConsulta(texto))}.json?key=${TOMTOM_KEY}&countrySet=CO&language=es-419&limit=6&lat=${C.BOGOTA.lat}&lon=${C.BOGOTA.lng}&topLeft=4.85,-74.25&btmRight=4.45,-73.99${extra}`;
+  const r = await fetch(url);
   if (!r.ok) return [];
   const d = await r.json();
-  return (d.features || []).map(f => {
-    const p = f.properties || {};
-    const calle = [p.street, p.housenumber].filter(Boolean).join(" # ");
-    const titulo = p.name && p.name !== p.street ? p.name : (calle || p.name || "");
-    const lugar = [p.name && calle && p.name !== p.street ? calle : "", p.district || p.locality, p.city].filter(Boolean).join(" · ");
-    return { lat: +f.geometry.coordinates[1].toFixed(6), lng: +f.geometry.coordinates[0].toFixed(6), titulo, lugar, exacta: !!p.housenumber || p.osm_key === "building" || p.osm_key === "amenity" || p.osm_key === "shop" || p.osm_value === "residential" && !!p.name };
+  return (d.results || []).filter(x => x.position).map(x => {
+    const a = x.address || {};
+    const dir = (a.freeformAddress || "").replace(/,\s*(Bogotá|Bogota)(,.*)?$/i, "");
+    const titulo = x.poi?.name || dir || a.streetName || "";
+    const lugar = [TT_TIPOS[x.type] || "", x.poi?.name ? dir : "", a.municipalitySubdivision || C.localidadCercana({ lat: x.position.lat, lng: x.position.lon }), a.municipality].filter(Boolean).join(" · ");
+    return { lat: +x.position.lat.toFixed(6), lng: +x.position.lon.toFixed(6), titulo, lugar, tipo: x.type, exacta: x.type === "Point Address" || x.type === "POI" };
   }).filter(x => x.titulo);
 }
 function sugerencias(inputSel, cajaSel, alElegir) {
@@ -620,17 +634,17 @@ function sugerencias(inputSel, cajaSel, alElegir) {
     const v = ++version;
     const n = C.normalizarDireccion(texto);
     pintarLista("Buscando…");
-    const tareas = [photon(n.via ? n.texto.replace("#", "") + ", Bogotá" : texto + ", Bogotá").catch(() => [])];
-    // Dirección completa: calcular el punto por cruce de vías (una vez por dirección)
+    // Dirección completa: buscarla (TomTom + cruce de vías), una vez por dirección. Si no, sugerencias de TomTom.
+    let todas = [];
     if (n.via) {
       const k = n.texto.toLowerCase();
       cruceCache[k] ||= ubicar(texto).catch(() => []);
-      tareas.push(cruceCache[k]);
+      const [ex, ph] = await Promise.all([cruceCache[k], tomtom(texto, "search").catch(() => [])]);
+      todas = [...ex.map(c => ({ lat: c.lat, lng: c.lng, titulo: c.etiqueta.replace(/ \(calculada por el cruce de vías\)$/, ""), lugar: c.lugar || C.localidadCercana(c), exacta: !!c.cruce })), ...ph.filter(x => x.tipo === "POI")];
+    } else {
+      todas = await tomtom(texto, "search").catch(() => []);
     }
-    const [ph, ex = []] = await Promise.all(tareas);
     if (v !== version) return;
-    const propias = ex.map(c => ({ lat: c.lat, lng: c.lng, titulo: n.texto, lugar: (c.cruce ? "Calculada por el cruce de vías · " : "") + C.localidadCercana(c), exacta: true }));
-    const todas = [...propias, ...ph];
     opciones = todas.filter((o, i) => todas.findIndex(x => C.km(o, x) < 0.03) === i).slice(0, 7);
     activa = -1;
     pintarLista(opciones.length ? "" : "Sin coincidencias. Toca el mapa en el sitio exacto.");
