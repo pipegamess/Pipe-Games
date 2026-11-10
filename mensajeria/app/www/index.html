@@ -6,7 +6,7 @@
 <title>Mensajería Prueba</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109n">
+<link rel="stylesheet" href="estilos.css?v=20261109o">
 <style>
 body{padding-top:env(safe-area-inset-top,0px)}
 .pantalla{padding:14px max(16px,env(safe-area-inset-right,0px)) calc(90px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
@@ -90,8 +90,8 @@ body.escaneando>*:not(#capaEscaner){visibility:hidden!important}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109n";
-import * as C from "./comun.js?v=20261109n";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109o";
+import * as C from "./comun.js?v=20261109o";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -218,11 +218,12 @@ async function terminarTurno() {
 }
 
 /* ---------- escritura ---------- */
-async function guardar(g, cambios) {
+async function guardar(g, cambios, foto) {
   const nueva = { ...g, ...cambios };
   const b = writeBatch(db);
   b.update(doc(db, "guias", g.numero), { ...cambios, actualizado: Date.now() });
-  b.set(doc(db, "rastreo", g.numero), C.vistaPublica(nueva));
+  // El rastreo vive en "NUMERO_CLAVE": solo lo ve quien tiene el código secreto.
+  if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(nueva, foto), { merge: true });
   await b.commit();
   return nueva;
 }
@@ -237,7 +238,7 @@ async function tomar(numero) {
     if (g.estado !== "disponible") throw new Error("Esta guía no está disponible (estado: " + (C.ESTADOS[g.estado] || g.estado) + ").");
     const cambios = { estado: "tomada", mensajeroId: S.u.uid, mensajeroNombre: S.perfil.nombre, mensajeroPlaca: S.perfil.placa || "", eventos: [...(g.eventos || []), C.evento("tomada", "", S.perfil.nombre)], actualizado: Date.now() };
     tx.update(ref, cambios);
-    tx.set(doc(db, "rastreo", numero), C.vistaPublica({ ...g, ...cambios }));
+    if (g.clave) tx.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica({ ...g, ...cambios }), { merge: true });
     tomada = { ...g, ...cambios, eventosAntes: g.eventos || [] };
   });
   // Al escanear, el pedido queda "Recogido" a nombre del mensajero.
@@ -712,7 +713,7 @@ function pintarEntregar(n) {
     try {
       await setDoc(doc(db, "fotos", n), { imagen: foto, tipo: "entrega", t: Date.now(), mensajeroId: S.u.uid });
       const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot, recibe: { tipo: recibe(), nombre: recibe() === "cliente" ? g.cliente : recNom } };
-      S.ultimaGuia = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] });
+      S.ultimaGuia = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] }, foto);
       toast("Pedido entregado"); location.hash = "#mios";
     } catch (err) { $("#eErr").textContent = C.mensajeError(err); $("#bEnt").disabled = false; $("#bEnt").textContent = "Confirmar entrega"; }
   };

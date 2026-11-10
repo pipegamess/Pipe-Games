@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109n">
+<link rel="stylesheet" href="estilos.css?v=20261109o">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -70,6 +70,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .et-pie{display:flex;gap:3mm;align-items:center}
 .et-qr{width:21mm;height:21mm;flex:none}
 .et-qr svg,.et-qr img{width:100%;height:100%}
+.et-clave{flex:none;text-align:center;font-size:7pt;line-height:1.2}
+.et-clave b{display:block;font-family:var(--f-mono);font-size:11pt;letter-spacing:.08em}
 .et-cobro{flex:1;border:2px solid #000;border-radius:2mm;padding:2mm;text-align:center}
 .et-cobro b{display:block;font-family:var(--f-display);font-size:19pt;line-height:1.15;margin-top:1mm}
 .formato{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
@@ -207,8 +209,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109n";
-import * as C from "./comun.js?v=20261109n";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109o";
+import * as C from "./comun.js?v=20261109o";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -250,7 +252,7 @@ onAuthStateChanged(auth, async u => {
 function escuchar() {
   const err = e => toast(C.mensajeError(e));
   subs.push(onSnapshot(query(collection(db, "guias"), orderBy("creado", "desc"), limit(500)), s => {
-    S.guias = {}; s.forEach(d => S.guias[d.id] = { numero: d.id, ...d.data() }); pintar();
+    S.guias = {}; s.forEach(d => S.guias[d.id] = { numero: d.id, ...d.data() }); pintar(); migrarClaves();
   }, err));
   subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubic = {}; s.forEach(d => S.ubic[d.id] = d.data()); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); pintar(); }, err));
@@ -341,12 +343,33 @@ function irA(t) {
   pintar();
 }
 
+/* ---------- código secreto de rastreo para guías antiguas ---------- */
+let migrando = false;
+async function migrarClaves() {
+  const sin = Object.values(S.guias).filter(g => !g.clave);
+  if (migrando || !sin.length) return;
+  migrando = true;
+  try {
+    for (const g of sin) {
+      const clave = C.nuevaClave();
+      let foto = null;
+      if (g.estado === "entregada") try { const f = await getDoc(doc(db, "fotos", g.numero)); if (f.exists() && f.data().tipo !== "novedad") foto = f.data().imagen; } catch {}
+      const b = writeBatch(db);
+      b.update(doc(db, "guias", g.numero), { clave });
+      b.set(doc(db, "rastreo", C.idRastreo({ ...g, clave })), C.vistaPublica(g, foto));
+      b.delete(doc(db, "rastreo", g.numero));
+      await b.commit();
+    }
+  } catch (e) { console.warn("migración de claves", e); }
+  migrando = false;
+}
+
 /* ---------- escritura de guías ---------- */
 async function guardarGuia(numero, cambios) {
   const g = { ...S.guias[numero], ...cambios };
   const b = writeBatch(db);
   b.update(doc(db, "guias", numero), { ...cambios, actualizado: Date.now() });
-  b.set(doc(db, "rastreo", numero), C.vistaPublica(g));
+  if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(g), { merge: true });
   await b.commit();
 }
 
@@ -444,6 +467,7 @@ function pintarDetalle() {
         <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</dd>
         <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
         <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
+        <dt>Código de rastreo</dt><dd class="guia">${esc(g.clave || "generando…")}</dd>
         ${g.tipoEnvio ? `<dt>Tipo de envío</dt><dd>${esc(C.textoTipoEnvio(g))}</dd>` : ""}
         ${C.textoMarketplace(g) ? `<dt>Marketplace</dt><dd>${esc(C.textoMarketplace(g))}</dd>` : ""}
         <dt>Cobro</dt><dd>${C.textoCobro(g)}</dd>
@@ -463,9 +487,9 @@ function pintarDetalle() {
     <div class="btns">
       <button class="btn chico" data-acc="imprimir">Imprimir guía</button>
       <button class="btn sec chico" data-acc="link">Copiar link de rastreo</button>
-      <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkRastreo(g.numero)}">Abrir rastreo</a>
+      <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkRastreo(g)}">Abrir rastreo</a>
       <a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(C.direccionTexto(g.destino))}">Ver dirección en Google Maps</a>
-      ${g.telefono ? `<a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g.numero)}`)}">Enviar guía por WhatsApp</a>` : ""}
+      ${g.telefono ? `<a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g)}`)}">Enviar guía por WhatsApp</a>` : ""}
     </div>
     ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
     <h3>Historial</h3><ol class="tl">${eventos}</ol>`;
@@ -486,7 +510,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
     } catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
     return;
   }
-  if (a === "link") return copiar(C.linkRastreo(n), "Link de rastreo copiado");
+  if (a === "link") return copiar(C.linkRastreo(S.guias[n]), "Link de rastreo copiado");
   if (a === "imprimir") return imprimirGuia(g);
   if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para confirmar"; return; }
   b.disabled = true;
@@ -505,7 +529,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
       const limpia = { estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "", eventos };
       const lote = writeBatch(db);
       lote.update(doc(db, "guias", n), { ...limpia, recaudo: deleteField(), actualizado: Date.now() });
-      lote.set(doc(db, "rastreo", n), C.vistaPublica({ ...g, ...limpia, recaudo: null }));
+      if (g.clave) lote.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica({ ...g, ...limpia, recaudo: null }, null), { merge: true });
       lote.delete(doc(db, "fotos", n));
       await lote.commit();
       Object.keys(fotoCache).forEach(k => { if (k.startsWith(n + ":")) delete fotoCache[k]; });
@@ -855,9 +879,10 @@ async function guardarNuevaGuia(g, prefijo) {
     numero = C.numeroGuia(prefijo, k);
     for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
     g.numero = numero;
+    g.clave = C.nuevaClave();
     tx.set(refA, { consecutivos: { [prefijo]: k } }, { merge: true });
     tx.set(doc(db, "guias", numero), g);
-    tx.set(doc(db, "rastreo", numero), C.vistaPublica(g));
+    tx.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(g));
   });
   return numero;
 }
@@ -915,7 +940,7 @@ $("#fNueva").onsubmit = async e => {
       eventos: [C.evento("disponible", "Guía creada", "despacho")]
     };
     numero = await guardarNuevaGuia(g, prefijo);
-    const link = C.linkRastreo(numero);
+    const link = C.linkRastreo(g);
     $("#nResultado").innerHTML = `<div class="item"><div class="arriba"><span>Guía creada</span><span class="pill disponible">Disponible</span></div>
       <div class="codigo">${numero}</div>
       <div class="meta">Entrega en ${esc(locDestino)}. Imprímela y pégala en el paquete; el mensajero la recibe escaneando el código.</div>
@@ -961,7 +986,7 @@ function imprimirGuia(g) {
   const carta = $("#fmtImp").value === "carta";
   $("#estiloPagina").textContent = carta ? "@page{size:letter;margin:12mm}" : "@page{size:100mm 150mm;margin:2mm}";
   let qr = "";
-  try { const q = qrcode(0, "M"); q.addData(C.linkRastreo(g.numero)); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
+  try { const q = qrcode(0, "M"); q.addData(C.linkRastreo(g)); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
   $("#etiqueta").innerHTML = `<div class="et">
     <div class="et-sec et-cab"><span class="et-marca">Mensajería Prueba</span><span>${C.fecha(g.creado)}</span></div>
     <div class="et-sec"><div class="et-num">${esc(g.numero)}</div><svg class="et-barras" id="etBarras"></svg></div>
@@ -973,7 +998,7 @@ function imprimirGuia(g) {
     <div class="et-sec"><div class="et-rot">De</div>
       <div><b>${esc(g.remitente)}</b></div>${C.textoMarketplace(g) ? `<div>${esc(C.textoMarketplace(g))}</div>` : ""}</div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
-    <div class="et-sec et-pie"><div class="et-qr">${qr}</div>
+    <div class="et-sec et-pie"><div class="et-qr">${qr}</div>${g.clave ? `<div class="et-clave">Código de<br>rastreo<b>${esc(g.clave)}</b></div>` : ""}
       <div class="et-cobro"><span class="et-rot">Tipo de envío: ${esc(C.textoTipoEnvio(g) || (g.valor ? "Contra entrega" : "Directo"))}</span><b>${g.valor ? "COBRAR " + C.cop(g.valor) : "SIN COBRO"}</b></div></div>
   </div>`;
   try { JsBarcode("#etBarras", g.numero, { format: "CODE128", displayValue: false, margin: 0, height: 60, width: 2 }); } catch { $("#etBarras").remove(); }

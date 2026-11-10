@@ -83,15 +83,19 @@ service cloud.firestore {
       ));
     }
 
-    // ---------- Rastreo público (solo lo que ve el cliente) ----------
-    match /rastreo/{numero} {
-      allow get: if true;
+    // ---------- Rastreo (solo lo que ve el cliente) ----------
+    // El documento se llama NUMERO_CLAVE. Sin el código secreto de 6 caracteres
+    // no se puede abrir, y nadie puede listar la colección salvo despacho.
+    function guiaDe(numero) { return /databases/$(database)/documents/guias/$(numero); }
+    match /rastreo/{id} {
+      allow get: if id.matches('^[A-Z0-9-]+_[A-Z0-9]{6}$');
       allow list: if esAdmin();
       allow create, delete: if esAdmin();
       allow update: if esAdmin() || (
         esMensajero()
         && request.resource.data.mensajeroId == request.auth.uid
-        && getAfter(/databases/$(database)/documents/guias/$(numero)).data.mensajeroId == request.auth.uid
+        && getAfter(guiaDe(request.resource.data.numero)).data.mensajeroId == request.auth.uid
+        && id == request.resource.data.numero + '_' + getAfter(guiaDe(request.resource.data.numero)).data.clave
       );
     }
 
@@ -104,8 +108,10 @@ service cloud.firestore {
     }
 
     // ---------- Fotos de entrega ----------
+    // Privadas: solo despacho y el mensajero del pedido. El cliente ve la foto
+    // de entrega dentro de su documento de rastreo.
     match /fotos/{numero} {
-      allow get: if true;
+      allow get: if esAdmin() || (esMensajero() && get(guiaDe(numero)).data.mensajeroId == request.auth.uid);
       allow create, update: if esAdmin() || (
         esMensajero()
         && get(/databases/$(database)/documents/guias/$(numero)).data.mensajeroId == request.auth.uid
