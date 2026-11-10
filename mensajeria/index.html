@@ -34,6 +34,11 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .tabla th{font-size:12px;color:var(--muted);font-weight:600}
 .num{text-align:right!important}
 .scroll{overflow-x:auto}
+.opciones-cobro{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opciones-cobro label{flex-direction:row;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:11px;color:var(--ink);font-weight:600;background:var(--surface)}
+.opciones-cobro input{width:auto;margin:0}
+.opciones-cobro label:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.et-tipo{font-family:var(--f-display);font-weight:700;font-size:11pt;letter-spacing:.06em;text-transform:uppercase;border:1.5px solid #000;border-radius:1.5mm;padding:.3mm 2mm}
 .sug-caja{position:relative}
 .sugerencias{position:absolute;left:0;right:0;top:100%;z-index:1200;margin-top:4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);max-height:320px;overflow-y:auto}
 .sugerencias button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);padding:9px 12px}
@@ -138,9 +143,15 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div class="lista" id="nCands"></div>
           <h3>Paquete</h3>
           <div class="fila">
-            <label>Contenido<input id="nCont" placeholder="1 juego PS5"></label>
-            <label>Valor a cobrar (COP)<input id="nVal" inputmode="numeric" placeholder="0 si ya está pago"></label>
+            <label>Tipo de envío<select id="nTipo"><option>Directo</option><option>Contra entrega</option><option>Mercado Libre</option><option>Falabella</option><option>Otros</option></select></label>
+            <label id="lTipoOtro" hidden>¿Cuál?<input id="nTipoOtro" placeholder="Ej. Linio, Instagram"></label>
           </div>
+          <label>Contenido<input id="nCont" placeholder="1 juego PS5"></label>
+          <div class="opciones-cobro" role="radiogroup" aria-label="Cobro">
+            <label><input type="radio" name="cobro" value="sin_cobro" checked> Sin cobro</label>
+            <label><input type="radio" name="cobro" value="contraentrega"> Contra entrega</label>
+          </div>
+          <label id="lVal" hidden>Valor a cobrar al entregar (COP)<input id="nVal" inputmode="numeric" placeholder="215000"></label>
           <label>Notas para el mensajero<textarea id="nNota" placeholder="Frágil, llamar antes de llegar"></textarea></label>
           <button class="btn" type="submit" id="nBtn">Crear guía</button>
           <div class="error" id="nError"></div>
@@ -347,7 +358,7 @@ function pintarGuias() {
     <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
       <div class="arriba"><span class="guia">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></div>
       <div><b>${esc(g.cliente)}</b> · <span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</span></div>
-      <div class="meta">${C.fecha(g.creado)} · ${g.valor ? "Cobrar " + C.cop(g.valor) : "Pagado"}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
+      <div class="meta">${C.fecha(g.creado)}${g.tipoEnvio ? " · " + esc(C.textoTipoEnvio(g)) : ""} · ${C.textoCobro(g)}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
     </div>`).join("")
     : `<div class="vacio">${todas.length ? "No hay guías en este filtro." : "Aún no hay guías. Crea la primera en “Nueva guía”."}</div>`;
 }
@@ -384,7 +395,8 @@ function pintarDetalle() {
         <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</dd>
         <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
         <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
-        <dt>Cobrar</dt><dd>${g.valor ? C.cop(g.valor) : "Ya pagado"}</dd>
+        ${g.tipoEnvio ? `<dt>Tipo de envío</dt><dd>${esc(C.textoTipoEnvio(g))}</dd>` : ""}
+        <dt>Cobro</dt><dd>${C.textoCobro(g)}</dd>
         ${g.nota ? `<dt>Notas</dt><dd>${esc(g.nota)}</dd>` : ""}
         <dt>Mensajero</dt><dd>${g.mensajeroNombre ? esc(g.mensajeroNombre) + (g.mensajeroPlaca ? " · " + esc(g.mensajeroPlaca) : "") + (u ? ` · señal ${C.hace(u.t)}` : "") : "Sin asignar"}</dd>
         ${r ? `<dt>Recaudo</dt><dd>${C.cop(r.valor)} · ${C.MEDIOS[r.medio] || r.medio}${r.motivo ? " · " + esc(r.motivo) : ""}</dd>` : ""}
@@ -652,6 +664,8 @@ $("#fNueva").onsubmit = async e => {
       if (!c.length) throw new Error("No pude ubicar la dirección de entrega. Toca el mapa en el sitio exacto.");
       S.pin = { lat: c[0].lat, lng: c[0].lng, aprox: !c[0].cruce };
     }
+    if (cobroElegido() === "contraentrega" && !valorCobro()) throw new Error("Escribe el valor a cobrar contra entrega.");
+    if ($("#nTipo").value === "Otros" && !$("#nTipoOtro").value.trim()) throw new Error("Escribe cuál es el tipo de envío.");
     let numero = C.nuevoNumero();
     for (let i = 0; i < 5 && (await getDoc(doc(db, "guias", numero))).exists(); i++) numero = C.nuevoNumero();
     const p = S.pin;
@@ -662,7 +676,10 @@ $("#fNueva").onsubmit = async e => {
       cliente: $("#nCli").value.trim(), telefono: $("#nTel").value.trim(),
       destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: !!p.aprox },
       contenido: $("#nCont").value.trim(), nota: $("#nNota").value.trim(),
-      valor: parseInt(($("#nVal").value || "0").replace(/\D/g, ""), 10) || 0,
+      valor: cobroElegido() === "contraentrega" ? valorCobro() : 0,
+      cobro: cobroElegido(),
+      tipoEnvio: $("#nTipo").value,
+      tipoEnvioOtro: $("#nTipo").value === "Otros" ? $("#nTipoOtro").value.trim() : "",
       zonas: [...new Set([rec.localidad || C.localidadCercana(rec), locDestino].filter(Boolean))],
       estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
       creado: Date.now(), actualizado: Date.now(),
@@ -680,11 +697,27 @@ $("#fNueva").onsubmit = async e => {
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${numero}. Síguelo aquí: ${link}`)}">Enviar guía al cliente</a></div></div>`;
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
     $("#rImp").onclick = () => imprimirGuia(g);
-    ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota"].forEach(id => $("#" + id).value = "");
+    ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro"].forEach(id => $("#" + id).value = "");
+    $("#nTipo").value = "Directo"; ponerCobro("sin_cobro"); $("#lTipoOtro").hidden = true;
     S.pin = null; ultimaBuscada = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
-  } catch (err) { $("#nError").textContent = err.message?.startsWith("Primero") || err.message?.startsWith("No pude") ? err.message : C.mensajeError(err); if (!S.pin) $("#nPin").textContent = TXT_SIN_UBICAR; }
+  } catch (err) { $("#nError").textContent = /^(Primero|No pude|Escribe)/.test(err.message || "") ? err.message : C.mensajeError(err); if (!S.pin) $("#nPin").textContent = TXT_SIN_UBICAR; }
   btn.disabled = false;
+};
+
+/* Cobro y tipo de envío */
+const cobroElegido = () => document.querySelector('input[name="cobro"]:checked')?.value || "sin_cobro";
+const valorCobro = () => parseInt(($("#nVal").value || "0").replace(/\D/g, ""), 10) || 0;
+function ponerCobro(v) {
+  document.querySelectorAll('input[name="cobro"]').forEach(i => i.checked = i.value === v);
+  $("#lVal").hidden = v !== "contraentrega";
+}
+document.querySelectorAll('input[name="cobro"]').forEach(i => i.onchange = () => { ponerCobro(cobroElegido()); if (cobroElegido() === "contraentrega") $("#nVal").focus(); });
+$("#nTipo").onchange = () => {
+  const t = $("#nTipo").value;
+  $("#lTipoOtro").hidden = t !== "Otros";
+  if (t === "Contra entrega") ponerCobro("contraentrega");
+  else if (t === "Mercado Libre" || t === "Falabella") ponerCobro("sin_cobro");
 };
 
 /* ---------- IMPRESIÓN ---------- */
@@ -696,7 +729,7 @@ function imprimirGuia(g) {
   let qr = "";
   try { const q = qrcode(0, "M"); q.addData(C.linkRastreo(g.numero)); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
   $("#etiqueta").innerHTML = `<div class="et">
-    <div class="et-sec et-cab"><span class="et-marca">Mensajería Prueba</span><span>${C.fecha(g.creado)}</span></div>
+    <div class="et-sec et-cab"><span class="et-marca">Mensajería Prueba</span>${g.tipoEnvio ? `<span class="et-tipo">${esc(C.textoTipoEnvio(g))}</span>` : ""}<span>${C.fecha(g.creado)}</span></div>
     <div class="et-sec"><div class="et-num">${esc(g.numero)}</div><svg class="et-barras" id="etBarras"></svg></div>
     <div class="et-sec"><div class="et-rot">Para</div>
       <div class="et-nombre">${esc(g.cliente)}</div>
@@ -708,7 +741,7 @@ function imprimirGuia(g) {
       <div>${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div></div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
     <div class="et-sec et-pie"><div class="et-qr">${qr}</div>
-      <div class="et-cobro"><span class="et-rot">${g.valor ? "Cobrar al entregar" : "Pago"}</span><b>${g.valor ? C.cop(g.valor) : "PAGADO"}</b><span style="font-size:8pt">Rastrea tu pedido con el código QR</span></div></div>
+      <div class="et-cobro"><span class="et-rot">${g.valor ? "Contra entrega · cobrar" : "Cobro"}</span><b>${g.valor ? C.cop(g.valor) : "SIN COBRO"}</b><span style="font-size:8pt">Rastrea tu pedido con el código QR</span></div></div>
   </div>`;
   try { JsBarcode("#etBarras", g.numero, { format: "CODE128", displayValue: false, margin: 0, height: 60, width: 2 }); } catch { $("#etBarras").remove(); }
   setTimeout(() => window.print(), 150);

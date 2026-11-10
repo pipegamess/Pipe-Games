@@ -355,7 +355,7 @@ function tarjeta(g, accion) {
     <div class="arriba"><span class="guia">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
     <div class="meta"><b style="color:var(--ink)">Recoge:</b> ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div>
     <div class="meta"><b style="color:var(--ink)">Entrega:</b> ${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${d != null ? ` · a ${d.toFixed(1)} km de ti` : ""}</div>
-    <div class="meta">${g.valor ? "Cobrar " + C.cop(g.valor) : "Ya pagado"}${g.contenido ? " · " + esc(g.contenido) : ""}</div>
+    <div class="meta">${g.tipoEnvio ? esc(C.textoTipoEnvio(g)) + " · " : ""}${C.textoCobro(g)}${g.contenido ? " · " + esc(g.contenido) : ""}</div>
     ${accion}
   </div>`;
 }
@@ -431,7 +431,8 @@ function pintarGuia(n) {
         <div class="btns"><button class="btn sec chico" data-ext="tel:${esc(String(g.telefono).replace(/[^\d+]/g, ""))}">Llamar</button><button class="btn sec chico" data-ext="${esc(urlMapsTexto(C.direccionTexto(g.destino)))}">Google Maps</button><button class="btn sec chico" data-ext="${esc("https://waze.com/ul?q=" + encodeURIComponent(C.direccionTexto(g.destino)) + "&navigate=yes")}">Waze</button></div>`}
     </div>
     <div class="panel"><dl class="kv">
-      <dt>Cobrar</dt><dd><b>${g.valor ? C.cop(g.valor) : "Ya pagado"}</b></dd>
+      ${g.tipoEnvio ? `<dt>Tipo de envío</dt><dd>${esc(C.textoTipoEnvio(g))}</dd>` : ""}
+      <dt>Cobro</dt><dd><b>${C.textoCobro(g)}</b></dd>
       <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
       ${g.nota ? `<dt>Notas</dt><dd>${esc(g.nota)}</dd>` : ""}
       ${recogiendo ? `<dt>Entrega</dt><dd>${esc(g.cliente)} · ${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</dd>` : `<dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)}</dd>`}
@@ -489,13 +490,12 @@ function pintarEntregar(n) {
       <label id="lRecNom" hidden><span id="tRecNom">Nombre de quien recibe</span><input id="eRecNom" autocomplete="off"></label>
     </div>
     <div class="panel">
-      <h3>Pago</h3>
-      ${g.valor ? `<p style="margin:0">Debes cobrar <b>${C.cop(g.valor)}</b></p>` : `<p style="margin:0">Este pedido ya estaba pago.</p>`}
-      <div class="medios">
-        <label><input type="radio" name="medio" value="efectivo" ${g.valor ? "checked" : ""}>Efectivo</label>
+      <h3>Cobro</h3>
+      ${g.valor ? `<p style="margin:0">Contra entrega: debes cobrar <b>${C.cop(g.valor)}</b></p>
+      <div class="medios" style="grid-template-columns:1fr 1fr">
+        <label><input type="radio" name="medio" value="efectivo" checked>Efectivo</label>
         <label><input type="radio" name="medio" value="nequi">Nequi</label>
-        <label><input type="radio" name="medio" value="pagado" ${g.valor ? "" : "checked"}>Ya pago</label>
-      </div>
+      </div>` : `<p style="margin:0"><b>Sin cobro.</b> No debes recibir dinero.</p><input type="radio" name="medio" value="pagado" checked hidden>`}
       <label id="lVal" ${g.valor ? "" : "hidden"}>Valor recibido (COP)<input id="eVal" inputmode="numeric" value="${g.valor}"></label>
       <label id="lMot" hidden>¿Por qué el valor es diferente?<input id="eMot" placeholder="Ej. el cliente pagó una parte por Nequi"></label>
     </div>
