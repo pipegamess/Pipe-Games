@@ -248,7 +248,7 @@ const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
 const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
-const { getFirestore, collection, doc, getDoc, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc, deleteField, runTransaction } = F;
+const { getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc, deleteField, runTransaction } = F;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -317,7 +317,7 @@ function escuchar() {
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */
@@ -427,6 +427,34 @@ async function migrarClaves() {
   migrando = false;
 }
 
+/* ---------- borrar fotos de más de 90 días (una vez al día, al abrir el panel) ---------- */
+// Firestore gratis tiene 1 GB; cada foto pesa ~100 KB y se guarda en fotos/ y en el rastreo.
+let limpiando = false;
+async function limpiarFotos(adm) {
+  const hoy = new Date().toDateString();
+  if (limpiando || adm.limpiezaDia === hoy) return;
+  limpiando = true;
+  try {
+    const corte = Date.now() - 90 * 864e5, desde = adm.limpiezaHasta || 0;
+    const s = await getDocs(query(collection(db, "guias"), where("creado", ">", desde), where("creado", "<", corte), orderBy("creado"), limit(150)));
+    let hasta = desde;
+    if (!s.empty) {
+      const b = writeBatch(db);
+      s.forEach(d => {
+        const g = { numero: d.id, ...d.data() };
+        b.delete(doc(db, "fotos", g.numero));
+        if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), { foto: null }, { merge: true });
+        b.update(doc(db, "guias", g.numero), { fotosBorradas: true });
+        hasta = Math.max(hasta, g.creado);
+      });
+      await b.commit();
+    }
+    // Si quedaron más por revisar, mañana sigue (o al recargar, porque no se marca el día).
+    await setDoc(doc(db, "usuarios", ADMIN_UID), { limpiezaHasta: hasta, ...(s.size < 150 ? { limpiezaDia: hoy } : {}) }, { merge: true });
+  } catch (e) { console.warn("limpieza de fotos", e); }
+  limpiando = false;
+}
+
 /* ---------- escritura de guías ---------- */
 async function guardarGuia(numero, cambios) {
   const g = { ...S.guias[numero], ...cambios };
@@ -517,7 +545,7 @@ async function abrirDetalle(n) {
   const g = S.guias[n];
   const kf = n + ":" + g?.estado;
   if ((g?.estado === "entregada" || g?.estado === "novedad") && !fotoCache[kf]) {
-    try { const f = await getDoc(doc(db, "fotos", n)); const d = f.exists() ? f.data() : null; fotoCache[kf] = d && (g.estado === "entregada" ? d.tipo !== "novedad" : d.tipo === "novedad") ? d.imagen : "sin"; } catch { fotoCache[kf] = "sin"; }
+    try { const f = await getDoc(doc(db, "fotos", n)); const d = f.exists() ? f.data() : null; const vale = d && (g.estado === "entregada" ? d.tipo !== "novedad" : d.tipo === "novedad"); fotoCache[kf] = vale ? d.imagen : "sin"; fotoCache[kf + ":comp"] = vale && d.comprobante || ""; } catch { fotoCache[kf] = "sin"; }
     if (S.abierta === n) pintarDetalle();
   }
 }
@@ -552,7 +580,9 @@ function pintarDetalle() {
     </div>
     ${(() => { const f = fotoCache[g.numero + ":" + g.estado]; const nom = g.estado === "novedad" ? "de la novedad" : "de entrega";
       if (g.estado !== "entregada" && g.estado !== "novedad") return "";
-      return f && f !== "sin" ? `<div class="panel"><h3>Foto ${nom}</h3><img class="foto-entrega" alt="Foto ${nom}" src="${f}"></div>` : `<div class="vacio">${f === "sin" ? "Sin foto " + nom + "." : "Cargando foto…"}</div>`; })()}
+      const comp = fotoCache[g.numero + ":" + g.estado + ":comp"];
+      return (f && f !== "sin" ? `<div class="panel"><h3>Foto ${nom}</h3><img class="foto-entrega" alt="Foto ${nom}" src="${f}"></div>` : `<div class="vacio">${f === "sin" ? (g.fotosBorradas ? "Las fotos de esta guía se borraron (más de 90 días)." : "Sin foto " + nom + ".") : "Cargando foto…"}</div>`)
+        + (comp ? `<div class="panel"><h3>Comprobante de Nequi</h3><img class="foto-entrega" alt="Comprobante de pago por Nequi" src="${comp}"></div>` : ""); })()}
     ${g.destino?.verificar ? `<div class="panel aviso-ubic"><b>Ubicación cercana, comprobar manualmente.</b><span class="nota">El sistema no encontró la dirección exacta y puso un punto cercano. Revisa la dirección en Google Maps y arrastra el marcador azul al sitio correcto, o toca el mapa.</span>
       <div id="mapaCorr" class="mapa" style="height:260px"></div>
       <div class="btns"><button class="btn chico" data-acc="guardarUbic" ${S.corr ? "" : "disabled"}>Guardar ubicación</button><button class="btn sec chico" data-acc="ubicOk">La ubicación está bien</button></div></div>` : ""}
