@@ -13,6 +13,16 @@ export const LOCALIDADES = [
 export const NOMBRES_LOCALIDADES = LOCALIDADES.map(l => l[0]);
 export const centroDe = nombre => { const l = LOCALIDADES.find(x => x[0] === nombre); return l ? { lat: l[1], lng: l[2] } : { lat: 4.65, lng: -74.10 }; };
 export const BOGOTA = { lat: 4.6486, lng: -74.1000 };
+// Localidad aproximada de un punto (la de centro más cercano).
+export function localidadCercana(p) {
+  if (!p || p.lat == null) return "";
+  let mejor = "", d = Infinity;
+  for (const [n, lat, lng] of LOCALIDADES) {
+    const x = (lat - p.lat) ** 2 + (lng - p.lng) ** 2;
+    if (x < d) { d = x; mejor = n; }
+  }
+  return mejor;
+}
 
 export const ESTADOS = {
   disponible: "Disponible",
