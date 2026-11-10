@@ -147,10 +147,6 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label id="lTipoOtro" hidden>¿Cuál?<input id="nTipoOtro" placeholder="Ej. Linio, Instagram"></label>
           </div>
           <label>Contenido<input id="nCont" placeholder="1 juego PS5"></label>
-          <div class="opciones-cobro" role="radiogroup" aria-label="Cobro">
-            <label><input type="radio" name="cobro" value="sin_cobro" checked> Sin cobro</label>
-            <label><input type="radio" name="cobro" value="contraentrega"> Contra entrega</label>
-          </div>
           <label id="lVal" hidden>Valor a cobrar al entregar (COP)<input id="nVal" inputmode="numeric" placeholder="215000"></label>
           <label>Notas para el mensajero<textarea id="nNota" placeholder="Frágil, llamar antes de llegar"></textarea></label>
           <button class="btn" type="submit" id="nBtn">Crear guía</button>
@@ -717,7 +713,7 @@ $("#fNueva").onsubmit = async e => {
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
     $("#rImp").onclick = () => imprimirGuia(g);
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro"].forEach(id => $("#" + id).value = "");
-    $("#nTipo").value = "Directo"; ponerCobro("sin_cobro"); $("#lTipoOtro").hidden = true;
+    $("#nTipo").value = "Directo"; ponerCobro(); $("#lTipoOtro").hidden = true;
     S.pin = null; ultimaBuscada = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
   } catch (err) { $("#nError").textContent = /^(Primero|No pude|Escribe)/.test(err.message || "") ? err.message : C.mensajeError(err); if (!S.pin) $("#nPin").textContent = TXT_SIN_UBICAR; }
@@ -725,18 +721,19 @@ $("#fNueva").onsubmit = async e => {
 };
 
 /* Cobro y tipo de envío */
-const cobroElegido = () => document.querySelector('input[name="cobro"]:checked')?.value || "sin_cobro";
+// El cobro depende solo del tipo de envío: "Contra entrega" pide valor; los demás son sin cobro.
+const cobroElegido = () => $("#nTipo").value === "Contra entrega" ? "contraentrega" : "sin_cobro";
 const valorCobro = () => parseInt(($("#nVal").value || "0").replace(/\D/g, ""), 10) || 0;
-function ponerCobro(v) {
-  document.querySelectorAll('input[name="cobro"]').forEach(i => i.checked = i.value === v);
-  $("#lVal").hidden = v !== "contraentrega";
+function ponerCobro() {
+  const contra = cobroElegido() === "contraentrega";
+  $("#lVal").hidden = !contra;
+  $("#nVal").required = contra;
+  if (!contra) $("#nVal").value = "";
 }
-document.querySelectorAll('input[name="cobro"]').forEach(i => i.onchange = () => { ponerCobro(cobroElegido()); if (cobroElegido() === "contraentrega") $("#nVal").focus(); });
 $("#nTipo").onchange = () => {
-  const t = $("#nTipo").value;
-  $("#lTipoOtro").hidden = t !== "Otros";
-  if (t === "Contra entrega") ponerCobro("contraentrega");
-  else if (t === "Mercado Libre" || t === "Falabella") ponerCobro("sin_cobro");
+  $("#lTipoOtro").hidden = $("#nTipo").value !== "Otros";
+  ponerCobro();
+  if (cobroElegido() === "contraentrega") $("#nVal").focus();
 };
 
 /* ---------- IMPRESIÓN ---------- */
