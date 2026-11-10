@@ -116,7 +116,6 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label>Remitente / tienda<input id="rRem" placeholder="Pipe Games"></label>
             <label>Dirección de recogida<input id="rDir" placeholder="Dirección donde el mensajero recoge los paquetes"></label>
             <div class="btns"><button class="btn sec chico" type="button" id="rBuscar">Ubicar en el mapa</button><span class="nota" id="rPinTxt">Toca el mapa en el punto exacto de recogida.</span></div>
-            <label>Coordenadas o link de Google Maps (opcional)<input id="rCoord" placeholder="4.6789, -74.0456" autocomplete="off"></label>
             <div class="btns"><button class="btn chico" type="button" id="rGuardar">Guardar punto de recogida</button><button class="btn sec chico" type="button" id="rCancelar">Cancelar</button></div>
           </div>
           <h3>Entrega</h3>
@@ -128,8 +127,6 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
           <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección completa (ej. Cra 15 # 93-47) y se ubica sola en el mapa.</span></div>
           <div class="lista" id="nCands"></div>
-          <label>Coordenadas o link de Google Maps (opcional)<input id="nCoord" placeholder="4.6789, -74.0456" autocomplete="off"></label>
-          <p class="nota" style="margin:0">Para la ubicación exacta: busca la dirección en Google Maps, mantén presionado el punto y copia las coordenadas que aparecen. Pégalas aquí.</p>
           <h3>Paquete</h3>
           <div class="fila">
             <label>Contenido<input id="nCont" placeholder="1 juego PS5"></label>
@@ -435,21 +432,20 @@ function pintarRecogida() {
 function editarRecogida() {
   const r = S.recogida || {};
   S.editRec = true; S.recPin = r.lat != null ? { lat: r.lat, lng: r.lng } : null;
-  $("#rRem").value = r.remitente || "Pipe Games"; $("#rDir").value = r.direccion || ""; $("#rCoord").value = "";
+  $("#rRem").value = r.remitente || "Pipe Games"; $("#rDir").value = r.direccion || "";
   $("#rPinTxt").textContent = S.recPin ? "Arrastra la R si necesitas corregir el punto." : "Toca el mapa en el punto exacto de recogida.";
   $("#recFija").hidden = true; $("#recEditar").hidden = false;
   ajustado = ""; pintarMapa();
 }
 $("#rCancelar").onclick = () => { S.editRec = false; S.recPin = null; pintarRecogida(); ajustado = ""; pintarMapa(); };
-$("#rCoord").addEventListener("input", () => { const p = C.leerCoordenadas($("#rCoord").value); if (p) { S.recPin = p; $("#rPinTxt").textContent = "Ubicación tomada de Google Maps. Toca Guardar."; ajustado = ""; pintarMapa(); } });
 $("#rBuscar").onclick = async () => {
   const dir = $("#rDir").value.trim(); if (!dir) { toast("Escribe la dirección de recogida"); return; }
   const b = $("#rBuscar"); b.disabled = true; b.textContent = "Buscando…";
   try {
     const c = await ubicar(dir);
     if (c.length) { S.recPin = { lat: c[0].lat, lng: c[0].lng }; $("#rPinTxt").textContent = "Ubicada. Revisa la R y arrástrala si hace falta."; ajustado = ""; pintarMapa(); }
-    else $("#rPinTxt").textContent = "No la encontré. Toca el mapa o pega las coordenadas de Google Maps.";
-  } catch { $("#rPinTxt").textContent = "No se pudo buscar. Toca el mapa o pega las coordenadas."; }
+    else $("#rPinTxt").textContent = "No encontré el número exacto en el mapa. Toca el mapa en el punto de recogida.";
+  } catch { $("#rPinTxt").textContent = "No se pudo buscar. Toca el mapa en el punto de recogida."; }
   b.disabled = false; b.textContent = "Ubicar en el mapa";
 };
 let timerRec = null, ultimaRec = "";
@@ -474,10 +470,6 @@ function ponerPin(p, texto) {
   $("#nPin").textContent = texto;
   ajustado = ""; pintarMapa();
 }
-$("#nCoord").addEventListener("input", () => {
-  const p = C.leerCoordenadas($("#nCoord").value);
-  if (p) { $("#nCands").innerHTML = ""; ponerPin(p, "Ubicación tomada de las coordenadas de Google Maps."); }
-});
 async function overpass(q) {
   const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(q) });
   if (!r.ok) throw new Error("overpass " + r.status);
@@ -486,7 +478,8 @@ async function overpass(q) {
 const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 async function cruceSimple(viaRe, cruceRe) {
   const bbox = "(4.45,-74.25,4.85,-73.99)";
-  const els = await overpass(`[out:json][timeout:20];way["highway"]["name"~"${viaRe}",i]${bbox}->.v;way["highway"]["name"~"${cruceRe}",i]${bbox}->.c;node(w.v)(w.c);out;`);
+  const k = '~"^(name|alt_name|official_name|old_name|short_name|ref)$"';
+  const els = await overpass(`[out:json][timeout:20];way["highway"][${k}~"${viaRe}",i]${bbox}->.v;way["highway"][${k}~"${cruceRe}",i]${bbox}->.c;node(w.v)(w.c);out;`);
   return els.filter(e => e.type === "node").map(e => ({ lat: e.lat, lng: e.lon }));
 }
 function agrupar(puntos, centro) {
@@ -521,8 +514,10 @@ async function ubicar(dir) {
     } catch {}
   }
   const nom = async params => {
-    const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=4&countrycodes=co&viewbox=-74.25,4.85,-73.99,4.45&bounded=1&" + params, { headers: { "Accept-Language": "es" } });
-    return r.ok ? r.json() : [];
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=co&viewbox=-74.25,4.85,-73.99,4.45&bounded=1&" + params, { headers: { "Accept-Language": "es" } });
+    const d = r.ok ? await r.json() : [];
+    // Solo sirven resultados con número de casa; una calle completa deja el punto en cualquier lugar de la vía.
+    return d.filter(x => x.address?.house_number || ["house", "building", "apartments", "residential_building"].includes(x.type) || x.category === "building");
   };
   try {
     let r = [];
@@ -545,7 +540,7 @@ async function buscarDestino(auto = false) {
   try {
     const cands = await ubicar(dir);
     if ($("#nDir").value.trim() !== dir) { buscando = false; btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa"; return; }
-    if (!cands.length) { $("#nPin").textContent = "No encontré la dirección. Pega las coordenadas de Google Maps o toca el mapa en el sitio exacto."; }
+    if (!cands.length) { $("#nPin").textContent = "No encontré el número exacto en el mapa. Toca el mapa en el sitio de entrega."; }
     else {
       ponerPin(cands[0], cands[0].cruce ? "Ubicada por el cruce de vías. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Revisa el marcador y arrástralo si hace falta.");
       if (cands.length > 1) {
@@ -553,7 +548,7 @@ async function buscarDestino(auto = false) {
         $("#nCands").onclick = e => { const b = e.target.closest("[data-cand]"); if (b) ponerPin(cands[+b.dataset.cand], "Ubicación elegida. Revisa el marcador."); };
       }
     }
-  } catch { $("#nPin").textContent = "No se pudo buscar la dirección. Pega las coordenadas de Google Maps o toca el mapa."; }
+  } catch { $("#nPin").textContent = "No se pudo buscar la dirección. Toca el mapa en el sitio de entrega."; }
   buscando = false; btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa";
 }
 $("#nBuscar").onclick = () => buscarDestino(false);
@@ -573,7 +568,7 @@ $("#fNueva").onsubmit = async e => {
     if (!S.pin) {
       $("#nPin").textContent = "Ubicando la dirección…";
       const c = await ubicar($("#nDir").value.trim());
-      if (!c.length) throw new Error("No pude ubicar la dirección de entrega. Toca el mapa en el sitio exacto o pega las coordenadas de Google Maps.");
+      if (!c.length) throw new Error("No pude ubicar la dirección de entrega. Toca el mapa en el sitio exacto.");
       S.pin = { lat: c[0].lat, lng: c[0].lng, aprox: !c[0].cruce };
     }
     let numero = C.nuevoNumero();
@@ -605,7 +600,7 @@ $("#fNueva").onsubmit = async e => {
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
     $("#rImp").onclick = () => imprimirGuia(g);
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota"].forEach(id => $("#" + id).value = "");
-    S.pin = null; ultimaBuscada = ""; $("#nCoord").value = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
+    S.pin = null; ultimaBuscada = ""; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
   } catch (err) { $("#nError").textContent = err.message?.startsWith("Primero") || err.message?.startsWith("No pude") ? err.message : C.mensajeError(err); if (!S.pin) $("#nPin").textContent = TXT_SIN_UBICAR; }
   btn.disabled = false;
