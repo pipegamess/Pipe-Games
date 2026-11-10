@@ -84,11 +84,12 @@ service cloud.firestore {
     }
 
     // ---------- Rastreo (solo lo que ve el cliente) ----------
-    // El documento se llama NUMERO_CLAVE. Sin el código secreto de 6 caracteres
-    // no se puede abrir, y nadie puede listar la colección salvo despacho.
+    // El documento se llama NUMERO_CLAVE. La clave son los últimos 4 dígitos del
+    // celular del cliente (o un código de 6 caracteres si no hay celular).
+    // Sin ella no se puede abrir, y nadie puede listar la colección salvo despacho.
     function guiaDe(numero) { return /databases/$(database)/documents/guias/$(numero); }
     match /rastreo/{id} {
-      allow get: if id.matches('^[A-Z0-9-]+_[A-Z0-9]{6}$');
+      allow get: if id.matches('^[A-Z0-9-]+_([0-9]{4}|[A-Z0-9]{6})$');
       allow list: if esAdmin();
       allow create, delete: if esAdmin();
       allow update: if esAdmin() || (
@@ -97,6 +98,13 @@ service cloud.firestore {
         && getAfter(guiaDe(request.resource.data.numero)).data.mensajeroId == request.auth.uid
         && id == request.resource.data.numero + '_' + getAfter(guiaDe(request.resource.data.numero)).data.clave
       );
+    }
+
+    // ---------- Contraseña de acceso al panel ----------
+    // Cada documento es la huella cifrada del número de documento de una empresa.
+    match /acceso/{id} {
+      allow get: if true;
+      allow list, write: if esAdmin();
     }
 
     // ---------- Ubicación de mensajeros ----------

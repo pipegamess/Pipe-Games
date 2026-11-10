@@ -7,7 +7,7 @@
 <meta name="description" content="Sigue tu pedido en tiempo real con tu número de guía.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109o">
+<link rel="stylesheet" href="estilos.css?v=20261110a">
 <style>
 .envoltura{max-width:720px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .buscar{display:flex;gap:8px;flex-wrap:wrap}
@@ -20,12 +20,13 @@
 </head>
 <body>
 <main class="envoltura">
-  <header><h1><a href="rastreo.html" id="inicio" style="color:inherit;text-decoration:none">Mensajería <span class="marca">Prueba</span></a></h1><p class="nota" style="margin:4px 0 0">Rastrea tu pedido con el número de guía y el código de rastreo que te enviamos.</p></header>
+  <header><h1><a href="rastreo.html" id="inicio" style="color:inherit;text-decoration:none">Mensajería <span class="marca">Prueba</span></a></h1><p class="nota" style="margin:4px 0 0">Abre el enlace que te enviamos, o escribe tu número de guía y los últimos 4 dígitos de tu celular.</p></header>
   <form class="buscar" id="fBuscar">
     <input id="guia" placeholder="PIPEGAMES-00001" autocomplete="off" aria-label="Número de guía" required>
-    <input id="clave" placeholder="CÓDIGO" autocomplete="off" aria-label="Código de rastreo" maxlength="6" required style="max-width:8.5em">
+    <input id="clave" placeholder="Últimos 4 de tu celular" inputmode="numeric" autocomplete="off" aria-label="Últimos 4 dígitos de tu celular" maxlength="6" required style="flex:1 1 9em;min-width:0">
     <button class="btn" type="submit">Rastrear</button>
   </form>
+  <p class="nota" style="margin:-6px 0 0">Si tu pedido no tiene celular registrado, escribe el código de 6 caracteres que aparece en la etiqueta.</p>
   <div id="salida"></div>
   <button class="btn sec" id="otra" hidden>Buscar otra guía</button>
   <div id="mapa" class="mapa" hidden></div>
@@ -34,8 +35,8 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261109o";
-import * as C from "./comun.js?v=20261109o";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261110a";
+import * as C from "./comun.js?v=20261110a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, onSnapshot } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -63,12 +64,12 @@ function buscar(raw, rawClave) {
   const c = String(rawClave || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!n) return;
   $("#guia").value = n; $("#clave").value = c;
-  if (!/^[A-Z0-9-]+$/.test(n) || !/^[A-Z0-9]{6}$/.test(c)) { $("#salida").innerHTML = `<div class="vacio error">Escribe el número de guía y el código de rastreo de 6 caracteres. Los encuentras en el mensaje que te enviamos o en la etiqueta del paquete.</div>`; return; }
+  if (!/^[A-Z0-9-]+$/.test(n) || !/^([0-9]{4}|[A-Z0-9]{6})$/.test(c)) { $("#salida").innerHTML = `<div class="vacio error">Escribe tu número de guía y los últimos 4 dígitos de tu celular (o el código de 6 caracteres de la etiqueta).</div>`; return; }
   history.replaceState(null, "", "?g=" + encodeURIComponent(n) + "&c=" + encodeURIComponent(c));
   unsubG?.(); unsubU?.(); g = u = foto = null; ajustado = "";
   $("#salida").innerHTML = `<div class="vacio">Buscando ${esc(n)}…</div>`; $("#salida2").innerHTML = ""; $("#mapa").hidden = true; $("#otra").hidden = false;
   unsubG = onSnapshot(doc(db, "rastreo", n + "_" + c), s => {
-    if (!s.exists()) { g = null; $("#mapa").hidden = true; $("#salida2").innerHTML = ""; $("#salida").innerHTML = `<div class="vacio error">No encontramos la guía <span class="guia">${esc(n)}</span> con ese código. Revisa el número de guía y el código de rastreo.</div>`; return; }
+    if (!s.exists()) { g = null; $("#mapa").hidden = true; $("#salida2").innerHTML = ""; $("#salida").innerHTML = `<div class="vacio error">No encontramos la guía <span class="guia">${esc(n)}</span> con esos datos. Revisa el número de guía y los últimos 4 dígitos del celular que registraste en la compra.</div>`; return; }
     const antes = g;
     g = s.data();
     seguirMensajero(antes);
