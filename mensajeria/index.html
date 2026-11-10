@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109b">
+<link rel="stylesheet" href="estilos.css?v=20261109c">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -64,7 +64,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .et-qr{width:24mm;height:24mm;flex:none}
 .et-qr svg,.et-qr img{width:100%;height:100%}
 .et-cobro{flex:1;border:2px solid #000;border-radius:2mm;padding:2mm;text-align:center}
-.et-cobro b{display:block;font-family:var(--f-display);font-size:20pt;line-height:1.1}
+.et-cobro b{display:block;font-family:var(--f-display);font-size:19pt;line-height:1.15;margin-top:1mm}
 .formato{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .formato select{width:auto;padding:6px 8px}
 @media print{
@@ -189,8 +189,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109b";
-import * as C from "./comun.js?v=20261109b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109c";
+import * as C from "./comun.js?v=20261109c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -767,7 +767,7 @@ function imprimirGuia(g) {
   let qr = "";
   try { const q = qrcode(0, "M"); q.addData(C.linkRastreo(g.numero)); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
   $("#etiqueta").innerHTML = `<div class="et">
-    <div class="et-sec et-cab"><span class="et-marca">Mensajería Prueba</span>${g.tipoEnvio ? `<span class="et-tipo">${esc(C.textoTipoEnvio(g))}</span>` : ""}<span>${C.fecha(g.creado)}</span></div>
+    <div class="et-sec et-cab"><span class="et-marca">Mensajería Prueba</span><span>${C.fecha(g.creado)}</span></div>
     <div class="et-sec"><div class="et-num">${esc(g.numero)}</div><svg class="et-barras" id="etBarras"></svg></div>
     <div class="et-sec"><div class="et-rot">Para</div>
       <div class="et-nombre">${esc(g.cliente)}</div>
@@ -775,11 +775,10 @@ function imprimirGuia(g) {
       <div class="et-dir">${esc(g.destino?.direccion)}</div>
       <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""} · Bogotá</div></div>
     <div class="et-sec"><div class="et-rot">De</div>
-      <div><b>${esc(g.remitente)}</b></div>
-      <div>${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</div></div>
+      <div><b>${esc(g.remitente)}</b></div></div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
     <div class="et-sec et-pie"><div class="et-qr">${qr}</div>
-      <div class="et-cobro"><span class="et-rot">${g.valor ? "Contra entrega · cobrar" : "Cobro"}</span><b>${g.valor ? C.cop(g.valor) : "SIN COBRO"}</b><span style="font-size:8pt">Rastrea tu pedido con el código QR</span></div></div>
+      <div class="et-cobro"><span class="et-rot">Tipo de envío: ${esc(C.textoTipoEnvio(g) || (g.valor ? "Contra entrega" : "Directo"))}</span><b>${g.valor ? "COBRAR " + C.cop(g.valor) : "SIN COBRO"}</b></div></div>
   </div>`;
   try { JsBarcode("#etBarras", g.numero, { format: "CODE128", displayValue: false, margin: 0, height: 60, width: 2 }); } catch { $("#etBarras").remove(); }
   setTimeout(() => window.print(), 150);
