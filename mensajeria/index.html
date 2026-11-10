@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109g">
+<link rel="stylesheet" href="estilos.css?v=20261109h">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -189,13 +189,13 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109g";
-import * as C from "./comun.js?v=20261109g";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109h";
+import * as C from "./comun.js?v=20261109h";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
 const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
-const { getFirestore, collection, doc, getDoc, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc, deleteField } = F;
+const { getFirestore, collection, doc, getDoc, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc, deleteField, runTransaction } = F;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -704,8 +704,8 @@ $("#fNueva").onsubmit = async e => {
     }
     if (cobroElegido() === "contraentrega" && !valorCobro()) throw new Error("Escribe el valor a cobrar contra entrega.");
     if ($("#nTipo").value === "Otros" && !$("#nTipoOtro").value.trim()) throw new Error("Escribe cuál es el tipo de envío.");
-    let numero = C.nuevoNumero();
-    for (let i = 0; i < 5 && (await getDoc(doc(db, "guias", numero))).exists(); i++) numero = C.nuevoNumero();
+    const prefijo = C.prefijoTienda(rec.remitente);
+    let numero = "";
     const p = S.pin;
     const locDestino = C.localidadCercana(p);
     const g = {
@@ -723,10 +723,18 @@ $("#fNueva").onsubmit = async e => {
       creado: Date.now(), actualizado: Date.now(),
       eventos: [C.evento("disponible", "Guía creada", "despacho")]
     };
-    const b = writeBatch(db);
-    b.set(doc(db, "guias", numero), g);
-    b.set(doc(db, "rastreo", numero), C.vistaPublica(g));
-    await b.commit();
+    // Consecutivo por tienda, guardado en el perfil de despacho: PIPEGAMES-00001, 00002…
+    await runTransaction(db, async tx => {
+      const refA = doc(db, "usuarios", ADMIN_UID);
+      const a = await tx.get(refA);
+      let k = (a.exists() ? a.data().consecutivos?.[prefijo] || 0 : 0) + 1;
+      numero = C.numeroGuia(prefijo, k);
+      for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
+      g.numero = numero;
+      tx.set(refA, { consecutivos: { [prefijo]: k } }, { merge: true });
+      tx.set(doc(db, "guias", numero), g);
+      tx.set(doc(db, "rastreo", numero), C.vistaPublica(g));
+    });
     const link = C.linkRastreo(numero);
     $("#nResultado").innerHTML = `<div class="item"><div class="arriba"><span>Guía creada</span><span class="pill disponible">Disponible</span></div>
       <div class="codigo">${numero}</div>
