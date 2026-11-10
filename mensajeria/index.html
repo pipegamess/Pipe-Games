@@ -536,7 +536,7 @@ async function ubicar(dir) {
   const cands = [];
   // 1) TomTom: número exacto o aproximado por cuadra
   let tt = [];
-  try { tt = (await tomtom(dir, "geocode")).filter(x => x.tipo === "Point Address" || x.tipo === "Address Range"); } catch {}
+  try { tt = (await tomtom(dir, "geocode")).filter(x => x.tipo === "Point Address" || x.tipo === "Address Range"); } catch (e) { ubicar.error = e.message; }
   tt.filter(x => x.tipo === "Point Address").forEach(x => cands.push({ lat: x.lat, lng: x.lng, etiqueta: x.titulo, lugar: x.lugar, cruce: true }));
   if (n.via) {
     try {
@@ -609,7 +609,10 @@ async function tomtom(texto, modo = "search") {
   const extra = modo === "search" ? "&typeahead=true&idxSet=PAD,Addr,Str,Xstr,POI" : "";
   const url = `https://api.tomtom.com/search/2/${modo === "geocode" ? "geocode" : "search"}/${encodeURIComponent(ttConsulta(texto))}.json?key=${TOMTOM_KEY}&countrySet=CO&language=es-419&limit=6&lat=${C.BOGOTA.lat}&lon=${C.BOGOTA.lng}&topLeft=4.85,-74.25&btmRight=4.45,-73.99${extra}`;
   const r = await fetch(url);
-  if (!r.ok) return [];
+  if (!r.ok) {
+    const msg = r.status === 403 ? "TomTom rechazó la consulta (403). Revisa en my.tomtom.com que el dominio permitido sea pipegames.com.co" : r.status === 429 ? "Se agotó el cupo gratis de TomTom de este mes" : `TomTom respondió con error ${r.status}`;
+    throw new Error(msg);
+  }
   const d = await r.json();
   return (d.results || []).filter(x => x.position).map(x => {
     const a = x.address || {};
@@ -633,23 +636,26 @@ function sugerencias(inputSel, cajaSel, alElegir) {
     if (texto.length < 4) { opciones = []; cerrar(); return; }
     const v = ++version;
     const n = C.normalizarDireccion(texto);
+    let errorTT = "";
     pintarLista("Buscando…");
     // Dirección completa: buscarla (TomTom + cruce de vías), una vez por dirección. Si no, sugerencias de TomTom.
     let todas = [];
     if (n.via) {
       const k = n.texto.toLowerCase();
+      ubicar.error = "";
       cruceCache[k] ||= ubicar(texto).catch(() => []);
-      const [ex, ph] = await Promise.all([cruceCache[k], tomtom(texto, "search").catch(() => [])]);
-      todas = [...ex.map(c => ({ lat: c.lat, lng: c.lng, titulo: c.etiqueta.replace(/ \(calculada por el cruce de vías\)$/, ""), lugar: c.lugar || C.localidadCercana(c), exacta: !!c.cruce })), ...ph.filter(x => x.tipo === "POI")];
+      const ex = await cruceCache[k];
+      errorTT = ubicar.error || "";
+      todas = ex.map(c => ({ lat: c.lat, lng: c.lng, titulo: c.etiqueta.replace(/ \(calculada por el cruce de vías\)$/, ""), lugar: c.lugar || C.localidadCercana(c), exacta: !!c.cruce }));
     } else {
-      todas = await tomtom(texto, "search").catch(() => []);
+      todas = await tomtom(texto, "search").catch(e => { errorTT = e.message; return []; });
     }
     if (v !== version) return;
     opciones = todas.filter((o, i) => todas.findIndex(x => C.km(o, x) < 0.03) === i).slice(0, 7);
     activa = -1;
-    pintarLista(opciones.length ? "" : "Sin coincidencias. Toca el mapa en el sitio exacto.");
+    pintarLista(errorTT ? errorTT : opciones.length ? "" : "Sin coincidencias. Toca el mapa en el sitio exacto.");
   }
-  input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(buscar, 450); });
+  input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(buscar, 650); });
   input.addEventListener("focus", () => { if (opciones.length) pintarLista(); });
   input.addEventListener("blur", () => setTimeout(cerrar, 200));
   input.addEventListener("keydown", e => {
