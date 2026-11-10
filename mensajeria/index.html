@@ -772,7 +772,7 @@ function pintarMensajeros() {
     const est = !m.activo ? ["cancelada", "Desactivado"] : u?.enTurno ? (fresco(u) ? ["en-linea", "En turno"] : ["devuelta", "En turno, sin señal reciente"]) : ["", "Fuera de turno"];
     return `<div class="item"><div class="arriba"><span><b>${esc(m.nombre)}</b> <span class="meta">· ${esc(m.placa)}</span></span><span class="pill ${est[0]}">${est[1]}</span></div>
       <div class="meta">${esc(m.telefono)} · ${esc(m.email)} · cédula ${esc(m.cedula)}</div>
-      <div class="meta">Zonas: ${(m.zonas || []).length ? esc(m.zonas.join(", ")) : "sin elegir"} · ${act} pedido${act === 1 ? "" : "s"} en curso · última ubicación ${C.hace(u?.t)}</div>
+      <div class="meta">${act} pedido${act === 1 ? "" : "s"} en curso · última ubicación ${C.hace(u?.t)}</div>
       <div class="btns"><button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button></div></div>`;
   }).join("") : `<div class="vacio">Aún no hay mensajeros. Genera una invitación y envíasela.</div>`;
   const pend = S.inv.filter(i => !i.usada).sort((a, b) => b.creada - a.creada);

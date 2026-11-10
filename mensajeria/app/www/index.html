@@ -250,7 +250,6 @@ function ruta(soloDatos = false) {
   else if (r === "novedad") pintarNovedad(decodeURIComponent(n));
   else location.hash = "#inicio";
 }
-const zonas = () => (S.perfil?.zonas || []).filter(z => C.NOMBRES_LOCALIDADES.includes(z));
 const activos = () => S.mios.filter(g => ["tomada", "recogida", "en_camino"].includes(g.estado)).sort((a, b) => a.actualizado - b.actualizado);
 function insignias() {
   const m = activos().length;
@@ -285,14 +284,6 @@ function pintarIngreso() {
     catch (err) { $("#iErr").textContent = C.mensajeError(err); }
   };
 }
-function chipsZonas(sel = []) {
-  return `<div class="btns"><button type="button" class="btn sec chico" data-todas="1">Marcar todas</button><button type="button" class="btn sec chico" data-todas="0">Quitar todas</button></div><div class="chips">${C.NOMBRES_LOCALIDADES.map((z, i) => `<label><input type="checkbox" name="zona" value="${esc(z)}" ${sel.includes(z) ? "checked" : ""}>${esc(z)}</label>`).join("")}</div>`;
-}
-document.addEventListener("click", e => {
-  const b = e.target.closest("[data-todas]"); if (!b) return;
-  document.querySelectorAll('input[name="zona"]').forEach(i => i.checked = b.dataset.todas === "1");
-});
-const zonasMarcadas = () => [...document.querySelectorAll('input[name="zona"]:checked')].map(i => i.value);
 function pintarRegistro() {
   $("#barra").hidden = true;
   pantalla(`<a class="btn sec chico volver" href="#ingreso">← Volver</a><h1>Crear cuenta</h1>
@@ -303,14 +294,11 @@ function pintarRegistro() {
       <label>Placa del vehículo<input id="rPla" autocapitalize="characters" required placeholder="ABC12D"></label>
       <label>Correo<input id="rCor" type="email" required autocomplete="username"></label>
       <label>Contraseña (mínimo 6 caracteres)<input id="rCla" type="password" minlength="6" required autocomplete="new-password"></label>
-      <h3>Zonas donde trabajas</h3><p class="nota" style="margin:0">Solo verás pedidos que se recogen o entregan en estas zonas. Puedes cambiarlas después.</p>
-      ${chipsZonas()}
       <button class="btn ancho" type="submit" id="rBtn">Crear cuenta</button><div class="error" id="rErr"></div>
     </form>`);
   $("#fReg").onsubmit = async e => {
     e.preventDefault(); $("#rErr").textContent = "";
     const codigo = $("#rCod").value.trim().toUpperCase();
-    if (!zonasMarcadas().length) { $("#rErr").textContent = "Marca al menos una zona."; return; }
     $("#rBtn").disabled = true; S.registrando = true;
     let cred = null;
     try {
@@ -319,7 +307,7 @@ function pintarRegistro() {
       if (!inv || !inv.exists() || inv.data().usada) throw Object.assign(new Error("El código de invitación no existe o ya fue usado. Pídele uno nuevo a despacho."), { invalida: true });
       const uid = cred.user.uid;
       const b = writeBatch(db);
-      b.set(doc(db, "usuarios", uid), { rol: "mensajero", activo: true, nombre: $("#rNom").value.trim(), cedula: $("#rCed").value.trim(), telefono: $("#rTel").value.trim(), placa: $("#rPla").value.trim().toUpperCase(), email: cred.user.email, zonas: zonasMarcadas(), invitacion: codigo, creado: Date.now() });
+      b.set(doc(db, "usuarios", uid), { rol: "mensajero", activo: true, nombre: $("#rNom").value.trim(), cedula: $("#rCed").value.trim(), telefono: $("#rTel").value.trim(), placa: $("#rPla").value.trim().toUpperCase(), email: cred.user.email, invitacion: codigo, creado: Date.now() });
       b.update(doc(db, "invitaciones", codigo), { usada: true, usadaPor: uid, usadaEn: Date.now() });
       await b.commit();
       S.registrando = false;
@@ -635,7 +623,6 @@ function pintarPerfil() {
     <form class="panel" id="fPer">
       <label>Nombre<input id="pNom" value="${esc(p.nombre)}" required></label>
       <div class="fila"><label>Celular<input id="pTel" value="${esc(p.telefono)}"></label><label>Placa<input id="pPla" value="${esc(p.placa)}"></label></div>
-      <h3>Zonas donde trabajas</h3>${chipsZonas(p.zonas || [])}
       <button class="btn" type="submit">Guardar cambios</button>
     </form>
     <div class="panel"><h3>Ubicación y batería</h3><p class="nota" style="margin:0">Si tu ubicación se corta con la pantalla apagada, quita el ahorro de batería para esta app y dale permiso de ubicación “todo el tiempo”.</p><button class="btn sec" id="pAj">Abrir ajustes de la app</button></div>
@@ -645,7 +632,7 @@ function pintarPerfil() {
   $("#fPer").onsubmit = async e => {
     e.preventDefault();
     try {
-      const cambios = { nombre: $("#pNom").value.trim(), telefono: $("#pTel").value.trim(), placa: $("#pPla").value.trim().toUpperCase(), zonas: zonasMarcadas() };
+      const cambios = { nombre: $("#pNom").value.trim(), telefono: $("#pTel").value.trim(), placa: $("#pPla").value.trim().toUpperCase() };
       await F.updateDoc(doc(db, "usuarios", S.u.uid), cambios); toast("Perfil guardado");
     } catch (err) { toast(C.mensajeError(err)); }
   };
