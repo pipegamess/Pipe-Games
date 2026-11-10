@@ -95,7 +95,7 @@ function pintar() {
         <dt>Tienda</dt><dd>${esc(g.remitente)}</dd>
         ${g.mensajeroNombre ? `<dt>Mensajero</dt><dd>${esc(C.primerNombre(g.mensajeroNombre))}${g.mensajeroPlaca ? " · placa " + esc(g.mensajeroPlaca) : ""}</dd>` : ""}
         ${g.recibe ? `<dt>Recibió</dt><dd>${esc(C.RECIBE[g.recibe] || "")}</dd>` : ""}
-        <dt>Pago</dt><dd>${g.valor ? "Pagas " + C.cop(g.valor) + " al recibir (efectivo o Nequi)" : "Ya está pago"}</dd>
+        <dt>Cobro</dt><dd>${g.valor ? "Pagas " + C.cop(g.valor) + " al recibir (efectivo o Nequi)" : "Sin cobro"}</dd>
       </dl>
     </div>
 `;

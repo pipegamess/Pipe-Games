@@ -37,7 +37,11 @@ export const ESTADOS = {
 export const PASOS = ["disponible", "tomada", "recogida", "en_camino", "entregada"];
 export const ACTIVOS = ["disponible", "tomada", "recogida", "en_camino", "novedad"];
 
-export const MEDIOS = { efectivo: "Efectivo", nequi: "Nequi", pagado: "Ya estaba pago" };
+export const MEDIOS = { efectivo: "Efectivo", nequi: "Nequi", pagado: "Sin cobro" };
+export const TIPOS_ENVIO = ["Directo", "Contra entrega", "Mercado Libre", "Falabella", "Otros"];
+// "Sin cobro" o "$215.000 contra entrega"
+export function textoCobro(g) { return g.valor ? `${cop(g.valor)} contra entrega` : "Sin cobro"; }
+export function textoTipoEnvio(g) { return g.tipoEnvio === "Otros" && g.tipoEnvioOtro ? g.tipoEnvioOtro : (g.tipoEnvio || ""); }
 export const RECIBE = { cliente: "Cliente", porteria: "Portería", familiar: "Familiar" };
 export function textoRecibe(r) {
   if (!r || !r.tipo) return "";
@@ -207,6 +211,7 @@ export function vistaPublica(g) {
     localidad: g.destino?.localidad || "",
     destino: g.destino ? { lat: g.destino.lat, lng: g.destino.lng } : null,
     valor: g.valor || 0,
+    tipoEnvio: textoTipoEnvio(g),
     mensajeroId: g.mensajeroId || null,
     mensajeroNombre: g.mensajeroNombre || "",
     mensajeroPlaca: g.mensajeroPlaca || "",
