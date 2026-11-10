@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109j">
+<link rel="stylesheet" href="estilos.css?v=20261109k">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -53,17 +53,17 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 #etiqueta{display:none}
 .et{box-sizing:border-box;width:100mm;min-height:138mm;break-inside:avoid;page-break-inside:avoid;border:1.5px solid #000;color:#000;background:#fff;font-family:var(--f-body);font-size:10.5pt;line-height:1.3;display:flex;flex-direction:column}
 .et *{color:#000}
-.et-sec{padding:2.5mm 3.5mm;border-bottom:1.5px solid #000}
+.et-sec{padding:2mm 3.5mm;border-bottom:1.5px solid #000}
 .et-sec:last-child{border-bottom:0}
 .et-cab{display:flex;justify-content:space-between;align-items:baseline;gap:3mm}
 .et-marca{font-family:var(--f-display);font-weight:700;font-size:15pt}
 .et-num{font-family:var(--f-mono);font-weight:600;font-size:17pt;letter-spacing:.06em;text-align:center}
-.et-barras{display:block;width:100%;height:16mm}
+.et-barras{display:block;width:100%;height:13mm}
 .et-rot{font-size:7.5pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 .et-nombre{font-weight:700;font-size:13pt}
 .et-dir{font-weight:700;font-size:12pt}
 .et-pie{display:flex;gap:3mm;align-items:center}
-.et-qr{width:24mm;height:24mm;flex:none}
+.et-qr{width:21mm;height:21mm;flex:none}
 .et-qr svg,.et-qr img{width:100%;height:100%}
 .et-cobro{flex:1;border:2px solid #000;border-radius:2mm;padding:2mm;text-align:center}
 .et-cobro b{display:block;font-family:var(--f-display);font-size:19pt;line-height:1.15;margin-top:1mm}
@@ -115,7 +115,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <!-- GUÍAS -->
       <section class="panel" id="t-guias">
         <div class="cifras" id="cifras"></div>
-        <div class="buscar"><input id="busca" placeholder="Buscar por guía, cliente o dirección" aria-label="Buscar"></div>
+        <div class="buscar"><input id="busca" placeholder="Buscar por guía, cliente, dirección o número de venta" aria-label="Buscar"></div>
         <div class="filtros" id="filtros"></div>
         <div class="lista" id="listaGuias"><div class="vacio">Cargando guías…</div></div>
       </section>
@@ -148,6 +148,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div class="fila">
             <label>Tipo de envío<select id="nTipo"><option>Directo</option><option>Contra entrega</option><option>Mercado Libre</option><option>Falabella</option><option>Otros</option></select></label>
             <label id="lTipoOtro" hidden>¿Cuál?<input id="nTipoOtro" placeholder="Ej. Linio, Instagram"></label>
+          </div>
+          <div class="fila" id="filaMkt" hidden>
+            <label><span id="tMktVenta">Número de venta</span><input id="nMktVenta" inputmode="numeric" autocomplete="off" placeholder="2000012345678"></label>
+            <label>Número de envío o guía del marketplace (opcional)<input id="nMktEnvio" autocomplete="off" placeholder="41234567890"></label>
           </div>
           <label>Contenido<input id="nCont" placeholder="1 juego PS5"></label>
           <label id="lVal" hidden>Valor a cobrar al entregar (COP)<input id="nVal" inputmode="numeric" placeholder="215000"></label>
@@ -192,8 +196,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109j";
-import * as C from "./comun.js?v=20261109j";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109k";
+import * as C from "./comun.js?v=20261109k";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -354,7 +358,7 @@ function pintarGuias() {
     if (S.filtro === "todas") return true;
     return g.estado === S.filtro;
   });
-  if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre].join(" ").toLowerCase().includes(S.busca));
+  if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre, g.marketplace?.venta, g.marketplace?.envio].join(" ").toLowerCase().includes(S.busca));
   $("#listaGuias").innerHTML = lista.length ? lista.map(g => `
     <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
       <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${porComprobar(g) ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
@@ -430,6 +434,7 @@ function pintarDetalle() {
         <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
         <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
         ${g.tipoEnvio ? `<dt>Tipo de envío</dt><dd>${esc(C.textoTipoEnvio(g))}</dd>` : ""}
+        ${g.marketplace?.venta ? `<dt>${g.marketplace.canal === "Falabella" ? "Orden Falabella" : "Venta Mercado Libre"}</dt><dd>${esc(g.marketplace.venta)}${g.marketplace.envio ? ` · Envío ${esc(g.marketplace.envio)}` : ""}</dd>` : ""}
         <dt>Cobro</dt><dd>${C.textoCobro(g)}</dd>
         ${g.nota ? `<dt>Notas</dt><dd>${esc(g.nota)}</dd>` : ""}
         <dt>Mensajero</dt><dd>${g.mensajeroNombre ? esc(g.mensajeroNombre) + (g.mensajeroPlaca ? " · " + esc(g.mensajeroPlaca) : "") + (u ? ` · señal ${C.hace(u.t)}` : "") : "Sin asignar"}</dd>
@@ -756,6 +761,8 @@ $("#fNueva").onsubmit = async e => {
     }
     if (cobroElegido() === "contraentrega" && !valorCobro()) throw new Error("Escribe el valor a cobrar contra entrega.");
     if ($("#nTipo").value === "Otros" && !$("#nTipoOtro").value.trim()) throw new Error("Escribe cuál es el tipo de envío.");
+    const esMkt = ["Mercado Libre", "Falabella"].includes($("#nTipo").value);
+    if (esMkt && !$("#nMktVenta").value.trim()) throw new Error("Escribe el número de " + ($("#nTipo").value === "Falabella" ? "orden de Falabella." : "venta de Mercado Libre."));
     const prefijo = C.prefijoTienda(rec.remitente);
     let numero = "";
     const p = S.pin;
@@ -770,6 +777,7 @@ $("#fNueva").onsubmit = async e => {
       cobro: cobroElegido(),
       tipoEnvio: $("#nTipo").value,
       tipoEnvioOtro: $("#nTipo").value === "Otros" ? $("#nTipoOtro").value.trim() : "",
+      marketplace: ["Mercado Libre", "Falabella"].includes($("#nTipo").value) ? { canal: $("#nTipo").value, venta: $("#nMktVenta").value.trim(), envio: $("#nMktEnvio").value.trim() } : null,
       zonas: [...new Set([rec.localidad || C.localidadCercana(rec), locDestino].filter(Boolean))],
       estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
       creado: Date.now(), actualizado: Date.now(),
@@ -797,7 +805,8 @@ $("#fNueva").onsubmit = async e => {
     $("#rImp").onclick = () => imprimirGuia(g);
     // Abrir la impresión de la guía apenas se crea
     setTimeout(() => imprimirGuia(g), 300);
-    ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro"].forEach(id => $("#" + id).value = "");
+    ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro", "nMktVenta", "nMktEnvio"].forEach(id => $("#" + id).value = "");
+    $("#filaMkt").hidden = true;
     $("#nTipo").value = "Directo"; ponerCobro(); $("#lTipoOtro").hidden = true;
     S.pin = null; ultimaBuscada = ""; $("#nComprobar").hidden = true; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
@@ -817,6 +826,10 @@ function ponerCobro() {
 }
 $("#nTipo").onchange = () => {
   $("#lTipoOtro").hidden = $("#nTipo").value !== "Otros";
+  const mkt = ["Mercado Libre", "Falabella"].includes($("#nTipo").value);
+  $("#filaMkt").hidden = !mkt;
+  $("#tMktVenta").textContent = $("#nTipo").value === "Falabella" ? "Número de orden en Falabella" : "Número de venta en Mercado Libre";
+  if (mkt) $("#nMktVenta").focus();
   ponerCobro();
   if (cobroElegido() === "contraentrega") $("#nVal").focus();
 };
@@ -838,7 +851,7 @@ function imprimirGuia(g) {
       <div class="et-dir">${esc(g.destino?.direccion)}</div>
       <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""} · Bogotá</div></div>
     <div class="et-sec"><div class="et-rot">De</div>
-      <div><b>${esc(g.remitente)}</b></div></div>
+      <div><b>${esc(g.remitente)}</b></div>${g.marketplace?.venta ? `<div>${esc(g.marketplace.canal)} · ${g.marketplace.canal === "Falabella" ? "Orden" : "Venta"} <b>${esc(g.marketplace.venta)}</b>${g.marketplace.envio ? ` · Envío ${esc(g.marketplace.envio)}` : ""}</div>` : ""}</div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
     <div class="et-sec et-pie"><div class="et-qr">${qr}</div>
       <div class="et-cobro"><span class="et-rot">Tipo de envío: ${esc(C.textoTipoEnvio(g) || (g.valor ? "Contra entrega" : "Directo"))}</span><b>${g.valor ? "COBRAR " + C.cop(g.valor) : "SIN COBRO"}</b></div></div>
