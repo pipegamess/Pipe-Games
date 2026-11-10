@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109e";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109f";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -34,7 +34,7 @@ export const ESTADOS = {
   devuelta: "Devuelta",
   cancelada: "Cancelada"
 };
-export const PASOS = ["disponible", "en_camino", "entregada"];
+export const PASOS = ["disponible", "recogida", "en_camino", "entregada"];
 export const ACTIVOS = ["disponible", "tomada", "recogida", "en_camino", "novedad"];
 
 export const MEDIOS = { efectivo: "Efectivo", nequi: "Nequi", pagado: "Sin cobro" };
