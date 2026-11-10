@@ -14,7 +14,7 @@ export const ADMIN_UID = "8xMsK91tEja5hzhBtjqDIgCP0423";
 export const URL_RASTREO = "https://pipegames.com.co/mensajeria/rastreo.html";
 
 // Página donde se descarga la app del mensajero (último APK publicado).
-export const URL_APK = "https://github.com/pipegamess/Pipe-Games/releases/latest";
+export const URL_APK = "https://github.com/pipegamess/Pipe-Games/releases/latest/download/mensajeria-prueba.apk";
 
 // Clave de TomTom (búsqueda de direcciones en el panel). Plan gratis, sin tarjeta.
 export const TOMTOM_KEY = "goxwKHuXB9HkWJOOg2SieNvEGHsiAk1m";
