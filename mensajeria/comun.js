@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO } from "./config.js";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -244,11 +244,15 @@ export function comprimirImagen(file, max = 1100, calidad = 0.62) {
   });
 }
 
-// Capa de mapa de OpenStreetMap con atribución.
+// Capa del mapa. En pipegames.com.co (panel y rastreo) usa el mapa de TomTom; en la app, OpenStreetMap.
 export function capaMapa(L) {
-  return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-  });
+  const enDominio = /(^|\.)pipegames\.com\.co$/.test(location.hostname);
+  const capa = enDominio && TOMTOM_KEY
+    ? L.tileLayer(`https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?view=Unified&language=es-419&key=${TOMTOM_KEY}`, { maxZoom: 19, attribution: "&copy; TomTom" })
+    : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+  // Quitar el texto "Leaflet" de la esquina; se deja solo el crédito obligatorio del mapa.
+  capa.on("add", e => { try { e.target._map.attributionControl?.setPrefix(false); } catch {} });
+  return capa;
 }
 export function icono(L, tipo, texto = "") {
   const s = tipo === "mensajero" ? 32 : 26;
