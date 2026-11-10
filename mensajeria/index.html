@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109h">
+<link rel="stylesheet" href="estilos.css?v=20261109i">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -34,6 +34,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .tabla th{font-size:12px;color:var(--muted);font-weight:600}
 .num{text-align:right!important}
 .scroll{overflow-x:auto}
+.aviso-ubic{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
+.aviso-ubic b{color:var(--ink)}
 .opciones-cobro{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .opciones-cobro label{flex-direction:row;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:11px;color:var(--ink);font-weight:600;background:var(--surface)}
 .opciones-cobro input{width:auto;margin:0}
@@ -189,8 +191,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109h";
-import * as C from "./comun.js?v=20261109h";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109i";
+import * as C from "./comun.js?v=20261109i";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -333,7 +335,7 @@ async function guardarGuia(numero, cambios) {
 }
 
 /* ---------- GUÍAS ---------- */
-const FILTROS = [["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+const FILTROS = [["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
 $("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
 $("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
 $("#listaGuias").addEventListener("click", e => { if (e.target.closest("a[data-aviso]")) return; const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
@@ -346,6 +348,7 @@ function pintarGuias() {
   let lista = todas.filter(g => {
     if (S.filtro === "activas") return C.ACTIVOS.includes(g.estado);
     if (S.filtro === "avisar") return porAvisar(g);
+    if (S.filtro === "comprobar") return porComprobar(g);
     if (S.filtro === "ruta") return ["tomada", "recogida", "en_camino"].includes(g.estado);
     if (S.filtro === "todas") return true;
     return g.estado === S.filtro;
@@ -353,7 +356,7 @@ function pintarGuias() {
   if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre].join(" ").toLowerCase().includes(S.busca));
   $("#listaGuias").innerHTML = lista.length ? lista.map(g => `
     <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
-      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
+      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${porComprobar(g) ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
       <div><b>${esc(g.cliente)}</b> · <span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</span></div>
       <div class="meta">${C.fecha(g.creado)}${g.tipoEnvio ? " · " + esc(C.textoTipoEnvio(g)) : ""} · ${C.textoCobro(g)}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
       ${porAvisar(g) ? `<div class="btns">${botonAviso(g, true)}</div>` : ""}
@@ -362,6 +365,7 @@ function pintarGuias() {
 }
 
 /* ---------- avisos al cliente por WhatsApp (solo despacho) ---------- */
+const porComprobar = g => !!g.destino?.verificar && C.ACTIVOS.includes(g.estado);
 const tipoAviso = g => g.estado === "en_camino" ? "camino" : g.estado === "entregada" ? "entregado" : null;
 const porAvisar = g => { const t = tipoAviso(g); return t && !g.avisos?.[t]; };
 function botonAviso(g, chico = false) {
@@ -380,10 +384,24 @@ document.addEventListener("click", e => {
 /* ---------- detalle ---------- */
 $("#vDetalle").addEventListener("click", e => { if (e.target.id === "vDetalle") cerrarDetalle(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#vDetalle").hidden) cerrarDetalle(); });
-function cerrarDetalle() { S.abierta = null; $("#vDetalle").hidden = true; ajustado = ""; pintarMapa(); }
+let mapaCorr = null;
+function pintarMapaCorr(g) {
+  if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; }
+  const el = document.getElementById("mapaCorr"); if (!el) return;
+  const p = S.corr || g.destino;
+  // Conservar el acercamiento si el detalle se vuelve a dibujar con datos nuevos
+  mapaCorr = S.corrVista ? L.map(el).setView(S.corrVista.c, S.corrVista.z) : L.map(el).setView([p.lat, p.lng], 16);
+  mapaCorr.on("moveend", () => { S.corrVista = { c: mapaCorr.getCenter(), z: mapaCorr.getZoom() }; });
+  C.capaMapa(L).addTo(mapaCorr);
+  const m = L.marker([p.lat, p.lng], { icon: C.icono(L, "destino", ""), draggable: true }).addTo(mapaCorr);
+  const mover = ll => { S.corr = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) }; m.setLatLng(ll); const b = document.querySelector('[data-acc="guardarUbic"]'); if (b) b.disabled = false; };
+  m.on("dragend", e => mover(e.target.getLatLng()));
+  mapaCorr.on("click", e => mover(e.latlng));
+}
+function cerrarDetalle() { S.corr = null; S.corrVista = null; if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; } S.abierta = null; $("#vDetalle").hidden = true; ajustado = ""; pintarMapa(); }
 let fotoCache = {};
 async function abrirDetalle(n) {
-  S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
+  S.corr = null; S.corrVista = null; S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
   const g = S.guias[n];
   const kf = n + ":" + g?.estado;
   if ((g?.estado === "entregada" || g?.estado === "novedad") && !fotoCache[kf]) {
@@ -421,6 +439,9 @@ function pintarDetalle() {
     ${(() => { const f = fotoCache[g.numero + ":" + g.estado]; const nom = g.estado === "novedad" ? "de la novedad" : "de entrega";
       if (g.estado !== "entregada" && g.estado !== "novedad") return "";
       return f && f !== "sin" ? `<div class="panel"><h3>Foto ${nom}</h3><img class="foto-entrega" alt="Foto ${nom}" src="${f}"></div>` : `<div class="vacio">${f === "sin" ? "Sin foto " + nom + "." : "Cargando foto…"}</div>`; })()}
+    ${g.destino?.verificar ? `<div class="panel aviso-ubic"><b>Ubicación cercana, comprobar manualmente.</b><span class="nota">El sistema no encontró la dirección exacta y puso un punto cercano. Revisa la dirección en Google Maps y arrastra el marcador azul al sitio correcto, o toca el mapa.</span>
+      <div id="mapaCorr" class="mapa" style="height:260px"></div>
+      <div class="btns"><button class="btn chico" data-acc="guardarUbic" ${S.corr ? "" : "disabled"}>Guardar ubicación</button><button class="btn sec chico" data-acc="ubicOk">La ubicación está bien</button></div></div>` : ""}
     ${tipoAviso(g) ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
     <div class="btns">
       <button class="btn chico" data-acc="imprimir">Imprimir guía</button>
@@ -431,12 +452,23 @@ function pintarDetalle() {
     </div>
     ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
     <h3>Historial</h3><ol class="tl">${eventos}</ol>`;
+  if (g.destino?.verificar) pintarMapaCorr(g); else if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; }
 }
 $("#hojaDetalle").addEventListener("click", async e => {
   const b = e.target.closest("[data-acc]"); if (!b) return;
   const n = S.abierta, g = S.guias[n];
   const a = b.dataset.acc;
   if (a === "cerrar") return cerrarDetalle();
+  if (a === "guardarUbic" || a === "ubicOk") {
+    const p = a === "guardarUbic" ? S.corr : g.destino;
+    if (!p) return;
+    b.disabled = true;
+    try {
+      await guardarGuia(n, { destino: { ...g.destino, lat: p.lat, lng: p.lng, localidad: C.localidadCercana(p), aprox: false, verificar: false } });
+      S.corr = null; toast("Ubicación comprobada");
+    } catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
+    return;
+  }
   if (a === "link") return copiar(C.linkRastreo(n), "Link de rastreo copiado");
   if (a === "imprimir") return imprimirGuia(g);
   if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para confirmar"; return; }
@@ -589,10 +621,10 @@ async function buscarDestino(auto = false) {
     if ($("#nDir").value.trim() !== dir) { buscando = false; btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa"; return; }
     if (!cands.length) { $("#nPin").textContent = "No encontré el número exacto en el mapa. Toca el mapa en el sitio de entrega."; }
     else {
-      ponerPin(cands[0], cands[0].cruce ? "Ubicada por el cruce de vías. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Revisa el marcador y arrástralo si hace falta.");
+      ponerPin({ ...cands[0], aprox: !cands[0].cruce }, cands[0].cruce ? "Ubicada por el cruce de vías. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Revisa el marcador y arrástralo si hace falta.");
       if (cands.length > 1) {
         $("#nCands").innerHTML = `<div class="nota">Otras coincidencias (toca para usarla):</div>` + cands.map((c, i) => `<button type="button" class="item clic" data-cand="${i}" style="text-align:left"><span>${esc(c.etiqueta)}</span><span class="meta">${esc(C.localidadCercana(c))}</span></button>`).join("");
-        $("#nCands").onclick = e => { const b = e.target.closest("[data-cand]"); if (b) ponerPin(cands[+b.dataset.cand], "Ubicación elegida. Revisa el marcador."); };
+        $("#nCands").onclick = e => { const b = e.target.closest("[data-cand]"); if (b) ponerPin({ ...cands[+b.dataset.cand], aprox: !cands[+b.dataset.cand].cruce }, "Ubicación elegida. Revisa el marcador."); };
       }
     }
   } catch { $("#nPin").textContent = "No se pudo buscar la dirección. Toca el mapa en el sitio de entrega."; }
@@ -656,7 +688,7 @@ function sugerencias(inputSel, cajaSel, alElegir) {
     if (v !== version) return;
     opciones = todas.filter((o, i) => todas.findIndex(x => C.km(o, x) < 0.03) === i).slice(0, 7);
     activa = -1;
-    pintarLista(errorTT ? errorTT : opciones.length ? "" : "Sin coincidencias. Toca el mapa en el sitio exacto.");
+    pintarLista(errorTT ? errorTT : opciones.length ? "" : "No encontré la dirección exacta. Toca el mapa en el sitio, o crea la guía y quedará marcada para comprobar la ubicación.");
   }
   input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(buscar, 650); });
   input.addEventListener("focus", () => { if (opciones.length) pintarLista(); });
@@ -671,7 +703,7 @@ function sugerencias(inputSel, cajaSel, alElegir) {
   caja.addEventListener("mousedown", e => e.preventDefault());
   caja.addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) { alElegir(opciones[+b.dataset.i]); cerrar(); } });
 }
-sugerencias("#nDir", "#nSug", o => { $("#nCands").innerHTML = ""; ponerPin(o, o.exacta ? "Dirección ubicada. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Arrastra el marcador al sitio exacto."); });
+sugerencias("#nDir", "#nSug", o => { $("#nCands").innerHTML = ""; ponerPin({ ...o, aprox: !o.exacta }, o.exacta ? "Dirección ubicada. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Arrastra el marcador al sitio exacto."); });
 sugerencias("#rDir", "#rSug", o => { S.recPin = { lat: o.lat, lng: o.lng }; $("#rPinTxt").textContent = "Ubicada. Revisa la R, arrástrala si hace falta y toca Guardar."; ajustado = ""; pintarMapa(); });
 
 /* ---------- Ubicación de este equipo (para el punto de recogida) ---------- */
@@ -698,9 +730,15 @@ $("#fNueva").onsubmit = async e => {
     if (!rec || rec.lat == null) throw new Error("Primero fija el punto de recogida.");
     if (!S.pin) {
       $("#nPin").textContent = "Ubicando la dirección…";
-      const c = await ubicar($("#nDir").value.trim());
-      if (!c.length) throw new Error("No pude ubicar la dirección de entrega. Toca el mapa en el sitio exacto.");
-      S.pin = { lat: c[0].lat, lng: c[0].lng, aprox: !c[0].cruce };
+      const dir = $("#nDir").value.trim();
+      const c = await ubicar(dir);
+      if (c.length) S.pin = { lat: c[0].lat, lng: c[0].lng, aprox: !c[0].cruce };
+      else {
+        // Sin dirección exacta: punto cercano (la vía o la zona) y queda marcada para comprobar en Despacho.
+        const cerca = await tomtom(dir, "search").catch(() => []);
+        const p0 = cerca[0] || C.BOGOTA;
+        S.pin = { lat: p0.lat, lng: p0.lng, aprox: true };
+      }
     }
     if (cobroElegido() === "contraentrega" && !valorCobro()) throw new Error("Escribe el valor a cobrar contra entrega.");
     if ($("#nTipo").value === "Otros" && !$("#nTipoOtro").value.trim()) throw new Error("Escribe cuál es el tipo de envío.");
@@ -712,7 +750,7 @@ $("#fNueva").onsubmit = async e => {
       numero, remitente: rec.remitente,
       origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
       cliente: $("#nCli").value.trim(), telefono: $("#nTel").value.trim(),
-      destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: !!p.aprox },
+      destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: !!p.aprox, verificar: !!p.aprox },
       contenido: $("#nCont").value.trim(), nota: $("#nNota").value.trim(),
       valor: cobroElegido() === "contraentrega" ? valorCobro() : 0,
       cobro: cobroElegido(),
