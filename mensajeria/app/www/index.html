@@ -64,7 +64,7 @@ body{padding-top:env(safe-area-inset-top,0px)}
 <script src="capacitor.js"></script>
 <nav class="barra-abajo" id="barra" hidden>
   <a href="#inicio" data-r="inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Inicio</a>
-  <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Escanear<span class="insignia" id="nDisp" hidden></span></a>
+  <a href="#disponibles" data-r="disponibles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Escanear</a>
   <a href="#mios" data-r="mios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Mis pedidos<span class="insignia" id="nMios" hidden></span></a>
   <a href="#perfil" data-r="perfil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Perfil</a>
 </nav>
@@ -124,7 +124,6 @@ A.onAuthStateChanged(auth, async user => {
 function escuchar() {
   const uid = S.u.uid;
   subs.push(onSnapshot(doc(db, "usuarios", uid), s => { if (s.exists()) { S.perfil = s.data(); if (!S.perfil.activo) { terminarTurno(); A.signOut(auth); } } }));
-  subs.push(onSnapshot(query(collection(db, "guias"), where("estado", "==", "disponible")), s => { S.disp = s.docs.map(d => ({ numero: d.id, ...d.data() })); ruta(true); }, e => toast(C.mensajeError(e))));
   subs.push(onSnapshot(query(collection(db, "guias"), where("mensajeroId", "==", uid)), s => { S.mios = s.docs.map(d => ({ numero: d.id, ...d.data() })); ruta(true); }, e => toast(C.mensajeError(e))));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), where("mensajeroId", "==", uid)), s => { S.entregas = s.docs.map(d => d.data()); ruta(true); }, () => {}));
 }
@@ -252,11 +251,9 @@ function ruta(soloDatos = false) {
   else location.hash = "#inicio";
 }
 const zonas = () => (S.perfil?.zonas || []).filter(z => C.NOMBRES_LOCALIDADES.includes(z));
-const disponiblesMias = () => S.disp.filter(g => !zonas().length || (g.zonas || []).some(z => zonas().includes(z))).sort((a, b) => a.creado - b.creado);
 const activos = () => S.mios.filter(g => ["tomada", "recogida", "en_camino"].includes(g.estado)).sort((a, b) => a.actualizado - b.actualizado);
 function insignias() {
-  const d = disponiblesMias().length, m = activos().length;
-  $("#nDisp").hidden = !d; $("#nDisp").textContent = d;
+  const m = activos().length;
   $("#nMios").hidden = !m; $("#nMios").textContent = m;
 }
 function saldo() {
@@ -339,7 +336,7 @@ function pintarRegistro() {
 
 /* ---------- inicio ---------- */
 function pintarInicio() {
-  const act = activos(), disp = disponiblesMias();
+  const act = activos();
   const hoy = new Date().toDateString();
   const entregadasHoy = S.mios.filter(g => g.estado === "entregada" && new Date(g.actualizado).toDateString() === hoy).length;
   pantalla(`<h1>Hola, ${esc(C.primerNombre(S.perfil.nombre))}</h1>
@@ -350,7 +347,7 @@ function pintarInicio() {
       ${S.sinPermiso ? `<div class="aviso"><b>La app no tiene permiso de ubicación.</b><span>Abre los ajustes, entra a Permisos > Ubicación y escoge “Permitir solo mientras se usa la app” o “Permitir todo el tiempo”.</span><button class="btn sec chico" id="bAjustes">Abrir ajustes</button></div>` : ""}
       <button class="btn btn-turno ${S.turno ? "sec" : "ok"}" id="bTurno">${S.turno ? "Terminar turno" : "Iniciar turno"}</button>
     </div>
-    <div class="cifras"><div><b>${act.length}</b><span>Pedidos en curso</span></div><div><b>${disp.length}</b><span>Disponibles en tus zonas</span></div><div><b>${entregadasHoy}</b><span>Entregados hoy</span></div></div>
+    <div class="cifras"><div><b>${act.length}</b><span>Pedidos en curso</span></div><div><b>${entregadasHoy}</b><span>Entregados hoy</span></div></div>
     <div class="panel"><h3>Dinero en mano</h3><div class="saldo">${C.cop(saldo())}</div><p class="nota" style="margin:0">Efectivo cobrado que aún no le has entregado a despacho.</p></div>
     ${ls.get("bateriaOk") === "1" ? "" : `<div class="aviso"><b>Antes de tu primer turno</b><span>Para que tu ubicación no se corte con el celular bloqueado, desactiva el ahorro de batería para esta app: Ajustes > Batería (o Aplicaciones) > Mensajería Prueba > Batería > <b>Sin restricciones</b>. En Xiaomi activa también <b>Inicio automático</b>.</span><div class="btns"><button class="btn sec chico" id="bAjustes2">Abrir ajustes de la app</button><button class="btn sec chico" id="bBatOk">Ya lo hice</button></div></div>`}`);
   $("#bTurno").onclick = () => S.turno ? terminarTurno() : iniciarTurno();
@@ -402,13 +399,10 @@ async function recibirGuia(n) {
   catch (err) { toast(/^(Otro|La guía|Esta guía)/.test(err.message || "") ? err.message : C.mensajeError(err)); }
 }
 function pintarDisponibles() {
-  const l = disponiblesMias();
   pantalla(`<h1>Recibir pedido</h1>
     <p class="nota" style="margin:0">Escanea el código QR o el código de barras de la guía impresa. El pedido queda en camino a tu nombre.</p>
     <button class="btn btn-escanear ok" id="bScan">Escanear guía</button>
-    <form class="manual" id="fMan"><input id="mNum" placeholder="BOG-7K2M9Q" aria-label="Número de guía" autocomplete="off"><button class="btn sec" type="submit">Recibir</button></form>
-    <h3>Pendientes en tus zonas</h3>
-    <div class="lista">${l.length ? l.map(g => tarjeta(g, "")).join("") : `<div class="vacio">No hay pedidos pendientes por recoger en tus zonas.</div>`}</div>`);
+    <form class="manual" id="fMan"><input id="mNum" placeholder="BOG-7K2M9Q" aria-label="Número de guía" autocomplete="off"><button class="btn sec" type="submit">Recibir</button></form>`);
   $("#raiz").onclick = null;
   $("#bScan").onclick = async () => { const n = await escanear(); if (n) recibirGuia(n); };
   $("#fMan").onsubmit = e => { e.preventDefault(); recibirGuia($("#mNum").value); };
