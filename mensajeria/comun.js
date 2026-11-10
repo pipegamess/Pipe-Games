@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109g";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109h";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -134,7 +134,7 @@ export function leerCoordenadas(t) {
 
 // Número de guía a partir de lo escaneado (QR con link de rastreo o código de barras).
 export function guiaDesdeEscaneo(v) {
-  const m = String(v || "").toUpperCase().match(/BOG-[A-Z0-9]{6}/);
+  const m = String(v || "").toUpperCase().match(/[A-Z][A-Z0-9]{1,19}-\d{5}\b|BOG-[A-Z0-9]{6}/);
   return m ? m[0] : null;
 }
 
@@ -163,6 +163,12 @@ export function km(a, b) {
   const h = Math.sin(dl / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dn / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+// Número de guía con el nombre de la tienda y consecutivo de 5 cifras: PIPEGAMES-00001
+export function prefijoTienda(nombre) {
+  return String(nombre || "GUIA").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20) || "GUIA";
+}
+export const numeroGuia = (prefijo, k) => `${prefijo}-${String(k).padStart(5, "0")}`;
+export const esNumeroGuia = n => /^[A-Z][A-Z0-9]{1,19}-\d{5}$|^BOG-[A-Z0-9]{6}$/.test(n);
 export function nuevoNumero() {
   const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let s = "BOG-";
