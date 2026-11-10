@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109k";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109l";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -43,8 +43,8 @@ export const TIPOS_ENVIO = ["Directo", "Contra entrega", "Mercado Libre", "Falab
 export function textoCobro(g) { return g.valor ? `${cop(g.valor)} contra entrega` : "Sin cobro"; }
 // Referencia del marketplace: "Mercado Libre · Venta 2000… · Envío 4123…"
 export function textoMarketplace(g) {
-  const m = g.marketplace; if (!m || !m.venta) return "";
-  return `${m.canal} · ${m.canal === "Falabella" ? "Orden" : "Venta"} ${m.venta}${m.envio ? " · Envío " + m.envio : ""}`;
+  const m = g.marketplace; if (!m || !(m.venta || m.envio)) return "";
+  return [m.canal, m.venta ? `${m.canal === "Falabella" ? "Orden" : "Venta"} ${m.venta}` : "", m.envio ? `Envío ${m.envio}` : ""].filter(Boolean).join(" · ");
 }
 export function textoTipoEnvio(g) { return g.tipoEnvio === "Otros" && g.tipoEnvioOtro ? g.tipoEnvioOtro : (g.tipoEnvio || ""); }
 export const RECIBE = { cliente: "Cliente", porteria: "Portería", familiar: "Familiar" };
@@ -168,6 +168,34 @@ export function km(a, b) {
   const h = Math.sin(dl / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dn / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
+// Etiqueta de Mercado Envíos Flex: datos a partir de las líneas de texto de una página del PDF.
+export function leerEtiquetaML(lineas) {
+  const t = lineas.join("\n");
+  const campo = re => { const m = t.match(re); return m ? m[1].replace(/\s+/g, " ").trim() : ""; };
+  const envio = (t.match(/Env[ií]o:\s*([\d\s]{6,20})/i)?.[1] || "").replace(/\D/g, "");
+  if (!envio) return null;
+  const direccionTxt = campo(/Direcci[oó]n:\s*(.+)/i);
+  const barrio = campo(/Distrito:\s*(.+)/i);
+  const refs = [...t.matchAll(/Referencia:\s*(.+?)(?=\s*Referencia:|\n|$)/gi)].map(m => m[1].trim()).filter(Boolean);
+  const dest = campo(/Destinatario:\s*(.+)/i);
+  const usuario = dest.match(/\(([^)]+)\)\s*$/)?.[1] || "";
+  const nombre = dest.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  // "Calle 147 #11-10, Usaquén" → dirección y localidad escrita
+  const partes = direccionTxt.split(/,\s*/);
+  const localidadTxt = partes.length > 1 ? partes.pop() : "";
+  const direccion = partes.join(", ");
+  const flex = /\bFLEX\b/.test(t);
+  const zona = campo(/(ZONA\s*\d+)/i);
+  return { envio, nombre, usuario, direccion, localidadTxt, barrio, referencia: [barrio, ...refs].filter(Boolean).join(" · "), flex, zona };
+}
+
+// QR de Mercado Envíos ({"id":"48475358507","sender_id":…}) o número de envío escrito
+export function envioMLDesdeEscaneo(v) {
+  const s = String(v || "").trim();
+  try { const j = JSON.parse(s); if (j && j.id && /^\d{8,15}$/.test(String(j.id))) return String(j.id); } catch {}
+  return /^\d{10,13}$/.test(s.replace(/\s/g, "")) ? s.replace(/\s/g, "") : null;
+}
+
 // Número de guía con el nombre de la tienda y consecutivo de 5 cifras: PIPEGAMES-00001
 export function prefijoTienda(nombre) {
   return String(nombre || "GUIA").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20) || "GUIA";

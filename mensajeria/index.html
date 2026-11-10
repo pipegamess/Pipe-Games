@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261109k">
+<link rel="stylesheet" href="estilos.css?v=20261109l">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -34,6 +34,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .tabla th{font-size:12px;color:var(--muted);font-weight:600}
 .num{text-align:right!important}
 .scroll{overflow-x:auto}
+.ml-caja{border-color:#E6C619;background:color-mix(in srgb,#FFE600 10%,var(--surface))}
+.ml-lista{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.ml-lista .fila-ml{display:flex;flex-direction:row;color:var(--ink);font-weight:400;gap:10px;align-items:flex-start;font-size:13px;border-top:1px solid var(--line);padding-top:6px}
+.ml-lista input{width:20px;height:20px;flex:none;margin-top:2px}
 .aviso-ubic{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
 .aviso-ubic b{color:var(--ink)}
 .opciones-cobro{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -124,6 +128,12 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <section class="panel" id="t-nueva" hidden>
         <div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2>Nueva guía</h2>
           <label class="formato" for="fmtImp">Formato de impresión <select id="fmtImp"><option value="etiqueta">Etiqueta 10 × 15 cm</option><option value="carta">Hoja carta</option></select></label></div>
+        <div class="item ml-caja" id="mlCaja">
+          <b>Envíos Flex de Mercado Libre</b>
+          <span class="nota">Sube el PDF de etiquetas que descargas de Mercado Libre y las guías se crean solas. El mensajero las recibe escaneando el QR de la etiqueta de Mercado Libre.</span>
+          <label class="btn sec chico" style="align-self:flex-start;flex-direction:row">Cargar etiquetas (PDF)<input type="file" id="mlPdf" accept="application/pdf" multiple hidden></label>
+          <div id="mlRes"></div>
+        </div>
         <form id="fNueva" class="lista">
           <h3>Recogida</h3>
           <div class="item" id="recFija"><div class="nota">Cargando punto de recogida…</div></div>
@@ -196,8 +206,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109k";
-import * as C from "./comun.js?v=20261109k";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261109l";
+import * as C from "./comun.js?v=20261109l";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -340,7 +350,7 @@ async function guardarGuia(numero, cambios) {
 }
 
 /* ---------- GUÍAS ---------- */
-const FILTROS = [["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+const FILTROS = [["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
 $("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
 $("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
 $("#listaGuias").addEventListener("click", e => { if (e.target.closest("a[data-aviso]")) return; const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
@@ -372,9 +382,9 @@ function pintarGuias() {
 /* ---------- avisos al cliente por WhatsApp (solo despacho) ---------- */
 const porComprobar = g => !!g.destino?.verificar && C.ACTIVOS.includes(g.estado);
 const tipoAviso = g => g.estado === "en_camino" ? "camino" : g.estado === "entregada" ? "entregado" : null;
-const porAvisar = g => { const t = tipoAviso(g); return t && !g.avisos?.[t]; };
+const porAvisar = g => { const t = tipoAviso(g); return !!(t && g.telefono && !g.avisos?.[t]); };
 function botonAviso(g, chico = false) {
-  const t = tipoAviso(g); if (!t) return "";
+  const t = tipoAviso(g); if (!t || !g.telefono) return "";
   const texto = t === "camino" ? C.mensajeEnCamino(g) : C.mensajeEntregado(g);
   const hecho = g.avisos?.[t];
   const etiqueta = hecho ? `Volver a avisar (enviado ${new Date(hecho).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })})` : (t === "camino" ? "Avisar al cliente: va en camino" : "Avisar al cliente: entregado");
@@ -434,7 +444,7 @@ function pintarDetalle() {
         <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
         <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
         ${g.tipoEnvio ? `<dt>Tipo de envío</dt><dd>${esc(C.textoTipoEnvio(g))}</dd>` : ""}
-        ${g.marketplace?.venta ? `<dt>${g.marketplace.canal === "Falabella" ? "Orden Falabella" : "Venta Mercado Libre"}</dt><dd>${esc(g.marketplace.venta)}${g.marketplace.envio ? ` · Envío ${esc(g.marketplace.envio)}` : ""}</dd>` : ""}
+        ${C.textoMarketplace(g) ? `<dt>Marketplace</dt><dd>${esc(C.textoMarketplace(g))}</dd>` : ""}
         <dt>Cobro</dt><dd>${C.textoCobro(g)}</dd>
         ${g.nota ? `<dt>Notas</dt><dd>${esc(g.nota)}</dd>` : ""}
         <dt>Mensajero</dt><dd>${g.mensajeroNombre ? esc(g.mensajeroNombre) + (g.mensajeroPlaca ? " · " + esc(g.mensajeroPlaca) : "") + (u ? ` · señal ${C.hace(u.t)}` : "") : "Sin asignar"}</dd>
@@ -448,13 +458,13 @@ function pintarDetalle() {
     ${g.destino?.verificar ? `<div class="panel aviso-ubic"><b>Ubicación cercana, comprobar manualmente.</b><span class="nota">El sistema no encontró la dirección exacta y puso un punto cercano. Revisa la dirección en Google Maps y arrastra el marcador azul al sitio correcto, o toca el mapa.</span>
       <div id="mapaCorr" class="mapa" style="height:260px"></div>
       <div class="btns"><button class="btn chico" data-acc="guardarUbic" ${S.corr ? "" : "disabled"}>Guardar ubicación</button><button class="btn sec chico" data-acc="ubicOk">La ubicación está bien</button></div></div>` : ""}
-    ${tipoAviso(g) ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
+    ${tipoAviso(g) && g.telefono ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
     <div class="btns">
       <button class="btn chico" data-acc="imprimir">Imprimir guía</button>
       <button class="btn sec chico" data-acc="link">Copiar link de rastreo</button>
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkRastreo(g.numero)}">Abrir rastreo</a>
       <a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(C.direccionTexto(g.destino))}">Ver dirección en Google Maps</a>
-      <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g.numero)}`)}">Enviar guía por WhatsApp</a>
+      ${g.telefono ? `<a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g.numero)}`)}">Enviar guía por WhatsApp</a>` : ""}
     </div>
     ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
     <h3>Historial</h3><ol class="tl">${eventos}</ol>`;
@@ -730,6 +740,104 @@ $("#rAqui").onclick = () => {
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
 };
 
+/* ---------- Carga de etiquetas de Mercado Libre (PDF) ---------- */
+async function cargarPdfJs() {
+  if (window.pdfjsLib) return;
+  await new Promise((ok, mal) => { const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"; sc.onload = ok; sc.onerror = () => mal(new Error("No se pudo cargar el lector de PDF. Revisa tu conexión.")); document.head.append(sc); });
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+async function leerEtiquetasPdf(file) {
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const res = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const tc = await (await pdf.getPage(i)).getTextContent();
+    // Agrupar el texto por renglones (misma altura) y ordenarlo de arriba abajo
+    const filas = new Map();
+    tc.items.forEach(it => { const y = Math.round(it.transform[5]); const k = [...filas.keys()].find(z => Math.abs(z - y) <= 2) ?? y; if (!filas.has(k)) filas.set(k, []); filas.get(k).push(it); });
+    const lineas = [...filas.entries()].sort((a, b) => b[0] - a[0]).map(([, its]) => its.sort((a, b) => a.transform[4] - b.transform[4]).map(x => x.str).join(" ").replace(/\s+/g, " ").trim()).filter(Boolean);
+    const d = C.leerEtiquetaML(lineas);
+    if (d) res.push(d);
+  }
+  return res;
+}
+const guiaPorEnvio = envio => Object.values(S.guias).find(g => g.marketplace?.envio === envio);
+let mlPendientes = [];
+$("#mlPdf").onchange = async e => {
+  const files = [...(e.target.files || [])]; e.target.value = "";
+  if (!files.length) return;
+  $("#mlRes").innerHTML = `<div class="nota">Leyendo etiquetas…</div>`;
+  try {
+    await cargarPdfJs();
+    let todas = [];
+    for (const f of files) todas = todas.concat(await leerEtiquetasPdf(f));
+    // Quitar repetidas dentro del mismo PDF
+    mlPendientes = todas.filter((d, i) => todas.findIndex(x => x.envio === d.envio) === i);
+    if (!mlPendientes.length) { $("#mlRes").innerHTML = `<div class="error">No encontré etiquetas de Mercado Libre en ese PDF.</div>`; return; }
+    pintarMlPendientes();
+  } catch (err) { $("#mlRes").innerHTML = `<div class="error">${esc(err.message || "No se pudo leer el PDF.")}</div>`; }
+};
+function pintarMlPendientes() {
+  const nuevas = mlPendientes.filter(d => !guiaPorEnvio(d.envio));
+  $("#mlRes").innerHTML = `<div class="ml-lista">${mlPendientes.map((d, i) => { const ya = guiaPorEnvio(d.envio); return `<label class="fila-ml"><input type="checkbox" data-ml="${i}" ${ya ? "disabled" : "checked"}><span><b>${esc(d.nombre)}</b> · Envío ${esc(d.envio)}<br><span class="meta">${esc(d.direccion)}${d.localidadTxt ? ", " + esc(d.localidadTxt) : ""} · ${esc(d.referencia)}</span>${ya ? `<br><span class="pill entregada">Ya existe: ${esc(ya.numero)}</span>` : ""}</span></label>`; }).join("")}</div>
+    ${nuevas.length ? `<div class="btns" style="margin-top:8px"><button class="btn chico" type="button" id="mlCrear">Crear ${nuevas.length} guía${nuevas.length === 1 ? "" : "s"}</button></div>` : `<div class="nota">Todas estas etiquetas ya tienen guía.</div>`}`;
+  $("#mlCrear") && ($("#mlCrear").onclick = crearGuiasML);
+}
+async function crearGuiasML() {
+  const rec = S.recogida;
+  if (!rec || rec.lat == null) { toast("Primero fija el punto de recogida."); return; }
+  const elegidas = [...document.querySelectorAll("[data-ml]:checked")].map(i => mlPendientes[+i.dataset.ml]).filter(d => !guiaPorEnvio(d.envio));
+  if (!elegidas.length) return;
+  const btn = $("#mlCrear"); btn.disabled = true;
+  const prefijo = C.prefijoTienda(rec.remitente);
+  const hechas = [];
+  for (const [i, d] of elegidas.entries()) {
+    btn.textContent = `Creando ${i + 1} de ${elegidas.length}…`;
+    try {
+      const c = await ubicar(d.direccion);
+      let p, verificar = false;
+      if (c.length) { p = c[0]; verificar = !c[0].cruce; }
+      else { const cerca = await tomtom(d.direccion + (d.localidadTxt ? ", " + d.localidadTxt : ""), "search").catch(() => []); p = cerca[0] || C.BOGOTA; verificar = true; }
+      const loc = C.localidadCercana(p);
+      const g = {
+        numero: "", remitente: rec.remitente,
+        origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
+        cliente: d.nombre, telefono: "",
+        destino: { direccion: d.direccion, localidad: loc, referencia: d.referencia, lat: p.lat, lng: p.lng, aprox: verificar, verificar },
+        contenido: "", nota: d.usuario ? "Usuario Mercado Libre: " + d.usuario : "",
+        valor: 0, cobro: "sin_cobro", tipoEnvio: "Mercado Libre", tipoEnvioOtro: "",
+        marketplace: { canal: "Mercado Libre", venta: "", envio: d.envio, flex: d.flex },
+        zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
+        estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
+        creado: Date.now(), actualizado: Date.now(),
+        eventos: [C.evento("disponible", "Guía creada desde etiqueta de Mercado Libre", "despacho")]
+      };
+      const numero = await guardarNuevaGuia(g, prefijo);
+      S.guias[numero] = { ...g, numero };
+      hechas.push({ numero, d, verificar });
+    } catch (err) { hechas.push({ error: C.mensajeError(err), d }); }
+  }
+  const porRevisar = hechas.filter(h => h.verificar).length;
+  $("#mlRes").innerHTML = `<div class="ml-lista">${hechas.map(h => h.error ? `<div class="fila-ml"><span class="error">${esc(h.d.nombre)} · Envío ${esc(h.d.envio)}: ${esc(h.error)}</span></div>` : `<div class="fila-ml"><span><b>${esc(h.numero)}</b> · ${esc(h.d.nombre)} · Envío ${esc(h.d.envio)} ${h.verificar ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}</span></div>`).join("")}</div>
+    <p class="nota" style="margin:6px 0 0">${hechas.filter(h => !h.error).length} guías creadas.${porRevisar ? ` ${porRevisar} quedaron con ubicación aproximada: ábrelas desde Guías (filtro “Ubicación por comprobar”) y ajusta el punto.` : ""}</p>`;
+  toast("Guías de Mercado Libre creadas");
+}
+
+// Consecutivo por tienda, guardado en el perfil de despacho: PIPEGAMES-00001, 00002…
+async function guardarNuevaGuia(g, prefijo) {
+  let numero = "";
+  await runTransaction(db, async tx => {
+    const refA = doc(db, "usuarios", ADMIN_UID);
+    const a = await tx.get(refA);
+    let k = (a.exists() ? a.data().consecutivos?.[prefijo] || 0 : 0) + 1;
+    numero = C.numeroGuia(prefijo, k);
+    for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
+    g.numero = numero;
+    tx.set(refA, { consecutivos: { [prefijo]: k } }, { merge: true });
+    tx.set(doc(db, "guias", numero), g);
+    tx.set(doc(db, "rastreo", numero), C.vistaPublica(g));
+  });
+  return numero;
+}
 $("#fNueva").onsubmit = async e => {
   e.preventDefault(); $("#nError").textContent = "";
   const btn = $("#nBtn"); btn.disabled = true;
@@ -762,7 +870,7 @@ $("#fNueva").onsubmit = async e => {
     if (cobroElegido() === "contraentrega" && !valorCobro()) throw new Error("Escribe el valor a cobrar contra entrega.");
     if ($("#nTipo").value === "Otros" && !$("#nTipoOtro").value.trim()) throw new Error("Escribe cuál es el tipo de envío.");
     const esMkt = ["Mercado Libre", "Falabella"].includes($("#nTipo").value);
-    if (esMkt && !$("#nMktVenta").value.trim()) throw new Error("Escribe el número de " + ($("#nTipo").value === "Falabella" ? "orden de Falabella." : "venta de Mercado Libre."));
+    if (esMkt && !$("#nMktVenta").value.trim() && !$("#nMktEnvio").value.trim()) throw new Error("Escribe el número de " + ($("#nTipo").value === "Falabella" ? "orden" : "venta") + " o el de envío del marketplace.");
     const prefijo = C.prefijoTienda(rec.remitente);
     let numero = "";
     const p = S.pin;
@@ -783,18 +891,7 @@ $("#fNueva").onsubmit = async e => {
       creado: Date.now(), actualizado: Date.now(),
       eventos: [C.evento("disponible", "Guía creada", "despacho")]
     };
-    // Consecutivo por tienda, guardado en el perfil de despacho: PIPEGAMES-00001, 00002…
-    await runTransaction(db, async tx => {
-      const refA = doc(db, "usuarios", ADMIN_UID);
-      const a = await tx.get(refA);
-      let k = (a.exists() ? a.data().consecutivos?.[prefijo] || 0 : 0) + 1;
-      numero = C.numeroGuia(prefijo, k);
-      for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
-      g.numero = numero;
-      tx.set(refA, { consecutivos: { [prefijo]: k } }, { merge: true });
-      tx.set(doc(db, "guias", numero), g);
-      tx.set(doc(db, "rastreo", numero), C.vistaPublica(g));
-    });
+    numero = await guardarNuevaGuia(g, prefijo);
     const link = C.linkRastreo(numero);
     $("#nResultado").innerHTML = `<div class="item"><div class="arriba"><span>Guía creada</span><span class="pill disponible">Disponible</span></div>
       <div class="codigo">${numero}</div>
@@ -847,11 +944,11 @@ function imprimirGuia(g) {
     <div class="et-sec"><div class="et-num">${esc(g.numero)}</div><svg class="et-barras" id="etBarras"></svg></div>
     <div class="et-sec"><div class="et-rot">Para</div>
       <div class="et-nombre">${esc(g.cliente)}</div>
-      <div>Cel. ${esc(g.telefono)}</div>
+      ${g.telefono ? `<div>Cel. ${esc(g.telefono)}</div>` : ""}
       <div class="et-dir">${esc(g.destino?.direccion)}</div>
       <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""} · Bogotá</div></div>
     <div class="et-sec"><div class="et-rot">De</div>
-      <div><b>${esc(g.remitente)}</b></div>${g.marketplace?.venta ? `<div>${esc(g.marketplace.canal)} · ${g.marketplace.canal === "Falabella" ? "Orden" : "Venta"} <b>${esc(g.marketplace.venta)}</b>${g.marketplace.envio ? ` · Envío ${esc(g.marketplace.envio)}` : ""}</div>` : ""}</div>
+      <div><b>${esc(g.remitente)}</b></div>${C.textoMarketplace(g) ? `<div>${esc(C.textoMarketplace(g))}</div>` : ""}</div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
     <div class="et-sec et-pie"><div class="et-qr">${qr}</div>
       <div class="et-cobro"><span class="et-rot">Tipo de envío: ${esc(C.textoTipoEnvio(g) || (g.valor ? "Contra entrega" : "Directo"))}</span><b>${g.valor ? "COBRAR " + C.cop(g.valor) : "SIN COBRO"}</b></div></div>
