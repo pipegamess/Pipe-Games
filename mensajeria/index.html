@@ -337,18 +337,19 @@ async function guardarGuia(numero, cambios) {
 }
 
 /* ---------- GUÍAS ---------- */
-const FILTROS = [["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+const FILTROS = [["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
 $("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
 $("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
-$("#listaGuias").addEventListener("click", e => { const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
+$("#listaGuias").addEventListener("click", e => { if (e.target.closest("a[data-aviso]")) return; const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
 function pintarGuias() {
   const todas = Object.values(S.guias);
   const n = k => todas.filter(g => g.estado === k).length;
   const turno = Object.values(S.ubic).filter(u => u.enTurno).length;
-  $("#cifras").innerHTML = `<div><b>${todas.filter(g => C.ACTIVOS.includes(g.estado)).length}</b><span>Activas</span></div><div><b>${n("disponible")}</b><span>Sin mensajero</span></div><div><b>${n("en_camino")}</b><span>En camino</span></div><div><b>${n("novedad")}</b><span>Novedades</span></div><div><b>${turno}</b><span>En turno</span></div>`;
+  $("#cifras").innerHTML = `<div><b>${todas.filter(g => C.ACTIVOS.includes(g.estado)).length}</b><span>Activas</span></div><div><b>${n("disponible")}</b><span>Sin mensajero</span></div><div><b>${n("en_camino")}</b><span>En camino</span></div><div><b>${n("novedad")}</b><span>Novedades</span></div><div><b>${turno}</b><span>En turno</span></div><div><b>${todas.filter(porAvisar).length}</b><span>Por avisar al cliente</span></div>`;
   $("#filtros").innerHTML = FILTROS.map(([k, l]) => `<button data-f="${k}" aria-pressed="${S.filtro === k}">${l}</button>`).join("");
   let lista = todas.filter(g => {
     if (S.filtro === "activas") return C.ACTIVOS.includes(g.estado);
+    if (S.filtro === "avisar") return porAvisar(g);
     if (S.filtro === "ruta") return ["tomada", "recogida", "en_camino"].includes(g.estado);
     if (S.filtro === "todas") return true;
     return g.estado === S.filtro;
@@ -356,12 +357,29 @@ function pintarGuias() {
   if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre].join(" ").toLowerCase().includes(S.busca));
   $("#listaGuias").innerHTML = lista.length ? lista.map(g => `
     <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
-      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></div>
+      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
       <div><b>${esc(g.cliente)}</b> · <span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</span></div>
       <div class="meta">${C.fecha(g.creado)}${g.tipoEnvio ? " · " + esc(C.textoTipoEnvio(g)) : ""} · ${C.textoCobro(g)}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
+      ${porAvisar(g) ? `<div class="btns">${botonAviso(g, true)}</div>` : ""}
     </div>`).join("")
     : `<div class="vacio">${todas.length ? "No hay guías en este filtro." : "Aún no hay guías. Crea la primera en “Nueva guía”."}</div>`;
 }
+
+/* ---------- avisos al cliente por WhatsApp (solo despacho) ---------- */
+const tipoAviso = g => g.estado === "en_camino" ? "camino" : g.estado === "entregada" ? "entregado" : null;
+const porAvisar = g => { const t = tipoAviso(g); return t && !g.avisos?.[t]; };
+function botonAviso(g, chico = false) {
+  const t = tipoAviso(g); if (!t) return "";
+  const texto = t === "camino" ? C.mensajeEnCamino(g) : C.mensajeEntregado(g);
+  const hecho = g.avisos?.[t];
+  const etiqueta = hecho ? `Volver a avisar (enviado ${new Date(hecho).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })})` : (t === "camino" ? "Avisar al cliente: va en camino" : "Avisar al cliente: entregado");
+  return `<a class="btn ${hecho ? "sec" : "ok"} ${chico ? "chico" : ""}" target="_blank" rel="noopener" data-aviso="${t}" data-n="${esc(g.numero)}" href="${C.linkWhatsApp(g.telefono, texto)}">${etiqueta}</a>`;
+}
+document.addEventListener("click", e => {
+  const a = e.target.closest("a[data-aviso]"); if (!a) return;
+  e.stopPropagation();
+  updateDoc(doc(db, "guias", a.dataset.n), { ["avisos." + a.dataset.aviso]: Date.now() }).catch(err => toast(C.mensajeError(err)));
+}, true);
 
 /* ---------- detalle ---------- */
 $("#vDetalle").addEventListener("click", e => { if (e.target.id === "vDetalle") cerrarDetalle(); });
@@ -404,6 +422,7 @@ function pintarDetalle() {
       </dl>
     </div>
     ${g.estado === "entregada" ? (fotoCache[g.numero] && fotoCache[g.numero] !== "sin" ? `<img class="foto-entrega" alt="Foto de entrega" src="${fotoCache[g.numero]}">` : `<div class="vacio">${fotoCache[g.numero] === "sin" ? "Sin foto de entrega." : "Cargando foto…"}</div>`) : ""}
+    ${tipoAviso(g) ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
     <div class="btns">
       <button class="btn chico" data-acc="imprimir">Imprimir guía</button>
       <button class="btn sec chico" data-acc="link">Copiar link de rastreo</button>

@@ -243,7 +243,6 @@ function ruta(soloDatos = false) {
   else if (r === "g") pintarGuia(decodeURIComponent(n));
   else if (r === "entregar") pintarEntregar(decodeURIComponent(n));
   else if (r === "novedad") pintarNovedad(decodeURIComponent(n));
-  else if (r === "aviso") pintarAviso(decodeURIComponent(n), x);
   else location.hash = "#inicio";
 }
 const zonas = () => (S.perfil?.zonas || []).filter(z => C.NOMBRES_LOCALIDADES.includes(z));
@@ -393,7 +392,7 @@ async function recibirGuia(n) {
   if (buscar(n) && ["tomada", "recogida", "en_camino"].includes(buscar(n).estado)) { location.hash = "#g/" + n; return; }
   if (buscar(n)?.estado === "entregada") { toast("Esa guía ya la entregaste."); return; }
   if (!S.turno) { toast("Inicia turno antes de recibir pedidos."); location.hash = "#inicio"; return; }
-  try { S.ultimaGuia = await tomar(n); toast("Pedido " + n + " en camino"); location.hash = `#aviso/${n}/camino`; }
+  try { S.ultimaGuia = await tomar(n); toast("Pedido " + n + " en camino"); location.hash = "#g/" + n; }
   catch (err) { toast(/^(Otro|La guía|Esta guía)/.test(err.message || "") ? err.message : C.mensajeError(err)); }
 }
 function pintarDisponibles() {
@@ -428,7 +427,7 @@ function telLlamar(t) {
   return "tel:" + d;
 }
 function pintarGuia(n) {
-  const g = buscar(n);
+  const g = buscar(n) || (S.ultimaGuia?.numero === n ? S.ultimaGuia : null);
   if (!g) { pantalla(`<a class="btn sec chico volver" href="#mios">← Mis pedidos</a><div class="vacio">Este pedido ya no está asignado a ti.</div>`); return; }
   // Guías antiguas en "Tomada" o "Recogida" pasan a "En camino" con un toque.
   const sig = g.estado === "en_camino" ? ["entregar", "Entregar pedido"] : ["en_camino", "Salir a entregar"];
@@ -460,7 +459,7 @@ function pintarGuia(n) {
     $("#bSig").disabled = true;
     try {
       S.ultimaGuia = await guardar(g, { estado: "en_camino", eventos: [...(g.eventos || []), C.evento("en_camino", "", S.perfil.nombre)] });
-      location.hash = `#aviso/${g.numero}/camino`;
+      toast("Pedido en camino"); ruta();
     } catch (err) { toast(C.mensajeError(err)); $("#bSig").disabled = false; }
   };
   // mapa
@@ -470,20 +469,6 @@ function pintarGuia(n) {
   if (g.destino) { L.marker([g.destino.lat, g.destino.lng], { icon: C.icono(L, "destino", "") }).addTo(mapaG); pts.push([g.destino.lat, g.destino.lng]); }
   if (S.pos) { L.marker([S.pos.lat, S.pos.lng], { icon: C.icono(L, "mensajero", C.iniciales(S.perfil.nombre)) }).addTo(mapaG); pts.push([S.pos.lat, S.pos.lng]); }
   if (pts.length > 1) mapaG.fitBounds(L.latLngBounds(pts).pad(0.3)); else if (pts.length) mapaG.setView(pts[0], 14);
-}
-
-/* ---------- aviso por WhatsApp ---------- */
-function pintarAviso(n, tipo) {
-  const g = buscar(n) || (S.ultimaGuia?.numero === n ? S.ultimaGuia : null);
-  if (!g) { location.hash = "#mios"; return; }
-  const texto = tipo === "entregado" ? C.mensajeEntregado(g) : C.mensajeEnCamino(g);
-  pantalla(`<h1>${tipo === "entregado" ? "Avísale al cliente que llegó" : "Avísale al cliente que vas en camino"}</h1>
-    <div class="panel"><h3>Mensaje</h3><p style="margin:0;white-space:pre-wrap">${esc(texto)}</p></div>
-    <button class="btn btn-turno ok" id="bWa">Enviar por WhatsApp a ${esc(C.primerNombre(g.cliente))}</button>
-    <p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar y vuelve a la app.</p>
-    <button class="btn sec ancho" id="bSeguir" disabled>Continuar</button>`);
-  $("#bWa").onclick = () => { $("#bSeguir").disabled = false; abrirExterno(C.linkWhatsApp(g.telefono, texto)); };
-  $("#bSeguir").onclick = () => { location.hash = tipo === "entregado" ? "#mios" : "#g/" + n; };
 }
 
 /* ---------- entrega ---------- */
@@ -547,7 +532,7 @@ function pintarEntregar(n) {
       await setDoc(doc(db, "fotos", n), { imagen: foto, t: Date.now(), mensajeroId: S.u.uid });
       const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot, recibe: { tipo: recibe(), nombre: recibe() === "cliente" ? g.cliente : recNom } };
       S.ultimaGuia = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] });
-      location.hash = `#aviso/${n}/entregado`;
+      toast("Pedido entregado"); location.hash = "#mios";
     } catch (err) { $("#eErr").textContent = C.mensajeError(err); $("#bEnt").disabled = false; $("#bEnt").textContent = "Confirmar entrega"; }
   };
 }
