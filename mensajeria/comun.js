@@ -50,9 +50,46 @@ export function direccionTexto(d) {
   return [String(d.direccion || "").replace(/\b(apto|apt|ap|int|interior|torre|casa|oficina|of|piso|local)\b.*$/i, "").trim(), d.localidad, "Bogotá, Colombia"].filter(Boolean).join(", ");
 }
 
-// Convierte nomenclatura de Bogotá (Cra 15 # 93-47) a una forma que entiende el buscador de mapas.
+// Avenidas con nombre propio: orientación (corre como carrera o como calle) y su número equivalente.
+export const AVENIDAS = [
+  { re: /\bciudad de cali\b|\bav(enida)?\.?\s+cali\b/i, nombre: "Ciudad de Cali", tipo: "carrera", num: "86" },
+  { re: /\bboyac[aá](?![a-záéíóúñ])/i, nombre: "Boyacá", tipo: "carrera", num: "72" },
+  { re: /\bcaracas\b/i, nombre: "Caracas", tipo: "carrera", num: "14" },
+  { re: /\bnqs\b|norte[\s-]+quito[\s-]+sur|ciudad de quito/i, nombre: "(NQS|Norte Quito Sur|Ciudad de Quito)", tipo: "carrera", num: "30" },
+  { re: /congreso eucar[ií]stico|\bav(enida)?\.?\s*68\b/i, nombre: "(Congreso Eucarístico|68)", tipo: "carrera", num: "68" },
+  { re: /\brojas\b/i, nombre: "Rojas", tipo: "carrera", num: "70" },
+  { re: /agoberto mej[ií]a/i, nombre: "Agoberto Mejía", tipo: "carrera", num: "80" },
+  { re: /\bel ?dorado\b/i, nombre: "(El Dorado|Eldorado)", tipo: "calle", num: "26" },
+  { re: /\bla esperanza\b|\besperanza\b/i, nombre: "(La Esperanza|Esperanza)", tipo: "calle", num: "24" },
+  { re: /\bam[eé]ricas\b/i, nombre: "(Las Américas|Américas)", tipo: "calle", num: "6" },
+  { re: /\bcentenario\b/i, nombre: "Centenario", tipo: "calle", num: "13" },
+  { re: /\bjim[eé]nez\b/i, nombre: "Jiménez", tipo: "calle", num: "13" },
+  { re: /\bchile\b/i, nombre: "Chile", tipo: "calle", num: "72" },
+  { re: /pepe sierra/i, nombre: "Pepe Sierra", tipo: "calle", num: "116" },
+  { re: /primero de mayo|1 de mayo/i, nombre: "Primero de Mayo", tipo: "calle", num: "22 Sur" }
+];
+
+// Convierte nomenclatura de Bogotá (Cra 15 # 93-47, Av Ciudad de Cali # 23-29) a datos para ubicarla en el mapa.
+// tipo: "carrera" si la vía corre de sur a norte (sus placas cruzan calles), "calle" si corre de oriente a occidente.
+// nombres: formas en que la vía puede aparecer en el mapa.
 export function normalizarDireccion(dir) {
-  let t = " " + String(dir || "").replace(/\b(apto|apt|ap|int|interior|torre|casa|oficina|of|piso|local|bloque|conjunto|edificio)\b.*$/i, "") + " ";
+  const original = String(dir || "").replace(/\b(apto|apt|ap|int|interior|torre|casa|oficina|of|piso|local|bloque|conjunto|edificio)\b.*$/i, "");
+  const placaRe = /#?\s*(\d+\s*[A-Z]?(?:\s*Bis)?)\s*-\s*(\d+)(\s*Sur|\s*Este)?/i;
+  // 1) Avenida con nombre propio
+  for (const av of AVENIDAS) {
+    if (!av.re.test(original)) continue;
+    const resto = original.replace(av.re, " ").replace(/\s*(No\.?|N°|Nº|numero|número)\s*/gi, " # ");
+    const m = resto.match(placaRe);
+    const nombreTxt = av.nombre.replace(/[()]/g, "").split("|")[0];
+    const via = `Avenida ${nombreTxt}`;
+    if (!m) return { texto: via, via: null };
+    const placa = `${m[1].replace(/\s+/g, "")}-${m[2]}`;
+    const sufijo = (m[3] || "").trim();
+    const numEq = av.tipo === "carrera" ? `Carrera ${av.num}` : `Calle ${av.num}`;
+    return { texto: `${via} # ${placa}${sufijo ? " " + sufijo : ""}`, via, placa, sufijo, tipo: av.tipo, nombres: [`${av.nombre}`, numEq] };
+  }
+  // 2) Nomenclatura con número
+  let t = " " + original + " ";
   const vias = [
     [/\b(av(enida)?\.?\s*(cra|kra|kr|carrera)|ak)\b\.?/gi, "Avenida Carrera"],
     [/\b(av(enida)?\.?\s*(cll|cl|calle)|ac)\b\.?/gi, "Avenida Calle"],
@@ -68,7 +105,13 @@ export function normalizarDireccion(dir) {
   const via = `${m[1]} ${m[2].replace(/\s+/g, " ").trim()}`;
   const placa = `${m[3].replace(/\s+/g, "")}-${m[4]}`;
   const sufijo = (m[5] || "").trim();
-  return { texto: `${via} # ${placa}${sufijo ? " " + sufijo : ""}`, via, placa, sufijo };
+  const base = m[1].replace(/^Avenida /i, "");
+  const num = m[2].replace(/\s+/g, " ").trim();
+  const tipo = /carrera|transversal/i.test(base) ? "carrera" : "calle";
+  const nombres = [`${base} ${num}`];
+  const av = AVENIDAS.find(a => a.num.toLowerCase() === num.toLowerCase() && a.tipo === tipo && /^(carrera|calle)$/i.test(base));
+  if (av) nombres.push(av.nombre);
+  return { texto: `${via} # ${placa}${sufijo ? " " + sufijo : ""}`, via, placa, sufijo, tipo, nombres };
 }
 
 // Extrae coordenadas de un texto o de un enlace de Google Maps.

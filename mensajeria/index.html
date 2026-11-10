@@ -34,6 +34,14 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .tabla th{font-size:12px;color:var(--muted);font-weight:600}
 .num{text-align:right!important}
 .scroll{overflow-x:auto}
+.sug-caja{position:relative}
+.sugerencias{position:absolute;left:0;right:0;top:100%;z-index:1200;margin-top:4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);max-height:320px;overflow-y:auto}
+.sugerencias button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);padding:9px 12px}
+.sugerencias button:last-child{border-bottom:0}
+.sugerencias button:hover,.sugerencias button.activa{background:var(--chip)}
+.sugerencias .t1{font-weight:600}
+.sugerencias .t2{font-size:12px;color:var(--muted)}
+.sugerencias .estado{padding:9px 12px;font-size:13px;color:var(--muted)}
 /* Etiqueta imprimible */
 #etiqueta{display:none}
 .et{width:100mm;min-height:146mm;border:1.5px solid #000;color:#000;background:#fff;font-family:var(--f-body);font-size:10.5pt;line-height:1.3;display:flex;flex-direction:column}
@@ -114,8 +122,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div class="item" id="recFija"><div class="nota">Cargando punto de recogida…</div></div>
           <div class="item" id="recEditar" hidden>
             <label>Remitente / tienda<input id="rRem" placeholder="Pipe Games"></label>
-            <label>Dirección de recogida<input id="rDir" placeholder="Dirección donde el mensajero recoge los paquetes"></label>
-            <div class="btns"><button class="btn sec chico" type="button" id="rBuscar">Ubicar en el mapa</button><span class="nota" id="rPinTxt">Toca el mapa en el punto exacto de recogida.</span></div>
+            <div class="sug-caja"><label>Dirección de recogida<input id="rDir" placeholder="Ej. Av Ciudad de Cali # 23-29" autocomplete="off"></label><div class="sugerencias" id="rSug" hidden></div></div>
+            <div class="btns"><button class="btn chico" type="button" id="rAqui">Usar la ubicación de este equipo</button><button class="btn sec chico" type="button" id="rBuscar">Buscar la dirección</button></div>
+            <span class="nota" id="rPinTxt">Usa la ubicación de este equipo, escoge una dirección de la lista o toca el mapa.</span>
             <div class="btns"><button class="btn chico" type="button" id="rGuardar">Guardar punto de recogida</button><button class="btn sec chico" type="button" id="rCancelar">Cancelar</button></div>
           </div>
           <h3>Entrega</h3>
@@ -123,9 +132,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label>Destinatario<input id="nCli" required placeholder="Nombre completo"></label>
             <label>Celular<input id="nTel" inputmode="tel" required placeholder="300 123 4567"></label>
           </div>
-          <label>Dirección de entrega<input id="nDir" required placeholder="Cra 15 # 93-47, apto 502"></label>
+          <div class="sug-caja"><label>Dirección de entrega<input id="nDir" required placeholder="Cra 15 # 93-47, apto 502" autocomplete="off"></label><div class="sugerencias" id="nSug" hidden></div></div>
           <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
-          <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección completa (ej. Cra 15 # 93-47) y se ubica sola en el mapa.</span></div>
+          <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección y escoge una opción de la lista, o toca el mapa.</span></div>
           <div class="lista" id="nCands"></div>
           <h3>Paquete</h3>
           <div class="fila">
@@ -418,7 +427,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
 });
 
 /* ---------- NUEVA GUÍA ---------- */
-const TXT_SIN_UBICAR = "Escribe la dirección completa (ej. Cra 15 # 93-47) y se ubica sola en el mapa.";
+const TXT_SIN_UBICAR = "Escribe la dirección y escoge una opción de la lista, o toca el mapa.";
 /* Punto de recogida fijo (se guarda en el perfil de despacho) */
 function pintarRecogida() {
   const r = S.recogida;
@@ -448,13 +457,6 @@ $("#rBuscar").onclick = async () => {
   } catch { $("#rPinTxt").textContent = "No se pudo buscar. Toca el mapa en el punto de recogida."; }
   b.disabled = false; b.textContent = "Ubicar en el mapa";
 };
-let timerRec = null, ultimaRec = "";
-$("#rDir").addEventListener("input", () => {
-  clearTimeout(timerRec);
-  const t = $("#rDir").value;
-  if (!direccionCompleta(t)) return;
-  timerRec = setTimeout(() => { const k = C.normalizarDireccion(t).texto.toLowerCase(); if (k !== ultimaRec) { ultimaRec = k; $("#rBuscar").click(); } }, 1500);
-});
 $("#rGuardar").onclick = async () => {
   const remitente = $("#rRem").value.trim(), direccion = $("#rDir").value.trim();
   if (!remitente || !direccion) { toast("Escribe el remitente y la dirección de recogida"); return; }
@@ -495,12 +497,10 @@ async function ubicar(dir) {
   const cands = [];
   if (n.via) {
     try {
-      const m = n.via.match(/^(?:Avenida )?(Carrera|Calle|Diagonal|Transversal) (.+)$/i);
-      const tipo = m[1].toLowerCase();
-      const cruceTipos = ["carrera", "transversal"].includes(tipo) ? "Calle|Diagonal" : "Carrera|Transversal";
+      const cruceTipos = n.tipo === "carrera" ? "Calle|Diagonal" : "Carrera|Transversal";
       const sur = /sur/i.test(n.sufijo || "") ? " Sur" : "";
       const [p1, p2] = n.placa.split("-");
-      const viaRe = `^(Avenida )?${m[1]} ${escRe(m[2].trim())}$`;
+      const viaRe = `^(Avenida )?(${n.nombres.join("|")})$`;
       const [a, b] = await Promise.all([
         cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${escRe(p1)}${sur}$`),
         cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${parseInt(p1, 10) + 1}${sur}$`)
@@ -552,13 +552,82 @@ async function buscarDestino(auto = false) {
   buscando = false; btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa";
 }
 $("#nBuscar").onclick = () => buscarDestino(false);
-// Al terminar de escribir una dirección completa (ej. Cra 15 # 93-47), ubicarla sola en el mapa.
+/* ---------- Sugerencias de direcciones mientras se escribe ---------- */
 const direccionCompleta = t => !!C.normalizarDireccion(t).via;
-$("#nDir").addEventListener("input", () => {
-  clearTimeout(timerDir);
-  if (direccionCompleta($("#nDir").value)) timerDir = setTimeout(() => buscarDestino(true), 1500);
-});
-$("#nDir").addEventListener("blur", () => { clearTimeout(timerDir); if (direccionCompleta($("#nDir").value)) buscarDestino(true); });
+async function photon(q) {
+  const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&lat=${C.BOGOTA.lat}&lon=${C.BOGOTA.lng}&bbox=-74.25,4.45,-73.99,4.85`);
+  if (!r.ok) return [];
+  const d = await r.json();
+  return (d.features || []).map(f => {
+    const p = f.properties || {};
+    const calle = [p.street, p.housenumber].filter(Boolean).join(" # ");
+    const titulo = p.name && p.name !== p.street ? p.name : (calle || p.name || "");
+    const lugar = [p.name && calle && p.name !== p.street ? calle : "", p.district || p.locality, p.city].filter(Boolean).join(" · ");
+    return { lat: +f.geometry.coordinates[1].toFixed(6), lng: +f.geometry.coordinates[0].toFixed(6), titulo, lugar, exacta: !!p.housenumber || p.osm_key === "building" || p.osm_key === "amenity" || p.osm_key === "shop" || p.osm_value === "residential" && !!p.name };
+  }).filter(x => x.titulo);
+}
+function sugerencias(inputSel, cajaSel, alElegir) {
+  const input = $(inputSel), caja = $(cajaSel);
+  let timer = null, ultimaClave = "", cruceCache = {}, opciones = [], activa = -1, version = 0;
+  const cerrar = () => { caja.hidden = true; activa = -1; };
+  const pintarLista = (estado) => {
+    if (!opciones.length && !estado) { cerrar(); return; }
+    caja.innerHTML = opciones.map((o, i) => `<button type="button" data-i="${i}" class="${i === activa ? "activa" : ""}"><span class="t1">${esc(o.titulo)}</span><span class="t2">${esc(o.lugar)}</span></button>`).join("") + (estado ? `<div class="estado">${esc(estado)}</div>` : "");
+    caja.hidden = false;
+  };
+  async function buscar() {
+    const texto = input.value.trim();
+    if (texto.length < 4) { opciones = []; cerrar(); return; }
+    const v = ++version;
+    const n = C.normalizarDireccion(texto);
+    pintarLista("Buscando…");
+    const tareas = [photon(n.via ? n.texto.replace("#", "") + ", Bogotá" : texto + ", Bogotá").catch(() => [])];
+    // Dirección completa: calcular el punto por cruce de vías (una vez por dirección)
+    if (n.via) {
+      const k = n.texto.toLowerCase();
+      cruceCache[k] ||= ubicar(texto).catch(() => []);
+      tareas.push(cruceCache[k]);
+    }
+    const [ph, ex = []] = await Promise.all(tareas);
+    if (v !== version) return;
+    const propias = ex.map(c => ({ lat: c.lat, lng: c.lng, titulo: n.texto, lugar: (c.cruce ? "Calculada por el cruce de vías · " : "") + C.localidadCercana(c), exacta: true }));
+    const todas = [...propias, ...ph];
+    opciones = todas.filter((o, i) => todas.findIndex(x => C.km(o, x) < 0.03) === i).slice(0, 7);
+    activa = -1;
+    pintarLista(opciones.length ? "" : "Sin coincidencias. Toca el mapa en el sitio exacto.");
+  }
+  input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(buscar, 450); });
+  input.addEventListener("focus", () => { if (opciones.length) pintarLista(); });
+  input.addEventListener("blur", () => setTimeout(cerrar, 200));
+  input.addEventListener("keydown", e => {
+    if (caja.hidden || !opciones.length) return;
+    if (e.key === "ArrowDown") { activa = Math.min(opciones.length - 1, activa + 1); pintarLista(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { activa = Math.max(0, activa - 1); pintarLista(); e.preventDefault(); }
+    else if (e.key === "Enter" && activa >= 0) { e.preventDefault(); alElegir(opciones[activa]); cerrar(); }
+    else if (e.key === "Escape") cerrar();
+  });
+  caja.addEventListener("mousedown", e => e.preventDefault());
+  caja.addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) { alElegir(opciones[+b.dataset.i]); cerrar(); } });
+}
+sugerencias("#nDir", "#nSug", o => { $("#nCands").innerHTML = ""; ponerPin(o, o.exacta ? "Dirección ubicada. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Arrastra el marcador al sitio exacto."); });
+sugerencias("#rDir", "#rSug", o => { S.recPin = { lat: o.lat, lng: o.lng }; $("#rPinTxt").textContent = "Ubicada. Revisa la R, arrástrala si hace falta y toca Guardar."; ajustado = ""; pintarMapa(); });
+
+/* ---------- Ubicación de este equipo (para el punto de recogida) ---------- */
+$("#rAqui").onclick = () => {
+  if (!navigator.geolocation) { $("#rPinTxt").textContent = "Este navegador no permite tomar la ubicación. Toca el mapa."; return; }
+  const b = $("#rAqui"); b.disabled = true; b.textContent = "Tomando ubicación…";
+  navigator.geolocation.getCurrentPosition(pos => {
+    S.recPin = { lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6) };
+    const prec = Math.round(pos.coords.accuracy || 0);
+    $("#rPinTxt").textContent = prec > 60 ? `Ubicación tomada con precisión de ±${prec} m. Acerca el mapa y arrastra la R al sitio exacto antes de guardar.` : "Ubicación tomada. Revisa la R y toca Guardar.";
+    ajustado = ""; pintarMapa(); mapa.setView([S.recPin.lat, S.recPin.lng], 17);
+    b.disabled = false; b.textContent = "Usar la ubicación de este equipo";
+  }, err => {
+    $("#rPinTxt").textContent = err.code === 1 ? "No diste permiso de ubicación. Actívalo en el candado de la barra de direcciones, o toca el mapa." : "No se pudo obtener la ubicación. Toca el mapa en el punto de recogida.";
+    b.disabled = false; b.textContent = "Usar la ubicación de este equipo";
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+};
+
 $("#fNueva").onsubmit = async e => {
   e.preventDefault(); $("#nError").textContent = "";
   const btn = $("#nBtn"); btn.disabled = true;
