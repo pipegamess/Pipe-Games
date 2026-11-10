@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109d";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261109e";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -245,12 +245,32 @@ export function comprimirImagen(file, max = 1100, calidad = 0.62) {
 }
 
 // Capa del mapa. En pipegames.com.co (panel y rastreo) usa el mapa de TomTom; en la app, OpenStreetMap.
+// Si TomTom no responde, cambia sola a OpenStreetMap para que el mapa nunca quede en blanco.
+function capaOSM(L) {
+  return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
+}
 export function capaMapa(L) {
   const enDominio = /(^|\.)pipegames\.com\.co$/.test(location.hostname);
-  const capa = enDominio && TOMTOM_KEY
-    ? L.tileLayer(`https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?view=Unified&language=es-419&key=${TOMTOM_KEY}`, { maxZoom: 19, attribution: "&copy; TomTom" })
-    : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' });
-  // Quitar el texto "Leaflet" de la esquina; se deja solo el crédito obligatorio del mapa.
+  if (!enDominio || !TOMTOM_KEY) {
+    const c = capaOSM(L);
+    c.on("add", e => { try { e.target._map.attributionControl?.setPrefix(false); } catch {} });
+    return c;
+  }
+  const capa = L.tileLayer(`https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?view=Unified&key=${TOMTOM_KEY}`, {
+    maxZoom: 19, attribution: "&copy; TomTom", crossOrigin: true
+  });
+  let cargadas = 0, fallas = 0, cambiada = false;
+  capa.on("tileload", () => { cargadas++; });
+  capa.on("tileerror", () => {
+    fallas++;
+    if (!cambiada && cargadas === 0 && fallas >= 3 && capa._map) {
+      cambiada = true;
+      const m = capa._map;
+      m.removeLayer(capa);
+      capaOSM(L).addTo(m);
+      console.warn("TomTom no cargó el mapa; se usa OpenStreetMap.");
+    }
+  });
   capa.on("add", e => { try { e.target._map.attributionControl?.setPrefix(false); } catch {} });
   return capa;
 }
