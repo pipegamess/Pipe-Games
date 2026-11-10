@@ -28,6 +28,9 @@ body{padding-top:env(safe-area-inset-top,0px)}
 .medios label:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .foto-btn{border:2px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--muted);background:var(--surface);display:block;font-weight:600}
 .foto-btn input{display:none}
+.foto-opc{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.foto-opc .foto-btn{padding:18px 10px}
+.foto-est{font-size:13px;color:var(--muted);text-align:center}
 .saldo{font-family:var(--f-display);font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
 .cargando{display:grid;place-items:center;min-height:60vh;color:var(--muted)}
 .rapidas{display:flex;flex-wrap:wrap;gap:6px}
@@ -690,7 +693,9 @@ function pintarEntregar(n) {
   if (!g || g.estado !== "en_camino") { location.hash = "#mios"; return; }
   let foto = null;
   pantalla(`<a class="btn sec chico volver" href="#g/${esc(n)}">← Volver</a><h1>Entregar ${esc(n)}</h1>
-    <label class="foto-btn" id="lFoto"><input type="file" accept="image/*" capture="environment" id="fFoto"><span id="tFoto">Tomar foto del paquete entregado</span></label>
+    <div class="foto-est" style="font-weight:600;color:var(--ink)">Foto del paquete entregado</div>
+    <div class="foto-opc"><label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="fFoto">📷 Tomar foto</label><label class="foto-btn"><input type="file" accept="image/*" id="fFotoG">🖼️ Elegir de la galería</label></div>
+    <div class="foto-est" id="tFoto">Obligatoria para confirmar la entrega</div>
     <img class="foto-entrega" id="vFoto" alt="Foto de entrega" hidden>
     <div class="panel">
       <h3>¿Quién recibe?</h3>
@@ -711,7 +716,9 @@ function pintarEntregar(n) {
       <label id="lVal" ${g.valor ? "" : "hidden"}>Valor recibido (COP)<input id="eVal" inputmode="numeric" value="${g.valor}"></label>
       <label id="lMot" hidden>¿Por qué el valor es diferente?<input id="eMot" placeholder="Ej. el cliente pagó una parte por Nequi"></label>
       <div id="cajaComp" class="lista" hidden>
-        <label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="fComp"><span id="tComp">Tomar foto del comprobante de Nequi</span></label>
+        <div class="foto-est" style="font-weight:600;color:var(--ink)">Comprobante de Nequi</div>
+        <div class="foto-opc"><label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="fComp">📷 Tomar foto</label><label class="foto-btn"><input type="file" accept="image/*" id="fCompG">🖼️ Elegir de la galería</label></div>
+        <div class="foto-est" id="tComp">Obligatorio si el cliente pagó por Nequi</div>
         <img class="foto-entrega" id="vComp" alt="Comprobante de Nequi" hidden>
       </div>
     </div>
@@ -732,23 +739,25 @@ function pintarEntregar(n) {
     $("#tRecNom").textContent = recibe() === "porteria" ? "Nombre del portero o vigilante" : "Nombre y parentesco (ej. Ana, hermana)";
   });
   $("#eVal").oninput = revisar;
+  $("#fFotoG").onchange = e => $("#fFoto").onchange(e);
+  $("#fCompG").onchange = e => $("#fComp").onchange(e);
   $("#fFoto").onchange = async e => {
     const f = e.target.files?.[0]; if (!f) return;
     $("#tFoto").textContent = "Procesando foto…";
-    try { foto = await C.comprimirImagen(f); $("#vFoto").src = foto; $("#vFoto").hidden = false; $("#tFoto").textContent = "Cambiar foto"; }
+    try { foto = await C.comprimirImagen(f); $("#vFoto").src = foto; $("#vFoto").hidden = false; $("#tFoto").textContent = "Foto lista. Puedes cambiarla con los botones de arriba."; }
     catch { $("#tFoto").textContent = "No se pudo leer la foto. Intenta de nuevo."; }
   };
   $("#fComp").onchange = async e => {
     const f = e.target.files?.[0]; if (!f) return;
     $("#tComp").textContent = "Procesando foto…";
-    try { comp = await C.comprimirImagen(f); $("#vComp").src = comp; $("#vComp").hidden = false; $("#tComp").textContent = "Cambiar foto del comprobante"; }
+    try { comp = await C.comprimirImagen(f); $("#vComp").src = comp; $("#vComp").hidden = false; $("#tComp").textContent = "Comprobante listo. Puedes cambiarlo con los botones de arriba."; }
     catch { $("#tComp").textContent = "No se pudo leer la foto. Intenta de nuevo."; }
   };
   $("#bEnt").onclick = async () => {
     $("#eErr").textContent = "";
-    if (!foto) { $("#eErr").textContent = "Toma la foto de entrega antes de confirmar."; return; }
+    if (!foto) { $("#eErr").textContent = "Toma o elige la foto de entrega antes de confirmar."; return; }
     if (!medio()) { $("#eErr").textContent = "Escoge cómo pagó el cliente."; return; }
-    if (medio() === "nequi" && !comp) { $("#eErr").textContent = "Toma la foto del comprobante de Nequi que te muestra el cliente."; return; }
+    if (medio() === "nequi" && !comp) { $("#eErr").textContent = "Toma o elige la foto del comprobante de Nequi."; return; }
     const recNom = $("#eRecNom").value.trim();
     if (recibe() !== "cliente" && !recNom) { $("#eErr").textContent = "Escribe el nombre de quien recibe."; return; }
     const v = valor(), mot = $("#eMot").value.trim();
