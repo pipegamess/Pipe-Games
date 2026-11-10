@@ -18,12 +18,16 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 @media (min-width:960px){#mapa{height:calc(100vh - 100px);max-height:760px}}
 .col-mapa{position:relative}
 .aviso-mapa{position:absolute;left:10px;bottom:24px;right:10px;z-index:500;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;color:var(--muted);pointer-events:none;max-width:420px}
+.aviso-mapa button{pointer-events:auto}
 .tabs{display:flex;background:var(--chip);border-radius:10px;padding:4px;gap:4px;margin-bottom:12px;overflow-x:auto}
 .tabs button{flex:1 0 auto;font-family:var(--f-display);font-weight:600;font-size:16px;border:0;background:transparent;color:var(--muted);padding:9px 12px;border-radius:7px;white-space:nowrap}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .login{max-width:380px;margin:12vh auto 0;padding:0 16px}
 .item.clic{cursor:pointer}
 .item.clic:hover{border-color:var(--route)}
+.btn-nombre{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.btn-nombre:hover{text-decoration-color:var(--route)}
+.item.viendo{border-color:var(--route);box-shadow:0 0 0 1px var(--route)}
 .detalle{position:fixed;inset:0;z-index:2000;background:rgba(10,18,20,.45);display:flex;justify-content:flex-end}
 .detalle .hoja{width:min(520px,100%);height:100%;overflow-y:auto;background:var(--bg);padding:16px max(16px,env(safe-area-inset-right,0px)) 40px 16px;display:flex;flex-direction:column;gap:14px}
 .cerrar{align-self:flex-end}
@@ -342,9 +346,11 @@ const fresco = u => u && u.t && Date.now() - u.t < 10 * 60000;
 function marcadorMensajero(id, u) {
   if (!u || u.lat == null) return;
   const nombre = S.mens[id]?.nombre || u.nombre || "Mensajero";
-  const m = L.marker([u.lat, u.lng], { icon: C.icono(L, "mensajero" + (fresco(u) ? "" : " quieto"), C.iniciales(nombre)), zIndexOffset: 500 });
-  m.bindTooltip(`${esc(nombre)} · ${C.hace(u.t)}`);
-  m.addTo(capa);
+  const vivo = u.enTurno && fresco(u);
+  const m = L.marker([u.lat, u.lng], { icon: C.icono(L, "mensajero" + (vivo ? "" : " quieto"), C.iniciales(nombre)), zIndexOffset: 500 });
+  m.bindTooltip(`${esc(nombre)} · ${u.enTurno ? "" : "fuera de turno · "}${C.hace(u.t)}`);
+  m.on("click", () => verMensajero(id));
+  m.addTo(destinoCapa || capa);
 }
 function marcadorDestino(g) {
   if (!g.destino || g.destino.lat == null) return;
@@ -353,15 +359,31 @@ function marcadorDestino(g) {
   m.on("click", () => abrirDetalle(g.numero));
   m.addTo(capa);
 }
+let destinoCapa = null; // permite reutilizar marcadorMensajero en el mapa del detalle
 function pintarMapa() {
   if (!mapa) return;
   capa.clearLayers();
   const aviso = $("#avisoMapa");
+  if (S.verMens && !S.abierta) {
+    // Un solo mensajero: su ubicación y los destinos de sus pedidos en curso
+    const id = S.verMens, u = S.ubic[id], m = S.mens[id] || {};
+    const suyas = Object.values(S.guias).filter(g => g.mensajeroId === id && ["tomada", "recogida", "en_camino"].includes(g.estado));
+    suyas.forEach(marcadorDestino);
+    marcadorMensajero(id, u);
+    aviso.innerHTML = u?.lat != null
+      ? `<b>${esc(m.nombre || "Mensajero")}</b> · ${u.enTurno ? "en turno" : "fuera de turno, última ubicación conocida"} · ${C.hace(u.t)} · ${suyas.length} pedido${suyas.length === 1 ? "" : "s"} en curso <button class="btn sec chico" id="verTodos" style="margin-left:6px">Ver todos</button>`
+      : `<b>${esc(m.nombre || "Mensajero")}</b> no ha compartido ubicación todavía. <button class="btn sec chico" id="verTodos" style="margin-left:6px">Ver todos</button>`;
+    $("#verTodos").onclick = () => verMensajero(null);
+    // Seguirlo: si se sale de la vista, recentrar
+    if (u?.lat != null && ajustado === "mens" + id && !mapa.getBounds().pad(-0.1).contains([u.lat, u.lng])) mapa.panTo([u.lat, u.lng]);
+    if (ajustado !== "mens" + id) { ajustado = "mens" + id; if (u?.lat != null) mapa.setView([u.lat, u.lng], 15); }
+    return;
+  }
   if (S.abierta && S.guias[S.abierta]) {
     const g = S.guias[S.abierta];
     marcadorDestino(g);
     if (g.origen?.lat != null) L.marker([g.origen.lat, g.origen.lng], { icon: C.icono(L, "recogida", "R") }).bindTooltip("Recogida").addTo(capa);
-    if (g.mensajeroId && S.ubic[g.mensajeroId]?.enTurno) marcadorMensajero(g.mensajeroId, S.ubic[g.mensajeroId]);
+    if (g.mensajeroId && S.ubic[g.mensajeroId]?.lat != null) marcadorMensajero(g.mensajeroId, S.ubic[g.mensajeroId]);
     aviso.textContent = `Guía ${g.numero}`;
   } else if (S.tab === "nueva") {
     const rec = S.editRec ? S.recPin : S.recogida;
@@ -394,9 +416,15 @@ function pintarMapa() {
 
 /* ---------- pestañas ---------- */
 document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => irA(b.dataset.tab));
+function verMensajero(id) {
+  S.verMens = id || null; ajustado = "";
+  if (S.abierta) cerrarDetalle();
+  pintarMapa(); if (S.tab === "mensajeros") pintarMensajeros();
+  if (id && window.innerWidth < 960) $("#mapa").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 function irA(t) {
   if (t !== "nueva" && S.editRec) { S.editRec = false; S.recPin = null; pintarRecogida(); }
-  S.tab = t; S.abierta = null; $("#vDetalle").hidden = true;
+  S.tab = t; S.abierta = null; $("#vDetalle").hidden = true; if (t !== "mensajeros") S.verMens = null;
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
   ["guias", "nueva", "mensajeros", "recaudo"].forEach(x => $("#t-" + x).hidden = x !== t);
   pintar();
@@ -538,7 +566,7 @@ function pintarMapaCorr(g) {
   m.on("dragend", e => mover(e.target.getLatLng()));
   mapaCorr.on("click", e => mover(e.latlng));
 }
-function cerrarDetalle() { S.corr = null; S.corrVista = null; if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; } S.abierta = null; $("#vDetalle").hidden = true; ajustado = ""; pintarMapa(); }
+function cerrarDetalle() { if (mapaMens) { mapaMens.remove(); mapaMens = null; } mapaMensVista = null; S.corr = null; S.corrVista = null; if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; } S.abierta = null; $("#vDetalle").hidden = true; ajustado = ""; pintarMapa(); }
 let fotoCache = {};
 async function abrirDetalle(n) {
   S.corr = null; S.corrVista = null; S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
@@ -578,6 +606,9 @@ function pintarDetalle() {
         ${r?.recibe ? `<dt>Recibió</dt><dd>${esc(C.textoRecibe(r.recibe))}</dd>` : ""}
       </dl>
     </div>
+    ${g.mensajeroId && ["tomada", "recogida", "en_camino", "novedad"].includes(g.estado) ? (u?.lat != null ? `<div class="panel"><h3>Ubicación del mensajero</h3>
+      <p class="nota" style="margin:0"><b>${esc(C.primerNombre(g.mensajeroNombre))}</b> · ${u.enTurno ? (fresco(u) ? "en turno" : "en turno, sin señal reciente") : "fuera de turno, última ubicación conocida"} · ${C.hace(u.t)}${g.destino?.lat != null ? ` · a ${C.km(u, g.destino).toFixed(1)} km del destino` : ""}</p>
+      <div id="mapaMens" class="mapa" style="height:260px"></div></div>` : `<div class="vacio">${esc(C.primerNombre(g.mensajeroNombre))} aún no ha compartido su ubicación. Aparecerá cuando active el turno en la app.</div>`) : ""}
     ${(() => { const f = fotoCache[g.numero + ":" + g.estado]; const nom = g.estado === "novedad" ? "de la novedad" : "de entrega";
       if (g.estado !== "entregada" && g.estado !== "novedad") return "";
       const comp = fotoCache[g.numero + ":" + g.estado + ":comp"];
@@ -597,6 +628,32 @@ function pintarDetalle() {
     ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
     <h3>Historial</h3><ol class="tl">${eventos}</ol>`;
   if (g.destino?.verificar) pintarMapaCorr(g); else if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; }
+  pintarMapaMens(g, u);
+}
+// Mapa pequeño del detalle: dónde va el mensajero y el destino de la guía (se actualiza en vivo)
+let mapaMens = null, mapaMensVista = null;
+function pintarMapaMens(g, u) {
+  const el = document.getElementById("mapaMens");
+  if (mapaMens) { mapaMens.remove(); mapaMens = null; }
+  if (!el) { mapaMensVista = null; return; }
+  mapaMens = L.map(el);
+  C.capaMapa(L).addTo(mapaMens);
+  const pts = [[u.lat, u.lng]];
+  destinoCapa = L.layerGroup().addTo(mapaMens);
+  marcadorMensajero(g.mensajeroId, u);
+  destinoCapa = null;
+  if (g.destino?.lat != null) {
+    L.marker([g.destino.lat, g.destino.lng], { icon: C.icono(L, "destino", "") }).bindTooltip("Destino").addTo(mapaMens);
+    L.polyline([[u.lat, u.lng], [g.destino.lat, g.destino.lng]], { color: getComputedStyle(document.documentElement).getPropertyValue("--route").trim() || "#2a7", weight: 3, dashArray: "6 7" }).addTo(mapaMens);
+    pts.push([g.destino.lat, g.destino.lng]);
+  }
+  // Conserva el zoom que dejó el usuario mientras sigue en la misma guía
+  if (mapaMensVista?.n === g.numero && mapaMensVista.c) mapaMens.setView(mapaMensVista.c, mapaMensVista.z);
+  else if (pts.length > 1) mapaMens.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 16 });
+  else mapaMens.setView(pts[0], 15);
+  if (mapaMensVista?.n !== g.numero) mapaMensVista = { n: g.numero };
+  mapaMens.on("moveend", () => { mapaMensVista = { n: g.numero, c: mapaMens.getCenter(), z: mapaMens.getZoom() }; });
+  setTimeout(() => mapaMens?.invalidateSize(), 60);
 }
 $("#hojaDetalle").addEventListener("click", async e => {
   const b = e.target.closest("[data-acc]"); if (!b) return;
@@ -1172,10 +1229,10 @@ function pintarMensajeros() {
     const u = S.ubic[id];
     const act = Object.values(S.guias).filter(g => g.mensajeroId === id && ["tomada", "recogida", "en_camino"].includes(g.estado)).length;
     const est = !m.activo ? ["cancelada", "Desactivado"] : u?.enTurno ? (fresco(u) ? ["en-linea", "En turno"] : ["devuelta", "En turno, sin señal reciente"]) : ["", "Fuera de turno"];
-    return `<div class="item"><div class="arriba"><span><b>${esc(m.nombre)}</b> <span class="meta">· ${esc(m.placa)}</span></span><span class="pill ${est[0]}">${est[1]}</span></div>
+    return `<div class="item${S.verMens === id ? " viendo" : ""}"><div class="arriba"><span><button class="btn-nombre" data-vermens="${id}" title="Ver en el mapa"><b>${esc(m.nombre)}</b></button> <span class="meta">· ${esc(m.placa)}</span></span><span class="pill ${est[0]}">${est[1]}</span></div>
       <div class="meta">${esc(m.telefono)} · ${esc(m.email)} · cédula ${esc(m.cedula)}</div>
       <div class="meta">${act} pedido${act === 1 ? "" : "s"} en curso · última ubicación ${C.hace(u?.t)}</div>
-      <div class="btns"><button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button></div></div>`;
+      <div class="btns">${u?.lat != null ? `<button class="btn chico" data-vermens="${id}">📍 Ver en el mapa</button>` : ""}<button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button></div></div>`;
   }).join("") : `<div class="vacio">Aún no hay mensajeros. Genera una invitación y envíasela.</div>`;
   const pend = S.inv.filter(i => !i.usada).sort((a, b) => b.creada - a.creada);
   $("#listaInv").innerHTML = pend.length ? pend.map(i => `<div class="item"><div class="arriba"><span class="guia">${esc(i.codigo)}</span><span class="meta">creada ${C.fecha(i.creada)}</span></div>
@@ -1221,6 +1278,7 @@ $("#genInv").onclick = async () => {
 };
 $("#t-mensajeros").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.vermens) return verMensajero(S.verMens === b.dataset.vermens ? null : b.dataset.vermens);
   if (b.dataset.copinv) return copiar(textoInvitacion(b.dataset.copinv), "Mensaje copiado. Pégalo en WhatsApp.");
   if (b.dataset.delinv) { try { await deleteDoc(doc(db, "invitaciones", b.dataset.delinv)); } catch (err) { toast(C.mensajeError(err)); } return; }
   if (b.dataset.mens) {
