@@ -1202,6 +1202,31 @@
   .sim-cred input.bad { border-color:#e84040; }
   .sim-cred-err { font-size:0.7rem; color:#ff7a7a; margin-top:0.4rem; min-height:1em; }
   .sim-actions button:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* ══ PUBLICAR EN GITHUB (panel Admin) ══ */
+  .admin-bar { flex-wrap:wrap; gap:6px; }
+  .btn-gh-pub { padding:0.35rem 0.8rem; border-radius:6px; border:none; background:#25a35a; color:#fff; cursor:pointer; font-family:'Rajdhani',sans-serif; font-weight:700; font-size:0.82rem; }
+  .btn-gh-pub:hover { background:#1e8a4b; }
+  .btn-gh-cfg { padding:0.35rem 0.6rem; border-radius:6px; border:1px solid rgba(255,255,255,0.18); background:transparent; color:var(--text); cursor:pointer; font-family:'Rajdhani',sans-serif; font-weight:700; font-size:0.82rem; }
+  .gh-status { font-size:0.72rem; color:var(--muted); font-family:'Barlow',sans-serif; white-space:nowrap; }
+  .gh-status.ok { color:#3ddc84; } .gh-status.err { color:#ff7a7a; } .gh-status.busy { color:var(--acc); }
+  #ghModal { position:fixed; inset:0; z-index:9600; background:rgba(0,0,0,0.75); display:none; align-items:center; justify-content:center; padding:16px; }
+  #ghModal.open { display:flex; }
+  .gh-box { background:var(--surface); border:1px solid rgba(245,196,0,0.3); border-radius:14px; width:100%; max-width:470px; max-height:92vh; overflow-y:auto; padding:1.1rem; position:relative; color:var(--text); }
+  .gh-box h3 { font-family:'Rajdhani',sans-serif; font-size:1.2rem; margin:0 0 4px; color:#fff; }
+  .gh-box p { font-size:0.8rem; color:var(--muted); margin:0 0 0.7rem; line-height:1.4; }
+  .gh-box ol { font-size:0.78rem; line-height:1.45; padding-left:1.1rem; margin:0 0 0.8rem; color:var(--text); }
+  .gh-box ol b { color:var(--acc); }
+  .gh-box a { color:var(--acc); }
+  .gh-box label { display:block; font-size:0.7rem; color:var(--muted); margin:0.5rem 0 0.25rem; font-family:'Rajdhani',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase; }
+  .gh-box input[type=password], .gh-box input[type=text] { width:100%; padding:0.55rem 0.7rem; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:0.85rem; outline:none; }
+  .gh-box input:focus { border-color:var(--acc); }
+  .gh-check { display:flex; gap:8px; align-items:flex-start; font-size:0.8rem; margin:0.8rem 0; cursor:pointer; text-transform:none !important; letter-spacing:0 !important; color:var(--text) !important; font-family:'Barlow',sans-serif !important; font-weight:400 !important; }
+  .gh-btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:0.6rem; }
+  .gh-btns button { flex:1; min-width:120px; padding:0.6rem; border-radius:8px; border:none; cursor:pointer; font-family:'Rajdhani',sans-serif; font-weight:700; font-size:0.9rem; }
+  .gh-b1 { background:var(--acc); color:#000; } .gh-b2 { background:#25a35a; color:#fff; } .gh-b3 { background:transparent; color:var(--muted); border:1px solid var(--border) !important; }
+  .gh-msg { font-size:0.78rem; margin-top:0.7rem; min-height:1.1em; line-height:1.4; }
+  .gh-close { position:absolute; top:8px; right:10px; background:transparent; border:none; color:var(--muted); font-size:1.2rem; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -1341,6 +1366,9 @@
   <button class="btn-add-item" onclick="openAddModal()">+ Añadir</button>
   <button class="btn-add-item" onclick="openBannerModal()" title="Mostrar/ocultar y editar los banners de preventa">🎮 Preventas</button>
   <button class="btn-export-html" onclick="exportarHTML()" title="Descargar HTML con imágenes incrustadas para subir a GitHub">💾 Exportar</button>
+  <button class="btn-gh-pub" onclick="ghBotonPublicar()" title="Subir los cambios a pipegames.com.co">☁️ Publicar</button>
+  <button class="btn-gh-cfg" onclick="ghAbrirConfig()" title="Configurar publicación en GitHub">⚙ GitHub</button>
+  <span class="gh-status" id="ghStatus"></span>
   <button class="btn-exit-admin" onclick="exitAdmin()">Salir</button>
 </div>
 
@@ -1392,6 +1420,31 @@
       <div class="sim-actions" id="simActions"></div>
       <div class="sim-foot">Valores aproximados. El recargo cubre la comisión de la plataforma de pago. Addi y Sistecrédito están sujetos a la aprobación de cada entidad.</div>
     </div>
+  </div>
+</div>
+
+<!-- ── MODAL PUBLICAR EN GITHUB (solo Admin) ── -->
+<div id="ghModal" onclick="if(event.target===this)ghCerrarConfig()">
+  <div class="gh-box">
+    <button class="gh-close" onclick="ghCerrarConfig()">✕</button>
+    <h3>☁️ Publicar en GitHub</h3>
+    <p>Con esto, los cambios que hagas en el modo Admin se suben solos a <b>pipegames.com.co</b>, sin exportar ni subir el archivo a mano. La clave queda guardada solo en este navegador.</p>
+    <ol>
+      <li>Entra a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> con tu cuenta <b>pipegamess</b>.</li>
+      <li>Nombre: <b>Catálogo Pipe Games</b>. Expiración: la que prefieras (por ejemplo 1 año).</li>
+      <li>En <b>Repository access</b> elige <b>Only select repositories</b> → <b>Pipe-Games</b>.</li>
+      <li>En <b>Permissions → Repository permissions → Contents</b> elige <b>Read and write</b>.</li>
+      <li>Toca <b>Generate token</b>, copia la clave (empieza por <b>github_pat_</b>) y pégala aquí.</li>
+    </ol>
+    <label for="ghToken">Clave de acceso de GitHub</label>
+    <input type="password" id="ghToken" placeholder="github_pat_..." autocomplete="off">
+    <label class="gh-check"><input type="checkbox" id="ghAuto" checked> <span>Publicar automáticamente después de cada cambio (espera unos segundos para juntar varios cambios en una sola publicación).</span></label>
+    <div class="gh-btns">
+      <button class="gh-b1" onclick="ghGuardarYProbar()">Guardar y probar</button>
+      <button class="gh-b2" onclick="ghPublicarAhora()">Publicar ahora</button>
+    </div>
+    <div class="gh-btns"><button class="gh-b3" onclick="ghOlvidar()">Quitar la clave de este navegador</button></div>
+    <div class="gh-msg" id="ghMsg"></div>
   </div>
 </div>
 
@@ -6395,6 +6448,181 @@ document.addEventListener("DOMContentLoaded", function() {
     if (gal && e.key === "ArrowRight") gvStep(1);
     if (gal && e.key === "ArrowLeft") gvStep(-1);
   });
+})();
+
+/* ══ PUBLICAR EN GITHUB DESDE EL PANEL ADMIN ══
+   Sube index.html al repositorio con la API de GitHub (blob → tree → commit → ref).
+   Parte siempre del index.html más reciente del repositorio y solo reemplaza los datos
+   (productos y preventas), así nunca se pisa código nuevo con una copia vieja de la página. */
+const GH_CFG = { owner:'pipegamess', repo:'Pipe-Games', branch:'main', path:'index.html' };
+const GH_TOKEN_KEY = 'pgGhToken', GH_AUTO_KEY = 'pgGhAuto';
+const GH_ESPERA_MS = 12000;
+let ghTimer = null, ghPublicando = false, ghPendiente = false, ghCuenta = null;
+
+function ghToken() { try { return localStorage.getItem(GH_TOKEN_KEY) || ''; } catch (e) { return ''; } }
+function ghAutoOn() { try { return localStorage.getItem(GH_AUTO_KEY) !== '0'; } catch (e) { return true; } }
+function ghEstado(txt, cls) {
+  const el = document.getElementById('ghStatus');
+  if (el) { el.textContent = txt; el.className = 'gh-status' + (cls ? ' ' + cls : ''); }
+}
+function ghMsg(txt, color) { const el = document.getElementById('ghMsg'); if (el) { el.textContent = txt; el.style.color = color || 'var(--text)'; } }
+function ghEstadoInicial() {
+  if (!ghToken()) ghEstado('Sin conectar a GitHub', '');
+  else ghEstado(ghAutoOn() ? 'Publicación automática activada' : 'Publicación manual', 'ok');
+}
+
+async function ghApi(path, opts) {
+  opts = opts || {};
+  const r = await fetch('https://api.github.com/repos/' + GH_CFG.owner + '/' + GH_CFG.repo + path, {
+    method: opts.method || 'GET',
+    headers: Object.assign({ 'Authorization': 'Bearer ' + ghToken(), 'Accept': opts.accept || 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+      opts.body ? { 'Content-Type': 'application/json' } : {}),
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    cache: 'no-store'
+  });
+  if (!r.ok) {
+    let det = ''; try { det = (await r.json()).message || ''; } catch (e) {}
+    const err = new Error(r.status === 401 ? 'La clave no es válida o ya venció.' :
+      r.status === 403 || r.status === 404 ? 'La clave no tiene permiso de escritura en Pipe-Games (Contents: Read and write).' :
+      ('GitHub respondió ' + r.status + (det ? ': ' + det : '')));
+    err.status = r.status; throw err;
+  }
+  return opts.raw ? r.text() : r.json();
+}
+
+function ghBytes(str) { return new TextEncoder().encode(str); }
+function ghBase64(bytes) {
+  let bin = ''; const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+  return btoa(bin);
+}
+async function ghBlobSha(bytes) {
+  const head = ghBytes('blob ' + bytes.length + '\0');
+  const all = new Uint8Array(head.length + bytes.length); all.set(head); all.set(bytes, head.length);
+  const h = await crypto.subtle.digest('SHA-1', all);
+  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* Toma un index.html (texto) y le pone los datos actuales del panel. */
+function ghArmarHTML(source) {
+  [['ps4', datasets.ps4], ['ps5', datasets.ps5], ['sw', datasets.switch], ['acc', datasets.acc]].forEach(([name, arr]) => {
+    const regex = new RegExp('const ' + name + '\\s*=\\s*\\[.*?\\];', 's');
+    source = source.replace(regex, () => 'const ' + name + ' = ' + JSON.stringify(arr) + ';');
+  });
+  source = embedBannersInSource(source);
+  return source;
+}
+
+async function ghPublicar(motivo) {
+  if (!ghToken()) { ghEstado('Sin conectar a GitHub', 'err'); return false; }
+  if (ghPublicando) { ghPendiente = true; return false; }
+  ghPublicando = true; ghPendiente = false;
+  ghEstado('⬆️ Publicando en GitHub…', 'busy');
+  try {
+    for (let intento = 1; intento <= 2; intento++) {
+      const ref = await ghApi('/git/ref/heads/' + GH_CFG.branch);
+      const commitSha = ref.object.sha;
+      const commit = await ghApi('/git/commits/' + commitSha);
+      const actual = await ghApi('/contents/' + encodeURIComponent(GH_CFG.path) + '?ref=' + commitSha, { accept: 'application/vnd.github.raw', raw: true });
+      // Los datos cambian, la versión solo se renueva si hay algo nuevo (limpia la memoria vieja de los visitantes)
+      let nuevo = ghArmarHTML(actual);
+      if (nuevo === actual) { ghEstado('✅ Sin cambios nuevos · ' + ghHora(), 'ok'); return true; }
+      nuevo = nuevo.replace(/var VERSION = '[^']*'/, () => "var VERSION = '2025-export-" + Date.now() + "'");
+      const bytes = ghBytes(nuevo);
+      const blob = await ghApi('/git/blobs', { method: 'POST', body: { content: ghBase64(bytes), encoding: 'base64' } });
+      const tree = await ghApi('/git/trees', { method: 'POST', body: { base_tree: commit.tree.sha, tree: [{ path: GH_CFG.path, mode: '100644', type: 'blob', sha: blob.sha }] } });
+      const c = await ghApi('/git/commits', { method: 'POST', body: { message: 'Catálogo actualizado desde el panel Admin' + (motivo ? ' (' + motivo + ')' : ''), tree: tree.sha, parents: [commitSha] } });
+      try {
+        await ghApi('/git/refs/heads/' + GH_CFG.branch, { method: 'PATCH', body: { sha: c.sha, force: false } });
+      } catch (e) {
+        if (e.status === 422 && intento === 1) continue; // alguien subió algo justo antes: reintenta sobre lo nuevo
+        throw e;
+      }
+      ghEstado('✅ Publicado ' + ghHora() + ' · visible en 1–2 min', 'ok');
+      return true;
+    }
+  } catch (e) {
+    ghEstado('❌ No se pudo publicar: ' + e.message, 'err');
+    console.warn('[GitHub]', e);
+    return false;
+  } finally {
+    ghPublicando = false;
+    if (ghPendiente) ghProgramar('cambios pendientes');
+  }
+}
+function ghHora() { return new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }); }
+
+/* Se llama después de cada cambio en el panel. Espera unos segundos para juntar varios cambios. */
+function ghProgramar(motivo) {
+  if (!isAdmin || !ghToken() || !ghAutoOn()) return;
+  clearTimeout(ghTimer); clearInterval(ghCuenta);
+  let s = Math.round(GH_ESPERA_MS / 1000);
+  ghEstado('⏳ Cambios guardados · se publican en ' + s + ' s', 'busy');
+  ghCuenta = setInterval(() => { s--; if (s > 0 && !ghPublicando) ghEstado('⏳ Cambios guardados · se publican en ' + s + ' s', 'busy'); }, 1000);
+  ghTimer = setTimeout(() => { clearInterval(ghCuenta); ghTimer = null; ghPublicar(motivo); }, GH_ESPERA_MS);
+}
+
+/* Botones */
+function ghBotonPublicar() {
+  if (!ghToken()) { ghAbrirConfig(); return; }
+  clearTimeout(ghTimer); clearInterval(ghCuenta); ghTimer = null;
+  ghPublicar('manual');
+}
+function ghAbrirConfig() {
+  document.getElementById('ghToken').value = ghToken();
+  document.getElementById('ghAuto').checked = ghAutoOn();
+  ghMsg('');
+  document.getElementById('ghModal').classList.add('open');
+}
+function ghCerrarConfig() { document.getElementById('ghModal').classList.remove('open'); }
+function ghGuardarClave() {
+  const t = document.getElementById('ghToken').value.trim();
+  try {
+    if (t) localStorage.setItem(GH_TOKEN_KEY, t);
+    localStorage.setItem(GH_AUTO_KEY, document.getElementById('ghAuto').checked ? '1' : '0');
+  } catch (e) { ghMsg('⚠️ El navegador no dejó guardar la clave (memoria llena). Borra datos del sitio e intenta de nuevo.', '#ff7a7a'); return false; }
+  return !!t;
+}
+async function ghGuardarYProbar() {
+  if (!ghGuardarClave()) { if (!document.getElementById('ghToken').value.trim()) ghMsg('Pega la clave de acceso primero.', '#ff7a7a'); return; }
+  ghMsg('Probando conexión…', 'var(--acc)');
+  try {
+    const r = await ghApi('');
+    if (!r.permissions || !r.permissions.push) throw new Error('La clave puede leer el repositorio pero no escribir. Revisa el permiso Contents: Read and write.');
+    ghMsg('✅ Conectado a ' + r.full_name + '. ' + (ghAutoOn() ? 'Los cambios se publicarán solos.' : 'Usa "☁️ Publicar" cuando quieras subir los cambios.'), '#3ddc84');
+    ghEstadoInicial();
+  } catch (e) { ghMsg('❌ ' + e.message, '#ff7a7a'); }
+}
+async function ghPublicarAhora() {
+  if (!ghGuardarClave()) { ghMsg('Pega la clave de acceso primero.', '#ff7a7a'); return; }
+  ghMsg('Publicando…', 'var(--acc)');
+  const ok = await ghPublicar('manual');
+  const st = document.getElementById('ghStatus');
+  ghMsg(ok ? (st ? st.textContent : '✅ Publicado') : (st ? st.textContent : '❌ Error'), ok ? '#3ddc84' : '#ff7a7a');
+}
+function ghOlvidar() {
+  try { localStorage.removeItem(GH_TOKEN_KEY); } catch (e) {}
+  document.getElementById('ghToken').value = '';
+  ghMsg('La clave se quitó de este navegador.', 'var(--muted)');
+  ghEstadoInicial();
+}
+
+/* Engancha la publicación automática a los guardados existentes */
+(function () {
+  const envolver = (nombre, motivo) => {
+    const orig = window[nombre];
+    if (typeof orig !== 'function') return;
+    window[nombre] = function () { const r = orig.apply(this, arguments); ghProgramar(motivo); return r; };
+  };
+  envolver('saveState', 'productos');
+  envolver('saveExtraBanners', 'preventas');
+  envolver('closeBannerModal', 'preventas');
+  envolver('eliminarPreventa', 'preventas');
+  window.addEventListener('beforeunload', e => {
+    if (isAdmin && (ghTimer || ghPublicando)) { e.preventDefault(); e.returnValue = ''; }
+  });
+  document.addEventListener('DOMContentLoaded', ghEstadoInicial);
+  if (document.readyState !== 'loading') ghEstadoInicial();
 })();
 </script>
 
