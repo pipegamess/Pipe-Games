@@ -7,7 +7,7 @@
 <meta name="description" content="Sigue tu pedido en tiempo real con tu número de guía.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261110a">
+<link rel="stylesheet" href="estilos.css?v=20261110b">
 <style>
 .envoltura{max-width:720px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .buscar{display:flex;gap:8px;flex-wrap:wrap}
@@ -35,8 +35,8 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261110a";
-import * as C from "./comun.js?v=20261110a";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261110b";
+import * as C from "./comun.js?v=20261110b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, onSnapshot } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -115,7 +115,7 @@ function pintar() {
     </div>
 `;
   $("#salida2").innerHTML = `
-    ${g.estado === "entregada" ? (foto && foto !== "sin" ? `<div class="panel"><h3>Foto de entrega</h3><img class="foto-entrega" alt="Foto de la entrega del pedido" src="${foto}"></div>` : foto === "sin" ? "" : `<div class="vacio">Cargando foto de entrega…</div>`) : ""}
+    ${g.estado === "entregada" ? (foto && foto !== "sin" ? `<div class="panel"><h3>${(g.fotosExtra || []).length ? "Fotos de entrega" : "Foto de entrega"}</h3><div class="fotos-entrega">${[foto, ...(g.fotosExtra || [])].map((f, i) => `<img class="foto-entrega" alt="Foto ${i + 1} de la entrega del pedido" src="${f}">`).join("")}</div></div>` : foto === "sin" ? "" : `<div class="vacio">Cargando foto de entrega…</div>`) : ""}
     <div class="panel"><h3>Historial</h3><ol class="tl">${pasos}${extra}</ol></div>`;
   pintarMapa(enRuta);
 }
