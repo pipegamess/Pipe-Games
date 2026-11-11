@@ -5045,7 +5045,13 @@ function renderCartItems() {
   simNotaCarrito();
 }
 
+function ocultarCartToast() {
+  const t = document.getElementById("cartToast");
+  if (t) { t.classList.remove("show"); clearTimeout(t._hideT); }
+}
+
 function openCart() {
+  ocultarCartToast();
   renderCartItems();
   document.getElementById("cartPanel").classList.add("open");
   document.getElementById("cartOverlay").classList.add("open");
@@ -5099,6 +5105,7 @@ function simBase() {
 function simEsc(s) { return String(s || '').replace(/[<>&"]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c])); }
 
 function openSimulador(fromCart) {
+  if (typeof ocultarCartToast === 'function') ocultarCartToast();
   simMetodo = 'transf';
   if (fromCart && cart.length) {
     simItem = { tipo:'cart' };
