@@ -587,6 +587,7 @@ function pintarDetalle() {
   if (["novedad", "recogida", "en_camino"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="devolver">Marcar devuelta a la tienda</button>`);
   if (["disponible", "novedad"].includes(g.estado)) acciones.push(`<button class="btn peligro chico" data-acc="cancelar">Cancelar guía</button>`);
   if (g.estado !== "disponible") acciones.push(`<button class="btn sec chico" data-acc="reiniciar" title="Para pruebas: la guía vuelve a quedar disponible para escanear">Reiniciar guía (pruebas)</button>`);
+  acciones.push(`<button class="btn peligro chico" data-acc="eliminar" title="Borra la guía, su rastreo y sus fotos. No se puede deshacer.">Eliminar guía</button>`);
   $("#hojaDetalle").innerHTML = `
     <button class="btn sec chico cerrar" data-acc="cerrar">Cerrar</button>
     <div class="arriba" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><span class="guia" style="font-size:22px">${esc(g.numero)}</span><span class="pill ${g.estado}">${C.ESTADOS[g.estado]}</span></div>
@@ -672,10 +673,25 @@ $("#hojaDetalle").addEventListener("click", async e => {
   }
   if (a === "link") return copiar(C.linkRastreo(S.guias[n]), "Link de rastreo copiado");
   if (a === "imprimir") return imprimible(g) && imprimirGuias([g]);
-  if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para confirmar"; return; }
+  if (b.dataset.confirmar !== "1") {
+    b.dataset.confirmar = "1";
+    b.textContent = a === "eliminar" ? (g.recaudo?.medio === "efectivo" && g.recaudo.valor ? `Se borra también el cobro de ${C.cop(g.recaudo.valor)} del recaudo. Toca otra vez para eliminar` : "Se borra para siempre. Toca otra vez para eliminar") : "Toca otra vez para confirmar";
+    return;
+  }
   b.disabled = true;
   try {
     const ev = [...(g.eventos || [])];
+    if (a === "eliminar") {
+      const lote = writeBatch(db);
+      lote.delete(doc(db, "guias", n));
+      if (g.clave) lote.delete(doc(db, "rastreo", C.idRastreo(g)));
+      lote.delete(doc(db, "rastreo", n));
+      lote.delete(doc(db, "fotos", n));
+      await lote.commit();
+      Object.keys(fotoCache).forEach(k => { if (k.startsWith(n + ":")) delete fotoCache[k]; });
+      cerrarDetalle(); toast(`Guía ${n} eliminada`);
+      return;
+    }
     if (a === "liberar") {
       ev.push(C.evento("disponible", "Despacho la dejó disponible otra vez", "despacho"));
       await guardarGuia(n, { estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "", eventos: ev });
