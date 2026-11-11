@@ -4514,10 +4514,18 @@ function render(tab, query) {
   } // end else list view
 }
 
+/* La vista elegida (lista o cuadrícula) se aplica a TODAS las pestañas y se recuerda en este navegador */
+function aplicarVistaTodas(mode) {
+  Object.keys(viewMode).forEach(t => {
+    viewMode[t] = mode;
+    const bl = document.getElementById("vbtn-list-" + t), bg = document.getElementById("vbtn-grid-" + t);
+    if (bl) bl.classList.toggle("active", mode === "list");
+    if (bg) bg.classList.toggle("active", mode === "grid");
+  });
+}
 function setView(tab, mode) {
-  viewMode[tab] = mode;
-  document.getElementById("vbtn-list-" + tab).classList.toggle("active", mode === "list");
-  document.getElementById("vbtn-grid-" + tab).classList.toggle("active", mode === "grid");
+  aplicarVistaTodas(mode);
+  try { localStorage.setItem("pgViewMode", mode); } catch (e) {}
   renderActive();
 }
 
@@ -6623,6 +6631,14 @@ function ghOlvidar() {
   });
   document.addEventListener('DOMContentLoaded', ghEstadoInicial);
   if (document.readyState !== 'loading') ghEstadoInicial();
+})();
+
+/* Restaura la vista que el visitante eligió la última vez (o lista por defecto) */
+(function () {
+  let v = null;
+  try { v = localStorage.getItem("pgViewMode"); } catch (e) {}
+  aplicarVistaTodas(v === "grid" ? "grid" : "list");
+  try { renderActive(); } catch (e) {}
 })();
 </script>
 
