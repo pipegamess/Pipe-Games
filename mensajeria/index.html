@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261111a">
+<link rel="stylesheet" href="estilos.css?v=20261111b">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -177,7 +177,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label>Celular<input id="nTel" inputmode="tel" required placeholder="300 123 4567"></label>
           </div>
           <div class="frecuente" id="nFrec" hidden></div>
-          <label style="max-width:12em">Ciudad<select id="nCiudad"><option value="bogota">Bogotá</option><option value="soacha">Soacha</option></select></label>
+          <label style="max-width:12em">Ciudad<select id="nCiudad"><option value="bogota">Bogotá</option><option value="soacha">Soacha</option><option value="chia">Chía</option></select></label>
           <div class="sug-caja"><label>Dirección de entrega<input id="nDir" required placeholder="Cra 15 # 93-47, apto 502" autocomplete="off"></label><div class="sugerencias" id="nSug" hidden></div></div>
           <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
           <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección y escoge una opción de la lista, o toca el mapa.</span></div>
@@ -247,8 +247,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111a";
-import * as C from "./comun.js?v=20261111a";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111b";
+import * as C from "./comun.js?v=20261111b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -668,7 +668,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
     if (!p) return;
     b.disabled = true;
     try {
-      await guardarGuia(n, { destino: { ...g.destino, lat: p.lat, lng: p.lng, localidad: g.destino?.ciudad === "Soacha" ? "Soacha" : C.localidadCercana(p), aprox: false, verificar: false } });
+      await guardarGuia(n, { destino: { ...g.destino, lat: p.lat, lng: p.lng, localidad: g.destino?.ciudad && g.destino.ciudad !== "Bogotá" ? g.destino.ciudad : C.localidadCercana(p), aprox: false, verificar: false } });
       S.corr = null; toast("Ubicación comprobada");
     } catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
     return;
@@ -877,7 +877,7 @@ async function tomtom(texto, modo = "search", ciudad) {
   const d = await r.json();
   return (d.results || []).filter(x => x.position).map(x => {
     const a = x.address || {};
-    const dir = (a.freeformAddress || "").replace(/,\s*(Bogotá|Bogota|Soacha)(,.*)?$/i, "");
+    const dir = (a.freeformAddress || "").replace(/,\s*(Bogotá|Bogota|Soacha|Chía|Chia)(,.*)?$/i, "");
     const titulo = x.poi?.name || dir || a.streetName || "";
     const lugar = [TT_TIPOS[x.type] || "", x.poi?.name ? dir : "", a.municipalitySubdivision || C.localidadCercana({ lat: x.position.lat, lng: x.position.lon }), a.municipality].filter(Boolean).join(" · ");
     return { lat: +x.position.lat.toFixed(6), lng: +x.position.lon.toFixed(6), titulo, lugar, tipo: x.type, exacta: x.type === "Point Address" || x.type === "POI" };
@@ -1034,7 +1034,7 @@ async function crearGuiasML() {
       let p, verificar = false;
       if (c.length) { p = c[0]; verificar = !c[0].cruce; }
       else { const cerca = await tomtom(d.direccion + (d.localidadTxt ? ", " + d.localidadTxt : ""), "search", ciudadMkt).catch(() => []); p = cerca[0] || C.CIUDADES[ciudadMkt].centro; verificar = true; }
-      const loc = ciudadMkt === "soacha" ? "Soacha" : C.localidadCercana(p);
+      const loc = C.localidadEn(ciudadMkt, p);
       const g = {
         numero: "", remitente: rec.remitente,
         origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
@@ -1113,7 +1113,7 @@ $("#fNueva").onsubmit = async e => {
     let numero = "";
     const p = S.pin;
     const ciudad = C.ciudadDeTexto($("#nDir").value) || $("#nCiudad").value;
-    const locDestino = ciudad === "soacha" ? "Soacha" : C.localidadCercana(p);
+    const locDestino = C.localidadEn(ciudad, p);
     const g = {
       numero, remitente: rec.remitente,
       origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
@@ -1185,7 +1185,7 @@ function htmlEtiqueta(g, i) {
       <div class="et-nombre">${esc(g.cliente)}</div>
       ${g.telefono ? `<div>Cel. ${esc(g.telefono)}</div>` : ""}
       <div class="et-dir">${esc(g.destino?.direccion)}</div>
-      <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}${g.destino?.localidad === "Soacha" ? "" : " · " + esc(g.destino?.ciudad || "Bogotá")}</div></div>
+      <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}${g.destino?.ciudad && g.destino.ciudad !== "Bogotá" && g.destino.localidad === g.destino.ciudad ? "" : " · " + esc(g.destino?.ciudad || "Bogotá")}</div></div>
     <div class="et-sec"><div class="et-rot">De</div>
       <div><b>${esc(g.remitente)}</b></div>${C.textoMarketplace(g) ? `<div>${esc(C.textoMarketplace(g))}</div>` : ""}</div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>

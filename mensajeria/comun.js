@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111a";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111b";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -17,16 +17,22 @@ export const BOGOTA = { lat: 4.6486, lng: -74.1000 };
 // Ciudades donde se entrega. Soacha tiene la misma nomenclatura que Bogotá, por eso se busca aparte.
 export const CIUDADES = {
   bogota: { nombre: "Bogotá", consulta: "Bogotá", centro: BOGOTA, bbox: [4.45, -74.25, 4.85, -73.99] },
-  soacha: { nombre: "Soacha", consulta: "Soacha, Cundinamarca", centro: { lat: 4.5794, lng: -74.2168 }, bbox: [4.53, -74.32, 4.64, -74.16] }
+  soacha: { nombre: "Soacha", consulta: "Soacha, Cundinamarca", centro: { lat: 4.5794, lng: -74.2168 }, bbox: [4.53, -74.32, 4.64, -74.16] },
+  chia: { nombre: "Chía", consulta: "Chía, Cundinamarca", centro: { lat: 4.8619, lng: -74.0587 }, bbox: [4.81, -74.13, 4.95, -73.98] }
 };
-export const ciudadDeTexto = t => /\bsoacha\b/i.test(t || "") ? "soacha" : "";
-export const quitarCiudad = t => String(t || "").replace(/[,\s-]*\b(soacha|bogot[aá](\s*d\.?\s*c\.?)?)\b(\s*,?\s*cundinamarca)?\.?\s*$/i, "").trim();
+export const ciudadDeTexto = t => /\bsoacha\b/i.test(t || "") ? "soacha" : /(^|[^a-záéíóúñ])ch[ií]a([^a-záéíóúñ]|$)/i.test(t || "") ? "chia" : "";
+export const quitarCiudad = t => String(t || "").replace(/[,\s-]*(\bsoacha\b|\bch[ií]a(?![a-záéíóúñ])|\bbogot[aá](\s*d\.?\s*c\.?)?(?![a-záéíóúñ]))(\s*,?\s*cundinamarca)?\.?\s*$/i, "").trim();
+// Localidad que se guarda: en Bogotá, la localidad; fuera, el nombre del municipio
+export const localidadEn = (ciudad, p) => ciudad && ciudad !== "bogota" ? CIUDADES[ciudad].nombre : localidadCercana(p);
+// Aproximación de Chía: al norte del límite de Bogotá (calle 245 aprox.)
+const enChia = p => p.lat > 4.835 && p.lng < -73.99;
 // Aproximación del límite urbano de Soacha (sur-occidente de Bosa y Ciudad Bolívar)
 const enSoacha = p => p.lat < 4.602 && p.lng < -74.183;
 
 export function localidadCercana(p) {
   if (!p || p.lat == null) return "";
   if (enSoacha(p)) return "Soacha";
+  if (enChia(p)) return "Chía";
   let mejor = "", d = Infinity;
   for (const [n, lat, lng] of LOCALIDADES) {
     const x = (lat - p.lat) ** 2 + (lng - p.lng) ** 2;
