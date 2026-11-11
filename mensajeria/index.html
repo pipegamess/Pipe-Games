@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261110b">
+<link rel="stylesheet" href="estilos.css?v=20261111a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -177,6 +177,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label>Celular<input id="nTel" inputmode="tel" required placeholder="300 123 4567"></label>
           </div>
           <div class="frecuente" id="nFrec" hidden></div>
+          <label style="max-width:12em">Ciudad<select id="nCiudad"><option value="bogota">Bogotá</option><option value="soacha">Soacha</option></select></label>
           <div class="sug-caja"><label>Dirección de entrega<input id="nDir" required placeholder="Cra 15 # 93-47, apto 502" autocomplete="off"></label><div class="sugerencias" id="nSug" hidden></div></div>
           <label>Barrio / referencia<input id="nRef" placeholder="Chicó Norte, portería torre 2"></label>
           <div class="btns"><button class="btn sec chico" type="button" id="nBuscar">Ubicar dirección en el mapa</button><span class="nota" id="nPin">Escribe la dirección y escoge una opción de la lista, o toca el mapa.</span></div>
@@ -246,8 +247,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261110b";
-import * as C from "./comun.js?v=20261110b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111a";
+import * as C from "./comun.js?v=20261111a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -667,7 +668,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
     if (!p) return;
     b.disabled = true;
     try {
-      await guardarGuia(n, { destino: { ...g.destino, lat: p.lat, lng: p.lng, localidad: C.localidadCercana(p), aprox: false, verificar: false } });
+      await guardarGuia(n, { destino: { ...g.destino, lat: p.lat, lng: p.lng, localidad: g.destino?.ciudad === "Soacha" ? "Soacha" : C.localidadCercana(p), aprox: false, verificar: false } });
       S.corr = null; toast("Ubicación comprobada");
     } catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
     return;
@@ -772,8 +773,8 @@ async function overpass(q) {
   return (await r.json()).elements || [];
 }
 const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-async function cruceSimple(viaRe, cruceRe) {
-  const bbox = "(4.45,-74.25,4.85,-73.99)";
+async function cruceSimple(viaRe, cruceRe, ciudad = "bogota") {
+  const bbox = "(" + C.CIUDADES[ciudad].bbox.join(",") + ")";
   const k = '~"^(name|alt_name|official_name|old_name|short_name|ref)$"';
   const els = await overpass(`[out:json][timeout:20];way["highway"][${k}~"${viaRe}",i]${bbox}->.v;way["highway"][${k}~"${cruceRe}",i]${bbox}->.c;node(w.v)(w.c);out;`);
   return els.filter(e => e.type === "node").map(e => ({ lat: e.lat, lng: e.lon }));
@@ -785,13 +786,14 @@ function agrupar(puntos, centro) {
   const g = puntos.filter(p => C.km(p, puntos[0]) < 0.4);
   return { lat: g.reduce((s, p) => s + p.lat, 0) / g.length, lng: g.reduce((s, p) => s + p.lng, 0) / g.length };
 }
-async function ubicar(dir) {
-  const centro = C.BOGOTA;
+async function ubicar(dirOriginal, ciudad) {
+  ciudad = C.ciudadDeTexto(dirOriginal) || ciudad || "bogota";
+  const cfg = C.CIUDADES[ciudad], centro = cfg.centro, dir = C.quitarCiudad(dirOriginal);
   const n = C.normalizarDireccion(dir);
   const cands = [];
   // 1) TomTom: número exacto o aproximado por cuadra
   let tt = [];
-  try { tt = (await tomtom(dir, "geocode")).filter(x => x.tipo === "Point Address" || x.tipo === "Address Range"); } catch (e) { ubicar.error = e.message; }
+  try { tt = (await tomtom(dir, "geocode", ciudad)).filter(x => x.tipo === "Point Address" || x.tipo === "Address Range"); } catch (e) { ubicar.error = e.message; }
   tt.filter(x => x.tipo === "Point Address").forEach(x => cands.push({ lat: x.lat, lng: x.lng, etiqueta: x.titulo, lugar: x.lugar, cruce: true }));
   if (n.via) {
     try {
@@ -800,8 +802,8 @@ async function ubicar(dir) {
       const [p1, p2] = n.placa.split("-");
       const viaRe = `^(Avenida )?(${n.nombres.join("|")})$`;
       const [a, b] = await Promise.all([
-        cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${escRe(p1)}${sur}$`),
-        cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${parseInt(p1, 10) + 1}${sur}$`)
+        cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${escRe(p1)}${sur}$`, ciudad),
+        cruceSimple(viaRe, `^(Avenida )?(${cruceTipos}) ${parseInt(p1, 10) + 1}${sur}$`, ciudad)
       ]);
       const e1 = agrupar(a, centro), e2 = e1 && agrupar(b, e1);
       if (e1) {
@@ -813,15 +815,16 @@ async function ubicar(dir) {
   }
   tt.filter(x => x.tipo === "Address Range").forEach(x => cands.push({ lat: x.lat, lng: x.lng, etiqueta: x.titulo, lugar: x.lugar, cruce: false }));
   const nom = async params => {
-    const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=co&viewbox=-74.25,4.85,-73.99,4.45&bounded=1&" + params, { headers: { "Accept-Language": "es" } });
+    const [s0, w0, n0, e0] = cfg.bbox;
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=co&viewbox=${w0},${n0},${e0},${s0}&bounded=1&` + params, { headers: { "Accept-Language": "es" } });
     const d = r.ok ? await r.json() : [];
     // Solo sirven resultados con número de casa; una calle completa deja el punto en cualquier lugar de la vía.
     return d.filter(x => x.address?.house_number || ["house", "building", "apartments", "residential_building"].includes(x.type) || x.category === "building");
   };
   try {
     let r = [];
-    if (n.via) r = await nom(`street=${encodeURIComponent(n.placa + " " + n.via)}&city=Bogot%C3%A1&country=Colombia`);
-    if (!r.length) r = await nom(`q=${encodeURIComponent(n.texto.replace("#", "") + ", Bogotá")}`);
+    if (n.via) r = await nom(`street=${encodeURIComponent(n.placa + " " + n.via)}&city=${encodeURIComponent(cfg.nombre)}&country=Colombia`);
+    if (!r.length) r = await nom(`q=${encodeURIComponent(n.texto.replace("#", "") + ", " + cfg.consulta)}`);
     r.forEach(x => cands.push({ lat: +(+x.lat).toFixed(6), lng: +(+x.lon).toFixed(6), etiqueta: x.display_name.split(",").slice(0, 3).join(","), cruce: false }));
   } catch {}
   // Quitar duplicados cercanos
@@ -837,7 +840,7 @@ async function buscarDestino(auto = false) {
   const btn = $("#nBuscar"); btn.disabled = true; btn.textContent = "Buscando…"; $("#nCands").innerHTML = "";
   $("#nPin").textContent = "Ubicando la dirección en el mapa…";
   try {
-    const cands = await ubicar(dir);
+    const cands = await ubicar(dir, $("#nCiudad").value);
     if ($("#nDir").value.trim() !== dir) { buscando = false; btn.disabled = false; btn.textContent = "Ubicar dirección en el mapa"; return; }
     if (!cands.length) { $("#nPin").textContent = "No encontré el número exacto en el mapa. Toca el mapa en el sitio de entrega."; }
     else {
@@ -855,14 +858,17 @@ $("#nBuscar").onclick = () => buscarDestino(false);
 const direccionCompleta = t => !!C.normalizarDireccion(t).via;
 /* TomTom: direcciones y lugares de Bogotá */
 const TT_TIPOS = { "Point Address": "Dirección exacta", "Address Range": "Dirección aproximada (por cuadra)", "Street": "Vía", "Cross Street": "Cruce de vías", "POI": "Lugar", "Geography": "Zona" };
-function ttConsulta(texto) {
+function ttConsulta(texto, ciudad) {
+  texto = C.quitarCiudad(texto);
   const n = C.normalizarDireccion(texto);
-  return (n.via ? n.texto.replace(/\s*#\s*/, " ") : texto) + ", Bogotá";
+  return (n.via ? n.texto.replace(/\s*#\s*/, " ") : texto) + ", " + C.CIUDADES[ciudad].consulta;
 }
-async function tomtom(texto, modo = "search") {
+async function tomtom(texto, modo = "search", ciudad) {
   if (!TOMTOM_KEY) return [];
+  ciudad = C.ciudadDeTexto(texto) || ciudad || "bogota";
+  const cfg = C.CIUDADES[ciudad], [bs, bw, bn, be] = cfg.bbox;
   const extra = modo === "search" ? "&typeahead=true&idxSet=PAD,Addr,Str,Xstr,POI" : "";
-  const url = `https://api.tomtom.com/search/2/${modo === "geocode" ? "geocode" : "search"}/${encodeURIComponent(ttConsulta(texto))}.json?key=${TOMTOM_KEY}&countrySet=CO&language=es-419&limit=6&lat=${C.BOGOTA.lat}&lon=${C.BOGOTA.lng}&topLeft=4.85,-74.25&btmRight=4.45,-73.99${extra}`;
+  const url = `https://api.tomtom.com/search/2/${modo === "geocode" ? "geocode" : "search"}/${encodeURIComponent(ttConsulta(texto, ciudad))}.json?key=${TOMTOM_KEY}&countrySet=CO&language=es-419&limit=6&lat=${cfg.centro.lat}&lon=${cfg.centro.lng}&topLeft=${bn},${bw}&btmRight=${bs},${be}${extra}`;
   const r = await fetch(url);
   if (!r.ok) {
     const msg = r.status === 403 ? "TomTom rechazó la consulta (403). Revisa en my.tomtom.com que el dominio permitido sea pipegames.com.co" : r.status === 429 ? "Se agotó el cupo gratis de TomTom de este mes" : `TomTom respondió con error ${r.status}`;
@@ -871,13 +877,14 @@ async function tomtom(texto, modo = "search") {
   const d = await r.json();
   return (d.results || []).filter(x => x.position).map(x => {
     const a = x.address || {};
-    const dir = (a.freeformAddress || "").replace(/,\s*(Bogotá|Bogota)(,.*)?$/i, "");
+    const dir = (a.freeformAddress || "").replace(/,\s*(Bogotá|Bogota|Soacha)(,.*)?$/i, "");
     const titulo = x.poi?.name || dir || a.streetName || "";
     const lugar = [TT_TIPOS[x.type] || "", x.poi?.name ? dir : "", a.municipalitySubdivision || C.localidadCercana({ lat: x.position.lat, lng: x.position.lon }), a.municipality].filter(Boolean).join(" · ");
     return { lat: +x.position.lat.toFixed(6), lng: +x.position.lon.toFixed(6), titulo, lugar, tipo: x.type, exacta: x.type === "Point Address" || x.type === "POI" };
   }).filter(x => x.titulo);
 }
-function sugerencias(inputSel, cajaSel, alElegir) {
+function sugerencias(inputSel, cajaSel, alElegir, ciudadSel) {
+  const ciudadDe = () => ciudadSel ? $(ciudadSel).value : "bogota";
   const input = $(inputSel), caja = $(cajaSel);
   let timer = null, ultimaClave = "", cruceCache = {}, opciones = [], activa = -1, version = 0;
   const cerrar = () => { caja.hidden = true; activa = -1; };
@@ -896,21 +903,26 @@ function sugerencias(inputSel, cajaSel, alElegir) {
     // Dirección completa: buscarla (TomTom + cruce de vías), una vez por dirección. Si no, sugerencias de TomTom.
     let todas = [];
     if (n.via) {
-      const k = n.texto.toLowerCase();
+      const k = n.texto.toLowerCase() + "|" + (C.ciudadDeTexto(texto) || ciudadDe());
       ubicar.error = "";
-      cruceCache[k] ||= ubicar(texto).catch(() => []);
+      cruceCache[k] ||= ubicar(texto, ciudadDe()).catch(() => []);
       const ex = await cruceCache[k];
       errorTT = ubicar.error || "";
       todas = ex.map(c => ({ lat: c.lat, lng: c.lng, titulo: c.etiqueta.replace(/ \(calculada por el cruce de vías\)$/, ""), lugar: c.lugar || C.localidadCercana(c), exacta: !!c.cruce }));
     } else {
-      todas = await tomtom(texto, "search").catch(e => { errorTT = e.message; return []; });
+      todas = await tomtom(texto, "search", ciudadDe()).catch(e => { errorTT = e.message; return []; });
     }
     if (v !== version) return;
     opciones = todas.filter((o, i) => todas.findIndex(x => C.km(o, x) < 0.03) === i).slice(0, 7);
     activa = -1;
     pintarLista(errorTT ? errorTT : opciones.length ? "" : "No encontré la dirección exacta. Toca el mapa en el sitio, o crea la guía y quedará marcada para comprobar la ubicación.");
   }
-  input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(buscar, 650); });
+  input.addEventListener("input", () => {
+    // Si escriben "Soacha" en la dirección, cambiar la ciudad sola
+    if (ciudadSel && C.ciudadDeTexto(input.value) && $(ciudadSel).value !== C.ciudadDeTexto(input.value)) $(ciudadSel).value = C.ciudadDeTexto(input.value);
+    clearTimeout(timer); timer = setTimeout(buscar, 650);
+  });
+  if (ciudadSel) $(ciudadSel).addEventListener("change", () => { ultimaClave = ""; ultimaBuscada = ""; if (input.value.trim().length >= 4) buscar(); });
   input.addEventListener("focus", () => { if (opciones.length) pintarLista(); });
   input.addEventListener("blur", () => setTimeout(cerrar, 200));
   input.addEventListener("keydown", e => {
@@ -923,7 +935,7 @@ function sugerencias(inputSel, cajaSel, alElegir) {
   caja.addEventListener("mousedown", e => e.preventDefault());
   caja.addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) { alElegir(opciones[+b.dataset.i]); cerrar(); } });
 }
-sugerencias("#nDir", "#nSug", o => { $("#nCands").innerHTML = ""; ponerPin({ ...o, aprox: !o.exacta }, o.exacta ? "Dirección ubicada. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Arrastra el marcador al sitio exacto."); });
+sugerencias("#nDir", "#nSug", o => { $("#nCands").innerHTML = ""; ponerPin({ ...o, aprox: !o.exacta }, o.exacta ? "Dirección ubicada. Revisa el marcador y arrástralo si hace falta." : "Ubicación aproximada. Arrastra el marcador al sitio exacto."); }, "#nCiudad");
 sugerencias("#rDir", "#rSug", o => { S.recPin = { lat: o.lat, lng: o.lng }; $("#rPinTxt").textContent = "Ubicada. Revisa la R, arrástrala si hace falta y toca Guardar."; ajustado = ""; pintarMapa(); });
 
 /* ---------- Ubicación de este equipo (para el punto de recogida) ---------- */
@@ -1017,16 +1029,17 @@ async function crearGuiasML() {
   for (const [i, d] of elegidas.entries()) {
     btn.textContent = `Creando ${i + 1} de ${elegidas.length}…`;
     try {
-      const c = await ubicar(d.direccion);
+      const ciudadMkt = C.ciudadDeTexto([d.direccion, d.localidadTxt, d.referencia].join(" ")) || "bogota";
+      const c = await ubicar(d.direccion, ciudadMkt);
       let p, verificar = false;
       if (c.length) { p = c[0]; verificar = !c[0].cruce; }
-      else { const cerca = await tomtom(d.direccion + (d.localidadTxt ? ", " + d.localidadTxt : ""), "search").catch(() => []); p = cerca[0] || C.BOGOTA; verificar = true; }
-      const loc = C.localidadCercana(p);
+      else { const cerca = await tomtom(d.direccion + (d.localidadTxt ? ", " + d.localidadTxt : ""), "search", ciudadMkt).catch(() => []); p = cerca[0] || C.CIUDADES[ciudadMkt].centro; verificar = true; }
+      const loc = ciudadMkt === "soacha" ? "Soacha" : C.localidadCercana(p);
       const g = {
         numero: "", remitente: rec.remitente,
         origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
         cliente: d.nombre, telefono: d.telefono || "",
-        destino: { direccion: d.direccion, localidad: loc, referencia: d.referencia, lat: p.lat, lng: p.lng, aprox: verificar, verificar },
+        destino: { direccion: d.direccion, localidad: loc, ciudad: C.CIUDADES[ciudadMkt].nombre, referencia: d.referencia, lat: p.lat, lng: p.lng, aprox: verificar, verificar },
         contenido: d.bultos && d.bultos !== "1/1" ? "Bultos: " + d.bultos : "", nota: d.nota || "",
         valor: 0, cobro: "sin_cobro", tipoEnvio: d.canal, tipoEnvioOtro: "",
         marketplace: { canal: d.canal, venta: "", envio: d.envio, flex: !!d.flex },
@@ -1099,12 +1112,13 @@ $("#fNueva").onsubmit = async e => {
     const prefijo = C.prefijoTienda(rec.remitente);
     let numero = "";
     const p = S.pin;
-    const locDestino = C.localidadCercana(p);
+    const ciudad = C.ciudadDeTexto($("#nDir").value) || $("#nCiudad").value;
+    const locDestino = ciudad === "soacha" ? "Soacha" : C.localidadCercana(p);
     const g = {
       numero, remitente: rec.remitente,
       origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
       cliente: $("#nCli").value.trim(), telefono: $("#nTel").value.trim(),
-      destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: false, verificar: false },
+      destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, ciudad: C.CIUDADES[ciudad].nombre, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: false, verificar: false },
       contenido: $("#nCont").value.trim(), nota: $("#nNota").value.trim(),
       valor: cobroElegido() === "contraentrega" ? valorCobro() : 0,
       cobro: cobroElegido(),
@@ -1130,7 +1144,7 @@ $("#fNueva").onsubmit = async e => {
     ["nCli", "nTel", "nDir", "nRef", "nCont", "nVal", "nNota", "nTipoOtro", "nMktVenta", "nMktEnvio"].forEach(id => $("#" + id).value = "");
     $("#filaMkt").hidden = true;
     $("#nTipo").value = "Directo"; ponerCobro(); $("#lTipoOtro").hidden = true;
-    S.pin = null; ultimaBuscada = ""; $("#nComprobar").hidden = true; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
+    S.pin = null; ultimaBuscada = ""; $("#nCiudad").value = "bogota"; $("#nComprobar").hidden = true; $("#nCands").innerHTML = ""; $("#nPin").textContent = TXT_SIN_UBICAR; ajustado = ""; pintarMapa();
     toast("Guía " + numero + " creada");
   } catch (err) { $("#nError").textContent = /^(Primero|No pude|Escribe)/.test(err.message || "") ? err.message : C.mensajeError(err); if (!S.pin) $("#nPin").textContent = TXT_SIN_UBICAR; }
   btn.disabled = false;
@@ -1171,7 +1185,7 @@ function htmlEtiqueta(g, i) {
       <div class="et-nombre">${esc(g.cliente)}</div>
       ${g.telefono ? `<div>Cel. ${esc(g.telefono)}</div>` : ""}
       <div class="et-dir">${esc(g.destino?.direccion)}</div>
-      <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""} · Bogotá</div></div>
+      <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}${g.destino?.localidad === "Soacha" ? "" : " · " + esc(g.destino?.ciudad || "Bogotá")}</div></div>
     <div class="et-sec"><div class="et-rot">De</div>
       <div><b>${esc(g.remitente)}</b></div>${C.textoMarketplace(g) ? `<div>${esc(C.textoMarketplace(g))}</div>` : ""}</div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
