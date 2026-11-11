@@ -6,7 +6,7 @@
 <title>Mensajería Prueba</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261110a">
+<link rel="stylesheet" href="estilos.css?v=20261110b">
 <style>
 body{padding-top:env(safe-area-inset-top,0px)}
 .pantalla{padding:14px max(16px,env(safe-area-inset-right,0px)) calc(90px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
@@ -30,6 +30,11 @@ body{padding-top:env(safe-area-inset-top,0px)}
 .foto-btn input{display:none}
 .foto-opc{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .foto-opc .foto-btn{padding:18px 10px}
+.miniaturas{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.miniaturas div{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.miniaturas img{width:100%;height:100%;object-fit:cover;display:block}
+.miniaturas button{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:16px;line-height:30px;padding:0;cursor:pointer}
+.foto-opc.lleno{opacity:.45;pointer-events:none}
 .foto-est{font-size:13px;color:var(--muted);text-align:center}
 .saldo{font-family:var(--f-display);font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
 .cargando{display:grid;place-items:center;min-height:60vh;color:var(--muted)}
@@ -95,8 +100,8 @@ body.escaneando>*:not(#capaEscaner){visibility:hidden!important}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261110a";
-import * as C from "./comun.js?v=20261110a";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261110b";
+import * as C from "./comun.js?v=20261110b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -259,12 +264,12 @@ async function terminarTurno() {
 }
 
 /* ---------- escritura ---------- */
-async function guardar(g, cambios, foto) {
+async function guardar(g, cambios, foto, extras) {
   const nueva = { ...g, ...cambios };
   const b = writeBatch(db);
   b.update(doc(db, "guias", g.numero), { ...cambios, actualizado: Date.now() });
   // El rastreo vive en "NUMERO_CLAVE": solo lo ve quien tiene el código secreto.
-  if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(nueva, foto), { merge: true });
+  if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(nueva, foto, extras), { merge: true });
   nueva.pendiente = (await enviar(b.commit())) === "pendiente";
   return nueva;
 }
@@ -698,12 +703,13 @@ function pintarGuia(n) {
 function pintarEntregar(n) {
   const g = buscar(n);
   if (!g || g.estado !== "en_camino") { location.hash = "#mios"; return; }
-  let foto = null;
+  const MAX_FOTOS = 3;
+  let fotos = [];
   pantalla(`<a class="btn sec chico volver" href="#g/${esc(n)}">← Volver</a><h1>Entregar ${esc(n)}</h1>
-    <div class="foto-est" style="font-weight:600;color:var(--ink)">Foto del paquete entregado</div>
-    <div class="foto-opc"><label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="fFoto">📷 Tomar foto</label><label class="foto-btn"><input type="file" accept="image/*" id="fFotoG">🖼️ Elegir de la galería</label></div>
-    <div class="foto-est" id="tFoto">Obligatoria para confirmar la entrega</div>
-    <img class="foto-entrega" id="vFoto" alt="Foto de entrega" hidden>
+    <div class="foto-est" style="font-weight:600;color:var(--ink)">Fotos de la entrega (1 obligatoria, máximo 3)</div>
+    <div class="foto-opc"><label class="foto-btn"><input type="file" accept="image/*" capture="environment" id="fFoto">📷 Tomar foto</label><label class="foto-btn"><input type="file" accept="image/*" id="fFotoG" multiple>🖼️ Elegir de la galería</label></div>
+    <div class="miniaturas" id="vFotos"></div>
+    <div class="foto-est" id="tFoto">Toma o elige al menos 1 foto. Puedes agregar hasta 3.</div>
     <div class="panel">
       <h3>¿Quién recibe?</h3>
       <div class="recibe">
@@ -746,13 +752,26 @@ function pintarEntregar(n) {
     $("#tRecNom").textContent = recibe() === "porteria" ? "Nombre del portero o vigilante" : "Nombre y parentesco (ej. Ana, hermana)";
   });
   $("#eVal").oninput = revisar;
+  const pintarFotos = () => {
+    $("#vFotos").innerHTML = fotos.map((f, i) => `<div><img src="${f}" alt="Foto ${i + 1} de la entrega"><button type="button" data-quitar="${i}" aria-label="Quitar foto ${i + 1}">✕</button></div>`).join("");
+    document.querySelectorAll(".foto-opc")[0].classList.toggle("lleno", fotos.length >= MAX_FOTOS);
+    $("#tFoto").textContent = !fotos.length ? "Toma o elige al menos 1 foto. Puedes agregar hasta 3."
+      : fotos.length >= MAX_FOTOS ? "3 fotos listas (máximo). Toca ✕ para quitar una."
+      : `${fotos.length} foto${fotos.length === 1 ? "" : "s"} lista${fotos.length === 1 ? "" : "s"}. Puedes agregar ${MAX_FOTOS - fotos.length} más o confirmar la entrega.`;
+  };
+  $("#vFotos").onclick = e => { const b = e.target.closest("[data-quitar]"); if (!b) return; fotos.splice(Number(b.dataset.quitar), 1); pintarFotos(); };
   $("#fFotoG").onchange = e => $("#fFoto").onchange(e);
   $("#fCompG").onchange = e => $("#fComp").onchange(e);
   $("#fFoto").onchange = async e => {
     const f = e.target.files?.[0]; if (!f) return;
     $("#tFoto").textContent = "Procesando foto…";
-    try { foto = await C.comprimirImagen(f); $("#vFoto").src = foto; $("#vFoto").hidden = false; $("#tFoto").textContent = "Foto lista. Puedes cambiarla con los botones de arriba."; }
-    catch { $("#tFoto").textContent = "No se pudo leer la foto. Intenta de nuevo."; }
+    const lista = [...(e.target.files || [])], libres = MAX_FOTOS - fotos.length;
+    let fallo = false;
+    for (const archivo of lista.slice(0, libres)) { try { fotos.push(await C.comprimirImagen(archivo)); } catch { fallo = true; } }
+    e.target.value = "";
+    pintarFotos();
+    if (lista.length > libres) toast(libres === 1 ? `Solo se agregó 1: el máximo es ${MAX_FOTOS} fotos` : `Solo se agregaron ${libres}: el máximo es ${MAX_FOTOS} fotos`);
+    if (fallo) $("#tFoto").textContent = "Alguna foto no se pudo leer. Intenta de nuevo.";
   };
   $("#fComp").onchange = async e => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -762,7 +781,7 @@ function pintarEntregar(n) {
   };
   $("#bEnt").onclick = async () => {
     $("#eErr").textContent = "";
-    if (!foto) { $("#eErr").textContent = "Toma o elige la foto de entrega antes de confirmar."; return; }
+    if (!fotos.length) { $("#eErr").textContent = "Toma o elige al menos 1 foto de la entrega antes de confirmar."; return; }
     if (!medio()) { $("#eErr").textContent = "Escoge cómo pagó el cliente."; return; }
     if (medio() === "nequi" && !comp) { $("#eErr").textContent = "Toma o elige la foto del comprobante de Nequi."; return; }
     const recNom = $("#eRecNom").value.trim();
@@ -771,9 +790,9 @@ function pintarEntregar(n) {
     if (g.valor && v !== g.valor && !mot) { $("#eErr").textContent = "Escribe por qué el valor recibido es diferente."; return; }
     $("#bEnt").disabled = true; $("#bEnt").textContent = "Guardando…";
     try {
-      await enviar(setDoc(doc(db, "fotos", n), { imagen: foto, tipo: "entrega", t: Date.now(), mensajeroId: S.u.uid, ...(medio() === "nequi" && comp ? { comprobante: comp } : {}) }));
+      await enviar(setDoc(doc(db, "fotos", n), { imagen: fotos[0], extras: fotos.slice(1), tipo: "entrega", t: Date.now(), mensajeroId: S.u.uid, ...(medio() === "nequi" && comp ? { comprobante: comp } : {}) }));
       const recaudo = { medio: medio(), valor: v, esperado: g.valor || 0, motivo: mot, recibe: { tipo: recibe(), nombre: recibe() === "cliente" ? g.cliente : recNom } };
-      S.ultimaGuia = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] }, foto);
+      S.ultimaGuia = await guardar(g, { estado: "entregada", recaudo, eventos: [...(g.eventos || []), C.evento("entregada", "", S.perfil.nombre)] }, fotos[0], fotos.slice(1));
       toast(msgGuardado(S.ultimaGuia.pendiente, "Pedido entregado")); location.hash = "#mios";
     } catch (err) { $("#eErr").textContent = C.mensajeError(err); $("#bEnt").disabled = false; $("#bEnt").textContent = "Confirmar entrega"; }
   };

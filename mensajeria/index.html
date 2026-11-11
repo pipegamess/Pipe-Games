@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261110a">
+<link rel="stylesheet" href="estilos.css?v=20261110b">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -246,8 +246,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261110a";
-import * as C from "./comun.js?v=20261110a";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261110b";
+import * as C from "./comun.js?v=20261110b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -471,7 +471,7 @@ async function limpiarFotos(adm) {
       s.forEach(d => {
         const g = { numero: d.id, ...d.data() };
         b.delete(doc(db, "fotos", g.numero));
-        if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), { foto: null }, { merge: true });
+        if (g.clave) b.set(doc(db, "rastreo", C.idRastreo(g)), { foto: null, fotosExtra: [] }, { merge: true });
         b.update(doc(db, "guias", g.numero), { fotosBorradas: true });
         hasta = Math.max(hasta, g.creado);
       });
@@ -573,7 +573,7 @@ async function abrirDetalle(n) {
   const g = S.guias[n];
   const kf = n + ":" + g?.estado;
   if ((g?.estado === "entregada" || g?.estado === "novedad") && !fotoCache[kf]) {
-    try { const f = await getDoc(doc(db, "fotos", n)); const d = f.exists() ? f.data() : null; const vale = d && (g.estado === "entregada" ? d.tipo !== "novedad" : d.tipo === "novedad"); fotoCache[kf] = vale ? d.imagen : "sin"; fotoCache[kf + ":comp"] = vale && d.comprobante || ""; } catch { fotoCache[kf] = "sin"; }
+    try { const f = await getDoc(doc(db, "fotos", n)); const d = f.exists() ? f.data() : null; const vale = d && (g.estado === "entregada" ? d.tipo !== "novedad" : d.tipo === "novedad"); fotoCache[kf] = vale ? d.imagen : "sin"; fotoCache[kf + ":comp"] = vale && d.comprobante || ""; fotoCache[kf + ":extra"] = vale && d.extras || []; } catch { fotoCache[kf] = "sin"; }
     if (S.abierta === n) pintarDetalle();
   }
 }
@@ -613,7 +613,8 @@ function pintarDetalle() {
     ${(() => { const f = fotoCache[g.numero + ":" + g.estado]; const nom = g.estado === "novedad" ? "de la novedad" : "de entrega";
       if (g.estado !== "entregada" && g.estado !== "novedad") return "";
       const comp = fotoCache[g.numero + ":" + g.estado + ":comp"];
-      return (f && f !== "sin" ? `<div class="panel"><h3>Foto ${nom}</h3><img class="foto-entrega" alt="Foto ${nom}" src="${f}"></div>` : `<div class="vacio">${f === "sin" ? (g.fotosBorradas ? "Las fotos de esta guía se borraron (más de 90 días)." : "Sin foto " + nom + ".") : "Cargando foto…"}</div>`)
+      const extra = fotoCache[g.numero + ":" + g.estado + ":extra"] || [];
+      return (f && f !== "sin" ? `<div class="panel"><h3>${extra.length ? "Fotos" : "Foto"} ${nom}</h3><div class="fotos-entrega">${[f, ...extra].map((x, i) => `<img class="foto-entrega" alt="Foto ${i + 1} ${nom}" src="${x}">`).join("")}</div></div>` : `<div class="vacio">${f === "sin" ? (g.fotosBorradas ? "Las fotos de esta guía se borraron (más de 90 días)." : "Sin foto " + nom + ".") : "Cargando foto…"}</div>`)
         + (comp ? `<div class="panel"><h3>Comprobante de Nequi</h3><img class="foto-entrega" alt="Comprobante de pago por Nequi" src="${comp}"></div>` : ""); })()}
     ${g.destino?.verificar ? `<div class="panel aviso-ubic"><b>Ubicación cercana, comprobar manualmente.</b><span class="nota">El sistema no encontró la dirección exacta y puso un punto cercano. Revisa la dirección en Google Maps y arrastra el marcador azul al sitio correcto, o toca el mapa.</span>
       <div id="mapaCorr" class="mapa" style="height:260px"></div>

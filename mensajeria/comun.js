@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261110a";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261110b";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -281,7 +281,8 @@ export function mensajeEntregado(g, linkFn = linkRastreo) {
 
 // Vista pública de una guía (lo que se guarda en /rastreo).
 // Si se pasa `foto` (o null para borrarla), se incluye; si no, la que haya se conserva (escribir con merge).
-export function vistaPublica(g, foto) {
+// `extras`: fotos adicionales de la entrega (hasta 2 más). Al borrar la foto (null) también se borran.
+export function vistaPublica(g, foto, extras) {
   const v = {
     numero: g.numero,
     estado: g.estado,
@@ -300,6 +301,8 @@ export function vistaPublica(g, foto) {
     actualizado: Date.now()
   };
   if (foto !== undefined) v.foto = foto;
+  if (extras !== undefined) v.fotosExtra = extras;
+  else if (foto === null) v.fotosExtra = [];
   return v;
 }
 
