@@ -4978,6 +4978,7 @@ function openCart() {
 }
 
 function closeCart() {
+  document.body.style.overflow = '';
   document.getElementById("cartPanel").classList.remove("open");
   document.getElementById("cartOverlay").classList.remove("open");
 }
@@ -5040,7 +5041,7 @@ function openSimulador(fromCart) {
 }
 function closeSimulador() {
   document.getElementById('simModal').classList.remove('open');
-  if (!document.getElementById('cartPanel').classList.contains('open')) document.body.style.overflow = '';
+  document.body.style.overflow = '';
 }
 
 function simCatalogo() {
