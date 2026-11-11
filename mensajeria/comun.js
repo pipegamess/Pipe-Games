@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261110b";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111a";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -14,8 +14,19 @@ export const NOMBRES_LOCALIDADES = LOCALIDADES.map(l => l[0]);
 export const centroDe = nombre => { const l = LOCALIDADES.find(x => x[0] === nombre); return l ? { lat: l[1], lng: l[2] } : { lat: 4.65, lng: -74.10 }; };
 export const BOGOTA = { lat: 4.6486, lng: -74.1000 };
 // Localidad aproximada de un punto (la de centro más cercano).
+// Ciudades donde se entrega. Soacha tiene la misma nomenclatura que Bogotá, por eso se busca aparte.
+export const CIUDADES = {
+  bogota: { nombre: "Bogotá", consulta: "Bogotá", centro: BOGOTA, bbox: [4.45, -74.25, 4.85, -73.99] },
+  soacha: { nombre: "Soacha", consulta: "Soacha, Cundinamarca", centro: { lat: 4.5794, lng: -74.2168 }, bbox: [4.53, -74.32, 4.64, -74.16] }
+};
+export const ciudadDeTexto = t => /\bsoacha\b/i.test(t || "") ? "soacha" : "";
+export const quitarCiudad = t => String(t || "").replace(/[,\s-]*\b(soacha|bogot[aá](\s*d\.?\s*c\.?)?)\b(\s*,?\s*cundinamarca)?\.?\s*$/i, "").trim();
+// Aproximación del límite urbano de Soacha (sur-occidente de Bosa y Ciudad Bolívar)
+const enSoacha = p => p.lat < 4.602 && p.lng < -74.183;
+
 export function localidadCercana(p) {
   if (!p || p.lat == null) return "";
+  if (enSoacha(p)) return "Soacha";
   let mejor = "", d = Infinity;
   for (const [n, lat, lng] of LOCALIDADES) {
     const x = (lat - p.lat) ** 2 + (lng - p.lng) ** 2;
