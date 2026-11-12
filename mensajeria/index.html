@@ -1117,7 +1117,10 @@ $("#skxCotizar").onclick = async () => {
     for (let i = 0; i < 12 && id && !(q.is_completed || hallar(q, "is_completed")); i++) { await esperar(1500); q = await skx("GET", "/quotations/" + id); }
     // Una tarifa sirve si trae precio (Skydropx Colombia marca "success: false" aun con "price_found_internal")
     const todas = q.rates || hallar(q, "rates") || [];
-    const rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || ""));
+    // Transportadoras que no se ofrecen (se pueden cambiar en S.skx.ocultas)
+    const ocultas = (S.skx?.ocultas || ["coordinadora", "servientrega"]).map(x => T.envNorm(x).replace(/\s/g, ""));
+    const oculta = x => ocultas.some(o => T.envNorm(x.provider_name || x.provider_display_name || "").replace(/\s/g, "").includes(o));
+    const rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || "") && !oculta(x));
     skxCot = { id, rates, d };
     $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b><div class="cb-metodos">${rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount)).map((x, i) => `<button type="button" class="cb-m${i === 0 ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
       <div class="btns"><button class="btn" type="button" id="skxCrear">Crear guía en Skydropx</button></div>`
