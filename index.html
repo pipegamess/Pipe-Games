@@ -1225,6 +1225,9 @@
   .envio-info .otro { display:block; padding:0.45rem 0.65rem; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border); color:var(--muted); }
   .sim-city { width:100%; padding:0.55rem 0.75rem; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:0.9rem; font-family:'Barlow',sans-serif; outline:none; }
   .sim-city:focus { border-color:var(--acc); }
+  .sim-faltan { font-size:0.75rem; color:#ffb4b4; margin-top:0.7rem; line-height:1.4; }
+  .sim-faltan:empty { display:none; }
+  .sim-box.checkout { border-color:rgba(37,211,102,0.45); }
   .sim-actions button:disabled { opacity:0.4; cursor:not-allowed; }
 
   /* ══ PUBLICAR EN GITHUB (panel Admin) ══ */
@@ -1375,7 +1378,6 @@
       <span class="cart-total-val" id="cartTotal">$0</span>
     </div>
     <div class="cart-sim-note" id="cartSimNote"></div>
-    <button class="btn-sim-cart" onclick="openSimulador(true)"><svg class="ico-calc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><rect x="8" y="5.5" width="8" height="4" rx="1"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/></svg> Simular medio de pago</button>
     <button class="btn-vaciar" onclick="vaciarCarrito()">🗑 Vaciar carrito</button>
     <button class="btn-pedir-wa" onclick="pedirPorWA()">
       <svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
@@ -1427,9 +1429,9 @@
 <div id="simModal" onclick="if(event.target===this)closeSimulador()">
   <div class="sim-box">
     <button class="sim-close" onclick="closeSimulador()" title="Cerrar">✕</button>
-    <div class="sim-title"><svg class="ico-calc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><rect x="8" y="5.5" width="8" height="4" rx="1"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/></svg> Simulador de precios</div>
-    <div class="sim-sub">Elige el artículo y el medio de pago para ver cuánto pagarías.</div>
-    <div class="sim-label">1. ¿Qué quieres comprar?</div>
+    <div class="sim-title"><svg class="ico-calc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><rect x="8" y="5.5" width="8" height="4" rx="1"/><path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01"/></svg> <span id="simTitleTxt">Simulador de precios</span></div>
+    <div class="sim-sub" id="simSubTxt">Elige el artículo y el medio de pago para ver cuánto pagarías.</div>
+    <div class="sim-label" id="simL1">1. ¿Qué quieres comprar?</div>
     <div id="simPick">
       <input type="text" class="sim-search" id="simSearch" placeholder="Busca un juego, consola o accesorio..." oninput="simBuscar(this.value)" autocomplete="off">
       <div class="sim-results" id="simResults"></div>
@@ -1446,7 +1448,12 @@
       <div class="sim-methods" id="simMethods"></div>
       <div id="simLimit"></div>
       <div id="simCred"></div>
+      <div id="simNombreWrap" style="display:none">
+        <div class="sim-label">4. ¿Cuál es tu nombre?</div>
+        <input type="text" class="sim-city" id="simNombre" maxlength="40" placeholder="Tu nombre..." autocomplete="name" oninput="simNombreTxt=this.value;simActualizarBotones()">
+      </div>
       <div class="sim-summary" id="simSummary"></div>
+      <div class="sim-faltan" id="simFaltan"></div>
       <div class="sim-actions" id="simActions"></div>
       <div class="sim-foot">Valores aproximados. El recargo cubre la comisión de la plataforma de pago. Addi y Sistecrédito están sujetos a la aprobación de cada entidad.</div>
     </div>
@@ -4804,6 +4811,13 @@ function confirmPlatform(tab, idx) {
 }
 
 function openWA(name, price, platform) {
+  if (!price || !platform) {
+    const all = [].concat(datasets.ps4 || [], datasets.ps5 || [], datasets.switch || [], datasets.acc || []);
+    const g = all.find(x => x.name === name);
+    if (g) { price = price || g.price; platform = platform || g.platform; }
+  }
+  abrirCheckout({ name:name, price:price, platform:platform });
+  return;
   pendingWAItem = name;
   pendingWAPrice = price || '';
   pendingWAPlatform = platform || '';
@@ -5233,6 +5247,8 @@ let simMetodo = 'transf';
 let simPagoCarrito = null; // método elegido para el carrito (se agrega al mensaje de WhatsApp)
 let simPagoItem = null;    // {name, platform, metodo} para pedir un solo artículo
 let simCiudadTxt = '';
+let simCheckout = false;   // true = el cliente está haciendo el pedido (pasos obligatorios)
+let simNombreTxt = '';
 let simDatos = { cedula:'', email:'' }; // solo en memoria; se envían únicamente en el mensaje de WhatsApp
 function simEsCredito(id) { const m = SIM_METODOS.find(x => x.id === id); return !!(m && m.credito); }
 function simCedulaOk(v) { return /^[0-9]{5,10}$/.test(String(v || '').replace(/[.\s]/g, '')); }
@@ -5244,11 +5260,78 @@ function simDato(campo, el) {
   el.classList.toggle('bad', !!el.value && !ok);
   simActualizarBotones();
 }
+function simFaltantes() {
+  const f = [];
+  if (envNorm(simCiudadTxt).length < 3 || envHaySug('simCiudad')) f.push('tu ciudad');
+  if (!simMetodo) f.push('el medio de pago');
+  else if (simEsCredito(simMetodo) && !simDatosOk()) f.push('tu cédula/correo');
+  if (simCheckout && simNombreTxt.trim().length < 2) f.push('tu nombre');
+  return f;
+}
 function simActualizarBotones() {
-  const bloquear = simEsCredito(simMetodo) && !simDatosOk();
-  document.querySelectorAll('#simActions button').forEach(b => b.disabled = bloquear);
+  const credMal = simEsCredito(simMetodo) && !simDatosOk();
   const err = document.getElementById('simCredErr');
-  if (err) err.textContent = bloquear ? 'Ingresa tu número de cédula y un correo válido para continuar.' : '';
+  if (err) err.textContent = credMal ? 'Ingresa tu número de cédula y un correo válido para continuar.' : '';
+  const faltan = simCheckout ? simFaltantes() : [];
+  const bloquear = simCheckout ? faltan.length > 0 : credMal;
+  document.querySelectorAll('#simActions button').forEach(b => b.disabled = bloquear);
+  const fe = document.getElementById('simFaltan');
+  if (fe) fe.textContent = faltan.length ? 'Para enviar tu pedido completa: ' + faltan.join(', ').replace(/, ([^,]*)$/, ' y $1') + '.' : '';
+}
+/* Ajusta títulos según si es simulador libre o pedido */
+function simSetModo() {
+  const co = simCheckout;
+  document.getElementById('simTitleTxt').textContent = co ? 'Confirma tu pedido' : 'Simulador de precios';
+  document.getElementById('simSubTxt').textContent = co
+    ? 'Elige tu ciudad y medio de pago para conocer el total exacto antes de enviarlo por WhatsApp.'
+    : 'Elige el artículo y el medio de pago para ver cuánto pagarías.';
+  document.getElementById('simL1').textContent = co ? '1. Tu pedido' : '1. ¿Qué quieres comprar?';
+  document.getElementById('simNombreWrap').style.display = co ? '' : 'none';
+  document.querySelector('#simModal .sim-box').classList.toggle('checkout', co);
+  const nm = document.getElementById('simNombre'); if (nm && nm.value !== simNombreTxt) nm.value = simNombreTxt;
+}
+/* Abre el pedido obligatorio (desde un producto o desde el carrito) */
+function abrirCheckout(item) {
+  if (typeof ocultarCartToast === 'function') ocultarCartToast();
+  simCheckout = true;
+  simMetodo = null;
+  simItem = item ? { tipo:'item', name:item.name, platform:item.platform || '', price:item.price || '', img:'', qty:1 } : { tipo:'cart' };
+  document.getElementById('simSearch').value = '';
+  simBuscar('');
+  simRender();
+  document.getElementById('simModal').classList.add('open');
+  document.querySelector('#simModal .sim-box').scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+  if (!simCiudadTxt) setTimeout(() => document.getElementById('simCiudad').focus(), 150);
+}
+/* Desde el simulador libre: pasar a hacer el pedido */
+function simIrACheckout() {
+  if (!simItem) return;
+  simCheckout = true;
+  simRender();
+  const f = simFaltantes();
+  const destino = f[0] === 'tu ciudad' ? 'simCiudad' : (f[0] === 'tu nombre' || !f.length ? 'simNombre' : null);
+  if (destino) setTimeout(() => { const el = document.getElementById(destino); el.scrollIntoView({ block:'center', behavior:'smooth' }); el.focus({ preventScroll:true }); }, 80);
+  else document.getElementById('simMethods').scrollIntoView({ block:'center', behavior:'smooth' });
+}
+/* Envía el pedido completo a WhatsApp */
+function simEnviarPedido() {
+  if (!simItem) return;
+  envCompletar('simCiudad');
+  if (simFaltantes().length) { simActualizarBotones(); return; }
+  document.getElementById('clientCity').value = simCiudadTxt;
+  document.getElementById('clientName').value = simNombreTxt.trim();
+  pendingReservationBody = null;
+  if (simItem.tipo === 'item') {
+    pendingWAItem = simItem.name; pendingWAPrice = simItem.price; pendingWAPlatform = simItem.platform;
+    simPagoItem = { name:simItem.name, platform:simItem.platform, price:simItem.price, qty:simItem.qty, metodo:simMetodo };
+  } else {
+    pendingWAItem = null; pendingWAPrice = null; pendingWAPlatform = null;
+    simPagoCarrito = simMetodo;
+  }
+  closeSimulador();
+  enviarPedidoWA();
+  renderCartItems();
 }
 
 function simMetodosPermitidos(base) {
@@ -5264,6 +5347,7 @@ function simEsc(s) { return String(s || '').replace(/[<>&"]/g, c => ({ '<':'&lt;
 
 function openSimulador(fromCart) {
   if (typeof ocultarCartToast === 'function') ocultarCartToast();
+  simCheckout = false;
   simMetodo = 'transf';
   if (fromCart && cart.length) {
     simItem = { tipo:'cart' };
@@ -5280,6 +5364,7 @@ function openSimulador(fromCart) {
 }
 function closeSimulador() {
   document.getElementById('simModal').classList.remove('open');
+  simCheckout = false;
   document.body.style.overflow = '';
 }
 
@@ -5335,14 +5420,16 @@ function simRender() {
   const base = simBase();
   if (simItem.tipo === 'cart') {
     const n = cart.reduce((s, i) => s + i.qty, 0);
-    chosen.innerHTML = `<div class="sim-sel"><div class="n">🛒 Mi carrito<small>${n} producto(s) · ${numToPrice(base)}</small></div><button class="chg" onclick="simCambiar()">Cambiar</button></div>`;
+    chosen.innerHTML = `<div class="sim-sel"><div class="n">🛒 Mi carrito<small>${n} producto(s) · ${numToPrice(base)}</small></div>${simCheckout ? '' : '<button class="chg" onclick="simCambiar()">Cambiar</button>'}</div>`;
   } else {
     chosen.innerHTML = `<div class="sim-sel"><div class="n">${simEsc(simItem.name)}<small>${simEsc(simItem.platform)} · ${simEsc(simItem.price)} c/u</small></div>
       <div class="sim-qty"><button onclick="simQty(-1)">−</button><span>${simItem.qty}</span><button onclick="simQty(1)">+</button></div>
-      <button class="chg" onclick="simCambiar()">Cambiar</button></div>`;
+      ${simCheckout ? '' : '<button class="chg" onclick="simCambiar()">Cambiar</button>'}</div>`;
   }
   const permitidos = simMetodosPermitidos(base);
-  if (!permitidos.some(m => m.id === simMetodo)) simMetodo = 'transf';
+  if (simMetodo && !permitidos.some(m => m.id === simMetodo)) simMetodo = simCheckout ? null : 'transf';
+  if (!simMetodo && !simCheckout) simMetodo = 'transf';
+  simSetModo();
   const env = envioDeCiudad(simCiudadTxt), envio = env.local ? env.valor : 0, bEnv = base + envio;
   const ci = document.getElementById('simCiudad'); if (ci && ci.value !== simCiudadTxt) ci.value = simCiudadTxt;
   document.getElementById('simEnvio').innerHTML = envChipsHTML(env, 'sim');
@@ -5357,7 +5444,7 @@ function simRender() {
   document.getElementById('simLimit').innerHTML = base >= SIM_LIMITE_CREDITO
     ? `<div class="sim-limit">ℹ️ Para compras desde <b>$1.000.000</b> solo recibimos <b>transferencia por Llave Bre-B</b> o <b>tarjeta de crédito</b>. Addi y Sistecrédito no aplican para este monto.</div>`
     : '';
-  const m = simMetodoById(simMetodo), tot = m.calc(bEnv), rec = tot - bEnv;
+  const m = simMetodo ? simMetodoById(simMetodo) : null, tot = m ? m.calc(bEnv) : bEnv, rec = tot - bEnv;
   const filaEnvio = env.local
     ? `<div class="sim-row"><span>${env.tipo === 'local' ? env.titulo : 'Envío (' + ENVIO_TRANSP.find(t => t.id === env.transp).n + ')'}</span><b>${numToPrice(envio)}</b></div>`
     : (env.escrito && !envHaySug('simCiudad') ? `<div class="sim-row"><span>Envío a ${simEsc(env.ciudad)}</span><b>Se confirma por WhatsApp</b></div>`
@@ -5365,9 +5452,9 @@ function simRender() {
   document.getElementById('simSummary').innerHTML = `
     <div class="sim-row"><span>Precio de los artículos</span><b>${numToPrice(base)}</b></div>
     ${filaEnvio}
-    <div class="sim-row"><span>Recargo por medio de pago</span><b>${rec > 0 ? numToPrice(rec) : '$0'}</b></div>
+    <div class="sim-row"><span>Recargo por medio de pago</span><b>${!m ? 'Elige un medio de pago' : (rec > 0 ? numToPrice(rec) : '$0')}</b></div>
     <div class="sim-row tot"><span>Total a pagar</span><b>${numToPrice(tot)}</b></div>`;
-  document.getElementById('simCred').innerHTML = m.credito
+  document.getElementById('simCred').innerHTML = m && m.credito
     ? `<div class="sim-cred">
         <div class="sim-cred-t">📝 Para tramitar tu crédito con <b>${m.id === 'addi' ? 'Addi' : 'Sistecrédito'}</b> necesitamos estos datos (se envían junto con tu pedido por WhatsApp):</div>
         <label for="simCedula">Número de cédula</label>
@@ -5377,9 +5464,11 @@ function simRender() {
         <div class="sim-cred-err" id="simCredErr"></div>
       </div>`
     : '';
-  document.getElementById('simActions').innerHTML = simItem.tipo === 'cart'
-    ? `<button class="sim-btn-wa" onclick="simPedirCarrito()">Pedir carrito por WhatsApp</button>`
-    : `<button class="sim-btn-cart" onclick="simAgregarCarrito()">🛒 Añadir al carrito</button><button class="sim-btn-wa" onclick="simPedirItem()">Pedir por WhatsApp</button>`;
+  document.getElementById('simActions').innerHTML = simCheckout
+    ? `<button class="sim-btn-wa" onclick="simEnviarPedido()"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff" style="vertical-align:-3px;margin-right:6px"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Enviar pedido por WhatsApp</button>`
+    : (simItem.tipo === 'cart'
+      ? `<button class="sim-btn-wa" onclick="simIrACheckout()">Hacer pedido</button>`
+      : `<button class="sim-btn-cart" onclick="simAgregarCarrito()">🛒 Añadir al carrito</button><button class="sim-btn-wa" onclick="simIrACheckout()">Hacer pedido</button>`);
   simActualizarBotones();
 }
 
@@ -5447,6 +5536,8 @@ function setPriceFilter(btn, min, max) {
 // ── NOMBRE CLIENTE + WA ──────────────────────────────────
 function pedirPorWA() {
   if (cart.length === 0) return;
+  abrirCheckout(null);
+  return;
   document.getElementById('clientCity').value = '';
   document.getElementById('clientName').value = '';
   document.getElementById('nameModal').classList.add('open');
