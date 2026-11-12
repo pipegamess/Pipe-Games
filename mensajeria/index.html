@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112r">
+<link rel="stylesheet" href="estilos.css?v=20261112s">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -374,9 +374,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112r";
-import * as C from "./comun.js?v=20261112r";
-import * as T from "./tarifas-envio.js?v=20261112r";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112s";
+import * as C from "./comun.js?v=20261112s";
+import * as T from "./tarifas-envio.js?v=20261112s";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1444,11 +1444,11 @@ $("#fLogin").onsubmit = async e => {
   try { await signInWithEmailAndPassword(auth, $("#lCorreo").value.trim(), $("#lClave").value); }
   catch (err) { $("#lError").textContent = C.mensajeError(err); }
 };
-$("#salir").onclick = () => { try { sessionStorage.removeItem("acceso"); sessionStorage.removeItem("modoPanel"); sessionStorage.removeItem("empresa"); } catch {} signOut(auth); };
+$("#salir").onclick = () => { try { ["acceso", "modoPanel", "empresa"].forEach(k => localStorage.removeItem("pg_" + k)); } catch {} signOut(auth); };
 
 // Primer candado: antes del inicio de sesión se pide el número de documento de la empresa.
-// Queda abierto solo mientras esta pestaña siga abierta.
-const ss = { get: k => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} } };
+// Se recuerda en este equipo (no se vuelve a pedir) hasta tocar "Salir".
+const ss = { get: k => { try { return localStorage.getItem("pg_" + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem("pg_" + k, v); } catch {} } };
 let intentosAcceso = 0;
 // Panel maestro (Pipe Games, todas las funciones) o básico (otras empresas: solo guías en Bogotá, Soacha y Chía)
 const esMaestro = () => ss.get("modoPanel") !== "basico";
@@ -1534,7 +1534,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112r";
+const VERSION_PANEL = "20261112s";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
