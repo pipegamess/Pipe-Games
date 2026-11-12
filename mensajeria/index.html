@@ -202,6 +202,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
                 <div class="lista" id="skxTipos" style="gap:6px"></div>
                 <button class="btn sec chico" type="button" id="skxMasTipo" style="align-self:flex-start">+ Agregar tipo de producto</button>
                 <label style="max-width:24em">Tipo de producto por defecto<select id="skxTipo"></select></label>
+                <label style="max-width:24em">Formato de la etiqueta<select id="skxFormato"><option value="thermal">Impresora térmica (10 × 15 cm)</option><option value="standard">Hoja carta</option></select></label>
                 <div class="btns"><button class="btn chico" type="button" id="skxGuardar">Guardar</button><button class="btn sec chico" type="button" id="skxProbar">Probar conexión</button></div>
               </div></details>
             <div class="fila"><label>Destinatario<input id="skxNom"></label><label>Celular<input id="skxTel" inputmode="numeric"></label></div>
@@ -1014,6 +1015,7 @@ function cargarSkx() {
   $("#skxRDir").value = r.direccion || S.recogida?.direccion || ""; $("#skxRBarrio").value = r.barrio || ""; $("#skxRCp").value = r.cp || "";
   $("#skxRCiudad").value = r.ciudad || "Bogotá"; $("#skxRDepto").value = r.depto || "Cundinamarca";
   pintarTiposEditor(); pintarTiposSelect();
+  $("#skxFormato").value = a.formatoEtiqueta || "thermal";
   if (!a.remitente?.direccion) $("#skxAjustes").open = true;
 }
 // Tipos de producto con sus medidas; el primero es el que se usa por defecto
@@ -1045,7 +1047,7 @@ let skxUnidades = 1; // de la reserva; en envíos manuales, 1
 $("#skxGuardar").onclick = async () => {
   const datos = { url: $("#skxUrl").value.trim().replace(/\/+$/, ""),
     remitente: { nombre: $("#skxRNom").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() },
-    tipos: leerTiposEditor().length ? leerTiposEditor() : TIPOS_BASE, tipoDefecto: +$("#skxTipo").value || 0, variante: S.skx?.variante ?? 0 };
+    tipos: leerTiposEditor().length ? leerTiposEditor() : TIPOS_BASE, tipoDefecto: +$("#skxTipo").value || 0, formatoEtiqueta: $("#skxFormato").value || "thermal", variante: S.skx?.variante ?? 0 };
   try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: datos }, { merge: true }); S.skx = datos; cargarSkx(); pintarTiposEditor(); pintarTiposSelect(); $("#skxAjustes").open = false; toast("Datos de Skydropx guardados: quedan fijos para todas las guías"); } catch (e) { toast(C.mensajeError(e)); }
 };
 async function skx(metodo, ruta, cuerpo) {
@@ -1188,7 +1190,7 @@ $("#skxTarifas").addEventListener("click", async e => {
       .replace(/\s+-\s+/g, " ").replace(/\b(de|del|la|el)\s+/ig, "").replace(/\b(T|Ap)\s+(\d)/g, "$1$2").replace(/\s+/g, " ").trim(); return x.length > max ? x.slice(0, max).trim() : x; };
     const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: corta(ref) || "N/A" });
     if (!(d.valor > 0)) throw new Error("El valor declarado quedó en $0. Revisa el valor del tipo de producto en “Conexión y datos del remitente”.");
-    const base = { rate_id: rateId, printing_format: "standard", declared_amount: d.valor,
+    const base = { rate_id: rateId, printing_format: S.skx?.formatoEtiqueta || "thermal", declared_amount: d.valor,
       address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio),
       address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · ")) };
     // Colombia pide tipo y contenido de cada paquete. El valor exacto del tipo no está documentado:
