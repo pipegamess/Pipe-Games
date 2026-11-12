@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112b">
+<link rel="stylesheet" href="estilos.css?v=20261112c">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -184,12 +184,16 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <label class="formato" for="fmtImp">Formato de impresión <select id="fmtImp"><option value="etiqueta">Etiqueta 10 × 15 cm</option><option value="carta">Hoja carta</option></select></label></div>
         <div class="item" id="formCli">
           <b>Formulario para que el cliente llene sus datos</b>
-          <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, dirección, complemento y barrio, y marca su casa en el mapa. Al enviarlo se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo) y te llega a la campana.</span>
+          <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, ciudad, dirección, complemento y barrio. En <b>Bogotá, Chía y Soacha</b> marca su casa en el mapa y se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo). En <b>otras ciudades</b> elige Envía o Interrapidísimo y la orden queda en <b>Skydropx → Preparar órdenes</b>, sin crear guía, para que la revises. Todo te llega a la campana.</span>
           <div class="btns"><button class="btn chico" type="button" id="fcGen">Copiar mensaje con el link</button><a class="btn sec chico" id="fcVer" target="_blank" rel="noopener">Ver formulario</a></div>
         </div>
         <details class="item" id="skx">
           <summary style="cursor:pointer"><b>Envío nacional con Skydropx</b> <span class="nota">· clientes fuera de Bogotá, Chía y Soacha</span></summary>
           <div class="lista" style="margin-top:10px">
+            <div class="item" id="skxPrepCaja"><b>Preparar órdenes <span class="pill" id="skxPrepN">0</span></b>
+              <span class="nota">Clientes de otras ciudades que llenaron el formulario o confirmaron su saldo. Toca “Preparar” para pasar sus datos al formulario de abajo, corrige lo que haga falta y crea la guía.</span>
+              <div class="lista" id="skxPrep" style="gap:6px"></div></div>
+            <div class="aviso" id="skxOrden" hidden></div>
             <details class="item" id="skxAjustes"><summary style="cursor:pointer"><b>Conexión y datos del remitente</b> <span class="nota" id="skxEstado"></span></summary>
               <div class="lista" style="margin-top:8px">
                 <label>Dirección del intermediario (Cloudflare Worker)<input id="skxUrl" placeholder="https://skydropx-pipegames.tu-usuario.workers.dev"></label>
@@ -366,9 +370,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112b";
-import * as C from "./comun.js?v=20261112b";
-import * as T from "./tarifas-envio.js?v=20261112b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112c";
+import * as C from "./comun.js?v=20261112c";
+import * as T from "./tarifas-envio.js?v=20261112c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -385,7 +389,7 @@ const S = { guias: {}, ubic: {}, mens: {}, inv: [], entregas: [], tab: "guias", 
 let subs = [];
 
 /* ---------- NOTIFICACIONES (campana): entregas y novedades que reportan los mensajeros ---------- */
-const TIPOS_NOTI = { entregada: { ic: "✅", txt: "entregada" }, novedad: { ic: "⚠️", txt: "con novedad" }, disponible: { ic: "🆕", txt: "creada por el cliente (formulario)" }, confirmo: { ic: "🧾", txt: "· el cliente confirmó ciudad y pago" } };
+const TIPOS_NOTI = { entregada: { ic: "✅", txt: "entregada" }, novedad: { ic: "⚠️", txt: "con novedad" }, disponible: { ic: "🆕", txt: "creada por el cliente (formulario)" }, confirmo: { ic: "🧾", txt: "· el cliente confirmó ciudad y pago" }, preparar: { ic: "📦", txt: "· orden nacional para preparar en Skydropx" } };
 let notiYaVistas = null; // claves de avisos ya conocidos (para avisar solo de los nuevos)
 function listaNotis() {
   const l = [];
@@ -393,6 +397,7 @@ function listaNotis() {
     if (TIPOS_NOTI[e.estado] && e.por !== "despacho" && (e.estado !== "disponible" || e.por === "Formulario web")) l.push({ g, e, k: g.numero + "|" + e.estado + "|" + e.t });
   }));
   Object.entries(S.reservas || {}).forEach(([id, r]) => { if (r.confirmacion?.t) l.push({ g: { numero: r.producto, cliente: titulo(r.nombre) + " · total " + C.cop(r.confirmacion.total) }, e: { estado: "confirmo", t: r.confirmacion.t }, k: "res|" + id + "|" + r.confirmacion.t, res: id }); });
+  (S.prepSol || []).forEach(x => l.push({ g: { numero: x.municipio || "Otra ciudad", cliente: titulo(x.nombre) + (x.transportadora ? " · " + nombreTransp(x.transportadora) : "") }, e: { estado: "preparar", t: x.creado }, k: "sol|" + x.id, sol: x.id }));
   return l.sort((a, b) => b.e.t - a.e.t).slice(0, 40);
 }
 function pintarNotis() {
@@ -403,7 +408,7 @@ function pintarNotis() {
   const el = $("#listaNoti");
   if (el.hidden) return;
   el.innerHTML = `<div class="cab-noti"><b>Notificaciones</b>${nuevas ? `<button class="btn sec chico" id="notiLeidas">Marcar todas como leídas</button>` : ""}</div>`
-    + (l.length ? l.map(({ g, e, res }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"${res ? ` data-notires="${res}"` : ""}><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por && e.por !== "Formulario web" ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
+    + (l.length ? l.map(({ g, e, res, sol }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"${res ? ` data-notires="${res}"` : ""}${sol ? ` data-notisol="${esc(sol)}"` : ""}><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por && e.por !== "Formulario web" ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
       : `<div class="vacio" style="margin:12px">Aquí aparecerán las entregas y novedades que marquen los mensajeros.</div>`);
 }
 async function marcarNotisLeidas() {
@@ -442,6 +447,7 @@ $("#listaNoti").addEventListener("click", e => {
   if (e.target.closest("#notiLeidas")) return marcarNotisLeidas();
   const b = e.target.closest("[data-noti]"); if (!b) return;
   $("#listaNoti").hidden = true;
+  if (b.dataset.notisol) { prepararOrden("sol", b.dataset.notisol); return; }
   if (b.dataset.notires) { irA("cobros"); const r = S.reservas?.[b.dataset.notires]; if (r) { $("#rsProd").value = r.producto; $("#rsFiltro").value = "confirmado"; $("#rsBuscar").value = titulo(r.nombre); pintarReservas(); setTimeout(() => $("#rsCaja").scrollIntoView({ behavior: "smooth" }), 50); } return; }
   if (S.guias[b.dataset.noti]) abrirDetalle(b.dataset.noti);
 });
@@ -461,9 +467,26 @@ $("#fcVer").href = URL_ENVIO;
 // si el panel está abierto en dos equipos, solo uno la crea.
 let procesando = false;
 async function procesarSolicitudes(lista) {
-  if (procesando || !S.recogida || S.recogida.lat == null) return;
+  if (procesando) return;
   procesando = true;
-  for (const sol of lista) {
+  for (const sol of lista.filter(x => x.ciudad === "nacional")) {
+    // Otras ciudades: no se crea guía; la orden pasa a Skydropx → Preparar órdenes
+    try {
+      const recientes = (S.prepSol || []).filter(x => C.telWhatsApp(x.telefono) === C.telWhatsApp(sol.telefono) && Date.now() - x.creado < 36e5).length;
+      if (!sol.pedido && recientes >= 3) { await updateDoc(doc(db, "solicitudes", sol.id), { estado: "rechazada", motivo: "demasiadas solicitudes" }); continue; }
+      await runTransaction(db, async tx => {
+        const refS = doc(db, "solicitudes", sol.id), sS = await tx.get(refS);
+        if (!sS.exists() || sS.data().estado !== "nueva") return;
+        const d = sS.data(), refP = d.pedido ? doc(db, "prepedidos", d.pedido) : null;
+        const pre = refP ? await tx.get(refP) : null;
+        const pd = pre?.exists() && !pre.data().usado ? pre.data() : {};
+        tx.update(refS, { estado: "preparar", contenido: pd.contenido || "", valor: pd.valor || 0, tipoEnvio: pd.tipoEnvio || "", recibido: Date.now() });
+        if (refP && pre?.exists()) tx.update(refP, { usado: true, guia: "", nacional: true });
+      });
+    } catch (e) { console.warn("solicitud nacional", sol.id, e); }
+  }
+  if (!S.recogida || S.recogida.lat == null) { procesando = false; return; }
+  for (const sol of lista.filter(x => x.ciudad !== "nacional")) {
     try {
       // Freno contra abuso del link general: máximo 3 guías por celular en una hora
       const recientes = Object.values(S.guias).filter(g => g.origenWeb && C.telWhatsApp(g.telefono) === C.telWhatsApp(sol.telefono) && Date.now() - g.creado < 36e5).length;
@@ -1095,17 +1118,66 @@ $("#skxCiudad").addEventListener("input", () => {
 $("#skxCiudadSug").addEventListener("pointerdown", e => e.preventDefault());
 $("#skxCiudadSug").addEventListener("click", e => { const b = e.target.closest("[data-skxk]"); if (!b) return; const m = T.ENVIO_MUNI.find(x => x.key === b.dataset.skxk); $("#skxCiudad").value = T.envEtiqueta(m); $("#skxCiudadSug").hidden = true; });
 document.addEventListener("click", e => { if (!e.target.closest("#skxCiudad, #skxCiudadSug")) $("#skxCiudadSug").hidden = true; });
+/* ---------- PREPARAR ÓRDENES: clientes de otras ciudades, antes de crear la guía ---------- */
+const nombreTransp = id => T.ENVIO_TRANSP.find(t => t.id === id)?.n || id || "";
+let skxSolicitud = null, skxPref = "";
+function ordenesPrep() {
+  const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario" }));
+  const res = Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida)
+    .map(([id, r]) => { const c = r.confirmacion; return { tipo: "res", id, nombre: titulo(r.nombre), tel: c.telefono, ciudad: c.ciudad || "", dir: c.direccion, comp: c.complemento, barrio: c.barrio, transp: c.transportadora || "", extra: `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""} · pagó por ${c.metodoTxt || c.metodo || ""}`, t: c.t, origen: "Link de saldo" }; });
+  return [...sol, ...res].sort((a, b) => a.t - b.t);
+}
+function pintarPrep() {
+  const l = ordenesPrep();
+  $("#skxPrepN").textContent = l.length; $("#skxPrepN").className = "pill" + (l.length ? " novedad" : "");
+  $("#skxPrep").innerHTML = l.length ? l.map(o => `<div class="item${(o.tipo === "sol" ? skxSolicitud : skxReserva) === o.id ? " sel" : ""}"><div class="arriba"><span><b>${esc(o.nombre)}</b> · ${esc(o.ciudad || "sin municipio")}</span><span class="pill">${o.transp ? esc(o.transp) : "Sin transportadora"}</span></div>
+      <div class="meta">${esc(o.dir || "")}${o.comp ? " · " + esc(o.comp) : ""}${o.barrio ? " · Barrio " + esc(o.barrio) : ""} · ${esc(o.tel || "")}</div>
+      <div class="meta">${o.extra ? esc(o.extra) + " · " : ""}${o.origen} · ${C.hace(o.t)}</div>
+      <div class="btns"><button class="btn chico" type="button" data-prep="${o.tipo}|${esc(o.id)}">Preparar</button><button class="btn sec chico" type="button" data-prepno="${o.tipo}|${esc(o.id)}">Descartar</button></div></div>`).join("")
+    : `<div class="vacio">No hay órdenes por preparar.</div>`;
+}
+$("#skxPrep").addEventListener("click", async e => {
+  const p = e.target.closest("[data-prep]"); if (p) { const [t, id] = p.dataset.prep.split("|"); prepararOrden(t, id); return; }
+  const n = e.target.closest("[data-prepno]"); if (!n) return;
+  const [t, id] = n.dataset.prepno.split("|");
+  if (n.dataset.ok !== "1") { n.dataset.ok = "1"; n.textContent = "¿Seguro? Toca otra vez"; setTimeout(() => { if (n.isConnected) { n.dataset.ok = ""; n.textContent = "Descartar"; } }, 4000); return; }
+  try {
+    if (t === "sol") await updateDoc(doc(db, "solicitudes", id), { estado: "descartada" });
+    else await setDoc(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { skydropx: { omitida: true } } } }, { merge: true });
+    if (skxSolicitud === id || skxReserva === id) limpiarOrden();
+    toast("Orden descartada");
+  } catch (err) { toast(C.mensajeError(err)); }
+});
+function limpiarOrden() { skxSolicitud = null; skxReserva = null; skxPref = ""; $("#skxOrden").hidden = true; pintarPrep(); }
+function prepararOrden(tipo, id) {
+  if (tipo === "res") return skxDesdeReserva(id);
+  const x = (S.prepSol || []).find(o => o.id === id); if (!x) { toast("Esa orden ya no está pendiente"); return; }
+  skxReserva = null; skxSolicitud = id; skxCot = null; skxPref = x.transportadora || "";
+  irA("nueva"); $("#skx").open = true;
+  $("#skxNom").value = titulo(x.nombre); $("#skxTel").value = x.telefono || ""; $("#skxMail").value = "";
+  $("#skxCiudad").value = x.municipio || ""; $("#skxDir").value = x.direccion || ""; $("#skxComp").value = x.complemento || ""; $("#skxBarrio").value = x.barrio || "";
+  skxUnidades = 1;
+  $("#skxTipo").value = String(Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)); mostrarMedidas();
+  $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
+  avisoOrden(titulo(x.nombre), nombreTransp(x.transportadora), [x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "Cobrar " : "Valor ") + C.cop(x.valor) : ""].filter(Boolean).join(" · "));
+}
+function avisoOrden(nombre, transp, extra) {
+  const a = $("#skxOrden"); a.hidden = false;
+  a.innerHTML = `Preparando la orden de <b>${esc(nombre)}</b>${transp ? ` · eligió <b>${esc(transp)}</b>` : ""}${extra ? ` · ${esc(extra)}` : ""}. Revisa o corrige los datos y toca “Cotizar con Skydropx”. <button class="btn sec chico" type="button" id="skxOrdenNo">Soltar orden</button>`;
+  pintarPrep();
+  setTimeout(() => a.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+}
+document.addEventListener("click", e => { if (e.target.closest("#skxOrdenNo")) limpiarOrden(); });
 function skxDesdeReserva(id) {
   const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
-  skxReserva = id; skxCot = null;
+  skxReserva = id; skxSolicitud = null; skxCot = null; skxPref = c.transportadora || "";
   irA("nueva"); $("#skx").open = true;
   $("#skxNom").value = titulo(r.nombre); $("#skxTel").value = c.telefono || ""; $("#skxMail").value = c.correo || "";
   $("#skxCiudad").value = c.ciudad || ""; $("#skxDir").value = c.direccion || ""; $("#skxComp").value = c.complemento || ""; $("#skxBarrio").value = c.barrio || "";
   skxUnidades = r.unidades || 1;
   $("#skxTipo").value = String(Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)); mostrarMedidas();
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
-  setTimeout(() => $("#skx").scrollIntoView({ behavior: "smooth" }), 50);
-  toast(`Datos de ${titulo(r.nombre)} listos. Revisa y toca “Cotizar con Skydropx”.`);
+  avisoOrden(titulo(r.nombre), c.transportadora || "", `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""}`);
 }
 function datosSkx() {
   const a = S.skx || {};
@@ -1170,7 +1242,12 @@ $("#skxCotizar").onclick = async () => {
     const oculta = x => ocultas.some(o => T.envNorm(x.provider_name || x.provider_display_name || "").replace(/\s/g, "").includes(o));
     const rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || "") && !oculta(x));
     skxCot = { id, rates, d };
-    $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b><div class="cb-metodos">${rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount)).map((x, i) => `<button type="button" class="cb-m${i === 0 ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
+    rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount));
+    // La transportadora que eligió el cliente queda marcada (la más barata de esa transportadora)
+    const pref = T.envNorm(skxPref).replace(/[^a-z]/g, "").slice(0, 5);
+    const esPref = x => !!pref && T.envNorm(x.provider_display_name || x.provider_name || "").replace(/[^a-z]/g, "").startsWith(pref);
+    const iSel = Math.max(0, rates.findIndex(esPref));
+    $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b>${pref && !rates.some(esPref) ? `<div class="aviso">${esc(skxPref)} (la que eligió el cliente) no dio precio para este destino. Elige otra.</div>` : ""}<div class="cb-metodos">${rates.map((x, i) => `<button type="button" class="cb-m${i === iSel ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}${esPref(x) ? ` <span class="pill entregada">Eligió el cliente</span>` : ""}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
       <div class="btns"><button class="btn" type="button" id="skxCrear">Crear guía en Skydropx</button></div>`
       : `<div class="aviso">Ninguna transportadora dio precio para ${esc(T.envEtiqueta(d.m))}${todas.length ? ` (Skydropx consultó ${todas.length} servicios y todos respondieron “no aplica”)` : ""}. Revisa el municipio o mira la respuesta técnica abajo.</div>`;
   } catch (e) { $("#skxTarifas").innerHTML = `<div class="aviso">${esc(e.message || e)}</div>`; }
@@ -1216,16 +1293,17 @@ $("#skxTarifas").addEventListener("click", async e => {
     const id = hallar(s, "id");
     let guia = hallar(s, "tracking_number"), etiqueta = hallar(s, "label_url");
     for (let i = 0; i < 15 && id && !(guia && etiqueta); i++) { await esperar(2000); s = await skx("GET", "/shipments/" + id); guia = hallar(s, "tracking_number"); etiqueta = hallar(s, "label_url"); if (/fail|error|cancel/i.test(hallar(s, "workflow_status") || "")) break; }
-    const reg = { cliente: d.dest.nombre, telefono: d.dest.tel, ciudad: T.envEtiqueta(d.m), direccion: d.dest.dir, transportadora: rate?.provider_display_name || rate?.provider_name || "", servicio: rate?.provider_service_name || "", costo: +(rate?.total || rate?.amount) || 0, envioId: id || "", guia: guia || "", etiqueta: etiqueta || "", estado: hallar(s, "workflow_status") || "", reserva: skxReserva || null, creado: Date.now() };
+    const reg = { cliente: d.dest.nombre, telefono: d.dest.tel, ciudad: T.envEtiqueta(d.m), direccion: d.dest.dir, transportadora: rate?.provider_display_name || rate?.provider_name || "", servicio: rate?.provider_service_name || "", costo: +(rate?.total || rate?.amount) || 0, envioId: id || "", guia: guia || "", etiqueta: etiqueta || "", estado: hallar(s, "workflow_status") || "", reserva: skxReserva || null, solicitud: skxSolicitud || null, creado: Date.now() };
     const clave = (id || Date.now().toString(36)).toString().replace(/[^A-Za-z0-9_-]/g, "");
     const cambios = { guiasSkydropx: { [clave]: reg } };
     if (skxReserva) cambios.reservas = { [skxReserva]: { skydropx: { guia: reg.guia, transportadora: reg.transportadora, etiqueta: reg.etiqueta, envioId: reg.envioId } } };
     await setDoc(doc(db, "usuarios", ADMIN_UID), cambios, { merge: true });
+    if (skxSolicitud) await updateDoc(doc(db, "solicitudes", skxSolicitud), { estado: "guia", guia: reg.guia, transportadora: reg.transportadora, envioSkydropx: clave }).catch(() => {});
     $("#skxTarifas").innerHTML = "";
     $("#skxRes").innerHTML = guia ? `<div class="item"><b>Guía creada en Skydropx</b><div>${esc(reg.transportadora)} · Guía <span class="guia">${esc(guia)}</span> · ${C.cop(reg.costo)}</div>
       <div class="btns">${etiqueta ? `<a class="btn chico" href="${esc(etiqueta)}" target="_blank" rel="noopener">Abrir etiqueta (PDF)</a>` : ""}<button class="btn sec chico" type="button" data-skxwa="${clave}">Enviar guía al cliente por WhatsApp</button></div></div>`
       : `<div class="aviso">Skydropx recibió el envío pero aún no entrega el número de guía${id ? " (envío " + esc(id) + ")" : ""}. Aparecerá en “Guías nacionales creadas”; toca “Actualizar” en unos minutos.</div>`;
-    skxReserva = null; skxCot = null;
+    skxCot = null; limpiarOrden();
   } catch (err) { toast("No se pudo crear la guía: " + (err.message || err)); b.disabled = false; b.textContent = "Crear guía en Skydropx"; }
 });
 function pintarSkxLista() {
@@ -1319,13 +1397,16 @@ function escuchar() {
     S.saldosPend = s.docs.map(d => ({ id: d.id, ...d.data() }));
     procesarSaldos(S.saldosPend);
   }, () => {}));
-  subs.push(onSnapshot(query(collection(db, "solicitudes"), where("estado", "==", "nueva")), s => {
-    S.solicitudes = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.creado - b.creado);
+  subs.push(onSnapshot(query(collection(db, "solicitudes"), where("estado", "in", ["nueva", "preparar"])), s => {
+    const todas = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.creado - b.creado);
+    S.solicitudes = todas.filter(x => x.estado === "nueva");
+    S.prepSol = todas.filter(x => x.estado === "preparar");
+    pintarPrep(); notiYaVistas ? revisarNotis() : pintarNotis();
     procesarSolicitudes(S.solicitudes);
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; cargarSkx(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; cargarSkx(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */

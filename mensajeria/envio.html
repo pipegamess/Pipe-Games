@@ -7,7 +7,7 @@
 <meta name="description" content="Escribe tus datos de entrega para que te enviemos tu pedido.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112b">
+<link rel="stylesheet" href="estilos.css?v=20261112c">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 #mapa{height:min(42vh,360px);min-height:240px}
@@ -24,22 +24,32 @@
 .estado-pin.mal{color:var(--bad);font-weight:600}
 .listo{font-family:var(--f-display);font-size:28px;font-weight:700;line-height:1.1}
 .pie{font-size:12px;color:var(--muted);text-align:center}
+.opciones{display:flex;flex-direction:column;gap:6px}
+.op{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;text-align:left;font:inherit}
+.op.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.op .rad{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted);flex:none;position:relative}
+.op.on .rad{border-color:var(--accent)}
+.op.on .rad::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--accent)}
+.op .info{flex:1;min-width:0;display:flex;flex-direction:column}
+.op small{color:var(--muted);font-size:12px;font-weight:400}
+.op .v{text-align:right;font-weight:700;white-space:nowrap}
 </style>
 </head>
 <body>
 <main class="envoltura">
-  <header><h1>Datos de <span class="marca">envío</span></h1><p class="nota" id="intro" style="margin:4px 0 0">Escribe a dónde te llevamos tu pedido. Tarda menos de un minuto.</p></header>
+  <header><h1>Datos de <span class="marca">envío</span></h1><p class="nota" id="intro" style="margin:4px 0 0">Escribe a dónde te enviamos tu pedido. Tarda menos de un minuto.</p></header>
   <div id="resumen"></div>
   <form class="panel" id="fEnvio" novalidate>
     <label>Nombre de quien recibe<input id="eNom" autocomplete="name" maxlength="80" required></label>
     <label>Celular<input id="eTel" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16" placeholder="3001234567" required></label>
-    <label>Ciudad<select id="eCiudad"><option value="bogota">Bogotá</option><option value="soacha">Soacha</option><option value="chia">Chía</option></select></label>
+    <div class="sug-caja"><label>Ciudad o municipio<input id="eCiudad" autocomplete="off" maxlength="80" value="Bogotá - Cundinamarca" placeholder="Ej. Medellín" required></label><div class="sugerencias" id="eCiudadSug" hidden></div></div>
+    <div id="eTransp" hidden></div>
     <div class="sug-caja"><label>Dirección<input id="eDir" autocomplete="off" maxlength="120" placeholder="Ej. Calle 26 # 68-10" required></label><div class="sugerencias" id="eSug" hidden></div></div>
     <div class="fila">
       <label>Complemento de la dirección<input id="eComp" maxlength="80" placeholder="Torre, apartamento, casa…"></label>
       <label>Barrio<input id="eBarrio" maxlength="60" placeholder="Ej. Modelia"></label>
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;flex-direction:column;gap:8px" id="secMapa">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Tu ubicación en el mapa</b><button class="btn sec chico" type="button" id="eGps">📍 Usar mi ubicación</button></div>
       <div id="mapa" class="mapa"></div>
       <div class="estado-pin" id="ePin">Escribe la dirección o toca “Usar mi ubicación”. Luego revisa que el punto quede en tu casa; puedes moverlo o tocar el mapa.</div>
@@ -52,8 +62,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261112b";
-import * as C from "./comun.js?v=20261112b";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261112c";
+import * as C from "./comun.js?v=20261112c";
+import * as T from "./tarifas-envio.js?v=20261112c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, setDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -89,7 +100,63 @@ function cerrado(html, link) {
 const mapa = L.map("mapa", { zoomControl: true });
 C.capaMapa(L).addTo(mapa);
 mapa.setView([C.BOGOTA.lat, C.BOGOTA.lng], 11);
-const ciudad = () => C.ciudadDeTexto($("#eDir").value) || $("#eCiudad").value;
+/* ---------- ciudad: Bogotá, Chía y Soacha con mapa (mensajero propio); el resto del país por transportadora ---------- */
+const LOCALES = { bogota: "bogota", chia: "chia", soacha: "soacha" };
+let env = T.envioDeCiudad($("#eCiudad").value), transp = "";
+function claveLocal(e) {
+  if (e.tipo !== "local") return "";
+  const k = T.envNorm(e.ciudad.split(" - ")[0]);
+  return LOCALES[k] || (k.startsWith("bogota") ? "bogota" : "");
+}
+const ciudad = () => C.ciudadDeTexto($("#eDir").value) || claveLocal(env) || "bogota";
+const esNacional = () => ["nacional", "otro"].includes(env.tipo);
+function pintarCiudad() {
+  const antes = claveLocal(env);
+  env = T.envioDeCiudad($("#eCiudad").value);
+  const local = claveLocal(env), nac = esNacional();
+  $("#secMapa").hidden = !local;
+  if (local) { setTimeout(() => mapa.invalidateSize(), 30); if (local !== antes && !pin) { const c = C.CIUDADES[local]; mapa.setView([c.centro.lat, c.centro.lng], 13); } }
+  const box = $("#eTransp");
+  if (!nac) {
+    box.hidden = !(env.tipo === "invalido" && T.envNorm($("#eCiudad").value).length >= 2);
+    box.innerHTML = env.multi ? `<div class="aviso">Hay varios municipios con ese nombre. Elige el tuyo en la lista.</div>` : `<div class="aviso">Escribe tu municipio y elígelo de la lista.</div>`;
+    return;
+  }
+  const ops = T.ENVIO_TRANSP.map(t => ({ id: t.id, n: t.n, v: env.tipo === "nacional" ? env.opciones.find(o => o.id === t.id)?.v : undefined }));
+  const disponibles = ops.filter(o => o.v !== null);
+  if (!disponibles.some(o => o.id === transp)) transp = "";
+  box.hidden = false;
+  box.innerHTML = `<div style="display:flex;flex-direction:column;gap:6px"><b style="font-size:14px">¿Con qué transportadora te lo enviamos?</b>
+    <div class="opciones">${ops.map(o => o.v === null
+      ? `<div class="op" style="opacity:.5;cursor:default"><span class="rad"></span><span class="info"><b>${esc(o.n)}</b><small>No llega a ${esc(env.ciudad.split(" - ")[0])}</small></span></div>`
+      : `<button type="button" class="op${o.id === transp ? " on" : ""}" data-tr="${o.id}"><span class="rad"></span><span class="info"><b>${esc(o.n)}</b><small>Envío a ${esc(env.ciudad)}</small></span><span class="v">${o.v ? C.cop(o.v) : "<small>Valor por confirmar</small>"}</span></button>`).join("")}</div>
+    <span class="nota">Te avisamos por WhatsApp cuando lo despachemos, con tu número de guía.</span></div>`;
+}
+$("#eTransp").addEventListener("click", e => { const b = e.target.closest("[data-tr]"); if (!b) return; transp = b.dataset.tr; $("#eErr").textContent = ""; pintarCiudad(); });
+$("#eCiudad").addEventListener("focus", () => $("#eCiudad").select());
+$("#eCiudad").addEventListener("input", () => { sugerirCiudad(); pintarCiudad(); });
+$("#eCiudad").addEventListener("blur", () => setTimeout(() => {
+  const r = T.envBuscar($("#eCiudad").value);
+  if (r?.x && $("#eCiudad").value !== T.envEtiqueta(r.x)) $("#eCiudad").value = T.envEtiqueta(r.x);
+  $("#eCiudadSug").hidden = true; pintarCiudad();
+}, 150));
+function sugerirCiudad() {
+  const box = $("#eCiudadSug"), v = $("#eCiudad").value;
+  let n = T.envNorm(v.split(" - ")[0]); n = T.ENVIO_ALIAS[n] || n;
+  const r = T.envBuscar(v);
+  if (n.length < 2 || (r?.x && v.includes(" - "))) { box.hidden = true; return; }
+  const score = m => (m.k === n ? 0 : m.k.startsWith(n) ? 1 : 2) * 10 + (m.tar ? 0 : 1);
+  const res = T.ENVIO_MUNI.filter(m => m.k.startsWith(n) || m.k.split(" ").some(w => w.startsWith(n)) || (m.k === "bogota" && n.startsWith("bogota ")))
+    .sort((a, b) => score(a) - score(b) || a.k.localeCompare(b.k)).slice(0, 7);
+  box.innerHTML = res.length ? res.map(m => `<button type="button" data-k="${esc(m.key)}"><b>${esc(m.c)}</b><span class="t2">${esc(m.d)}</span></button>`).join("") : `<div class="nota" style="padding:10px 12px">No encontramos ese municipio. Revisa cómo está escrito.</div>`;
+  box.hidden = false;
+}
+$("#eCiudadSug").addEventListener("pointerdown", e => e.preventDefault());
+$("#eCiudadSug").addEventListener("click", e => {
+  const b = e.target.closest("[data-k]"); if (!b) return;
+  const m = T.ENVIO_MUNI.find(x => x.key === b.dataset.k);
+  $("#eCiudad").value = T.envEtiqueta(m); $("#eCiudadSug").hidden = true; pintarCiudad(); ultima = ""; buscar();
+});
 function ponerPin(p, texto, clase = "ok") {
   pin = { lat: +p.lat, lng: +p.lng };
   if (!marcador) {
@@ -101,7 +168,6 @@ function ponerPin(p, texto, clase = "ok") {
 }
 const estadoPin = (t, c = "") => { $("#ePin").className = "estado-pin " + c; $("#ePin").textContent = t; };
 mapa.on("click", e => ponerPin(e.latlng, "Punto marcado. Puedes arrastrarlo si hace falta."));
-$("#eCiudad").onchange = () => { const c = C.CIUDADES[$("#eCiudad").value]; if (!pin) mapa.setView([c.centro.lat, c.centro.lng], 13); buscar(); };
 
 /* ---------- búsqueda de dirección (TomTom) ---------- */
 async function tomtom(texto, modo) {
@@ -116,11 +182,12 @@ async function tomtom(texto, modo) {
 }
 let timer = null, ultima = "";
 $("#eDir").addEventListener("input", () => {
-  const c = C.ciudadDeTexto($("#eDir").value); if (c) $("#eCiudad").value = c;
+  if (!claveLocal(env)) return; // fuera de Bogotá, Chía y Soacha no hay mapa
   clearTimeout(timer); timer = setTimeout(buscar, 650);
 });
 async function buscar() {
   const t = $("#eDir").value.trim();
+  if (!claveLocal(env)) return;
   if (t.length < 5 || t + ciudad() === ultima) return;
   ultima = t + ciudad();
   let l = [];
@@ -132,10 +199,10 @@ async function buscar() {
   caja.hidden = false;
   caja.onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; const x = l[+b.dataset.i]; caja.hidden = true; ponerPin(x, "Revisa que el punto quede en tu casa. Si no, arrástralo o toca el mapa en el sitio correcto."); };
 }
-document.addEventListener("click", e => { if (!e.target.closest(".sug-caja")) $("#eSug").hidden = true; });
+document.addEventListener("click", e => { if (!e.target.closest(".sug-caja")) { $("#eSug").hidden = true; $("#eCiudadSug").hidden = true; } });
 // Si no eligió sugerencia, ubicar al salir del campo
 $("#eDir").addEventListener("change", async () => {
-  if (pin) return;
+  if (pin || !claveLocal(env)) return;
   try { const r = await tomtom($("#eDir").value.trim(), "geocode"); if (r[0] && !pin) ponerPin(r[0], "Ubicación aproximada: revisa que el punto quede en tu casa y muévelo si hace falta.", ""); } catch {}
 });
 
@@ -160,15 +227,20 @@ $("#eGps").onclick = () => {
 $("#fEnvio").onsubmit = async e => {
   e.preventDefault(); $("#eErr").textContent = "";
   const tel = $("#eTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
+  env = T.envioDeCiudad($("#eCiudad").value);
+  const nac = esNacional();
   const datos = {
-    nombre: $("#eNom").value.trim(), telefono: tel, ciudad: ciudad(),
-    direccion: C.quitarCiudad($("#eDir").value.trim()), complemento: $("#eComp").value.trim(), barrio: $("#eBarrio").value.trim(),
-    lat: pin?.lat ?? null, lng: pin?.lng ?? null, pedido, estado: "nueva", creado: Date.now()
+    nombre: $("#eNom").value.trim(), telefono: tel, ciudad: nac ? "nacional" : ciudad(),
+    direccion: nac ? $("#eDir").value.trim() : C.quitarCiudad($("#eDir").value.trim()), complemento: $("#eComp").value.trim(), barrio: $("#eBarrio").value.trim(),
+    lat: nac ? null : pin?.lat ?? null, lng: nac ? null : pin?.lng ?? null, pedido, estado: "nueva", creado: Date.now()
   };
+  if (nac) { datos.municipio = env.ciudad; datos.transportadora = transp; }
   if (datos.nombre.length < 2) return error("Escribe el nombre de quien recibe.", "#eNom");
   if (!/^\d{10}$/.test(tel)) return error("Escribe un celular de 10 dígitos.", "#eTel");
+  if (!nac && !claveLocal(env)) return error("Escribe tu ciudad o municipio y elígelo de la lista.", "#eCiudad");
+  if (nac && !transp) return error("Elige con qué transportadora te lo enviamos.");
   if (datos.direccion.length < 4) return error("Escribe la dirección.", "#eDir");
-  if (!pin) return error("Marca tu ubicación en el mapa: toca “Usar mi ubicación” o toca el mapa en tu casa.");
+  if (!nac && !pin) return error("Marca tu ubicación en el mapa: toca “Usar mi ubicación” o toca el mapa en tu casa.");
   const b = $("#eBtn"); b.disabled = true; b.textContent = "Enviando…";
   try {
     const id = C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo();
