@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113z">
+<link rel="stylesheet" href="estilos.css?v=20261114a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -416,10 +416,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113z";
-import * as C from "./comun.js?v=20261113z";
-import * as T from "./tarifas-envio.js?v=20261113z";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261113z";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114a";
+import * as C from "./comun.js?v=20261114a";
+import * as T from "./tarifas-envio.js?v=20261114a";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261114a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1876,7 +1876,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113z";
+const VERSION_PANEL = "20261114a";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2072,7 +2072,7 @@ const quieta = g => LIMITE_QUIETA[g.estado] != null && horasQuieta(g) >= LIMITE_
 const textoHoras = h => h < 48 ? Math.floor(h) + " h" : Math.floor(h / 24) + " días";
 setInterval(() => { if (S.tab === "guias") pintarGuias(); }, 120000);
 
-const FILTROS = [["quietas", "Atrasadas"], ["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+const FILTROS = [["quietas", "Atrasadas"], ["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["imprimir", "Por imprimir"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
 $("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
 $("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
 $("#listaGuias").addEventListener("click", e => { if (e.target.closest("a[data-aviso]")) return; const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
@@ -2085,6 +2085,7 @@ function pintarGuias() {
   let lista = todas.filter(g => {
     if (S.filtro === "activas") return C.ACTIVOS.includes(g.estado);
     if (S.filtro === "avisar") return porAvisar(g);
+    if (S.filtro === "imprimir") return porImprimir(g);
     if (S.filtro === "comprobar") return porComprobar(g);
     if (S.filtro === "quietas") return quieta(g);
     if (S.filtro === "ruta") return ["tomada", "recogida", "en_camino"].includes(g.estado);
@@ -2094,7 +2095,7 @@ function pintarGuias() {
   if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre, g.marketplace?.venta, g.marketplace?.envio].join(" ").toLowerCase().includes(S.busca));
   $("#listaGuias").innerHTML = lista.length ? lista.map(g => `
     <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
-      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${quieta(g) ? `<span class="pill novedad" title="${TXT_QUIETA[g.estado]}">Atrasada · ${textoHoras(horasQuieta(g))}</span>` : ""}${porComprobar(g) ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
+      <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${imprimible(g) ? `<button type="button" class="pill ${g.impresa ? "entregada" : "pend-imp"}" data-impt="${esc(g.numero)}" title="Toca para cambiar">${g.impresa ? "🖨 Impresa" : "🖨 Pendiente por imprimir"}</button>` : ""}${quieta(g) ? `<span class="pill novedad" title="${TXT_QUIETA[g.estado]}">Atrasada · ${textoHoras(horasQuieta(g))}</span>` : ""}${porComprobar(g) ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
       <div><b>${esc(g.cliente)}</b> · <span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</span></div>
       <div class="meta">${C.fecha(g.creado)}${g.tipoEnvio ? " · " + esc(C.textoTipoEnvio(g)) : ""} · ${C.textoCobro(g)}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
       ${porAvisar(g) ? `<div class="btns">${botonAviso(g, true)}</div>` : ""}
@@ -2102,6 +2103,15 @@ function pintarGuias() {
     : `<div class="vacio">${todas.length ? "No hay guías en este filtro." : "Aún no hay guías. Crea la primera en “Nueva guía”."}</div>`;
 }
 
+// Impresión: pendiente (sin "impresa") o impresa; solo guías propias, no Mercado Libre ni Falabella
+const porImprimir = g => imprimible(g) && !g.impresa && !["entregada", "cancelada"].includes(g.estado);
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-impt]"); if (!b) return;
+  e.stopPropagation(); e.preventDefault();
+  const g = S.guias[b.dataset.impt]; if (!g) return;
+  updateDoc(doc(db, "guias", g.numero), { impresa: g.impresa ? null : Date.now() })
+    .then(() => toast(g.impresa ? "Marcada como pendiente por imprimir" : "Marcada como impresa")).catch(err => toast(C.mensajeError(err)));
+}, true);
 /* ---------- avisos al cliente por WhatsApp (solo despacho) ---------- */
 const porComprobar = g => !!g.destino?.verificar && C.ACTIVOS.includes(g.estado);
 const tipoAviso = g => g.estado === "en_camino" ? "camino" : g.estado === "entregada" ? "entregado" : null;
