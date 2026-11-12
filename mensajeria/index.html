@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112v">
+<link rel="stylesheet" href="estilos.css?v=20261112w">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -194,6 +194,14 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <b>Formulario para que el cliente llene sus datos</b>
           <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, ciudad, dirección, complemento y barrio. En <b>Bogotá, Chía y Soacha</b> marca su casa en el mapa y se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo). En <b>otras ciudades</b> elige Envía o Interrapidísimo y la orden queda en <b>Skydropx → Preparar órdenes</b>, sin crear guía, para que la revises. Todo te llega a la campana.</span>
           <div class="btns"><button class="btn chico" type="button" id="fcGen">Copiar mensaje con el link</button><a class="btn sec chico" id="fcVer" target="_blank" rel="noopener">Ver formulario</a></div>
+          <details style="margin-top:6px"><summary style="cursor:pointer"><b>Link para producto grande</b> <span class="nota">· consola, parlante, iPad, MacBook…</span></summary>
+            <div class="lista" style="margin-top:8px">
+              <span class="nota">Crea un link de un solo uso. Si el cliente es de otra ciudad, ve este costo de envío (se suma a su pedido) para Envía o Interrapidísimo, y la orden llega a Skydropx con las medidas y el valor declarado del tipo de producto. En Bogotá, Chía y Soacha el domicilio sigue igual. Los tipos de producto se agregan en Skydropx → Conexión y datos del remitente.</span>
+              <div class="fila"><label>Tipo de producto<select id="fgTipo"></select></label><label>Costo del envío (otras ciudades)<input id="fgEnvio" inputmode="numeric" placeholder="25.000"></label></div>
+              <label>Qué compró (opcional)<input id="fgCont" maxlength="80" placeholder="Ej. PS5 Slim 1 TB"></label>
+              <div class="btns"><button class="btn chico" type="button" id="fgCopiar">Copiar mensaje con el link</button></div>
+              <div class="error" id="fgError"></div>
+            </div></details>
         </div>
         <details class="item solo-maestro" id="skx">
           <summary style="cursor:pointer"><b>Envío nacional con Skydropx</b> <span class="nota">· clientes fuera de Bogotá, Chía y Soacha</span></summary>
@@ -388,9 +396,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112v";
-import * as C from "./comun.js?v=20261112v";
-import * as T from "./tarifas-envio.js?v=20261112v";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112w";
+import * as C from "./comun.js?v=20261112w";
+import * as T from "./tarifas-envio.js?v=20261112w";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -480,6 +488,26 @@ const URL_ENVIO = C.URL_ENVIO;
 const msgFormulario = link => `Hola, para enviarte tu pedido escribe tus datos de entrega aquí: ${link}`;
 $("#fcGen").onclick = () => copiar(msgFormulario(URL_ENVIO), "Mensaje copiado: pégalo en el chat del cliente");
 $("#fcVer").href = URL_ENVIO;
+// Link de un solo uso para productos grandes: tipo de producto (medidas y valor declarado) y costo del envío nacional
+function pintarTiposGrande() {
+  const sel = $("#fgTipo"), antes = sel.value, l = tiposSkx();
+  sel.innerHTML = l.map((t, i) => `<option value="${i}">${esc(t.n)}</option>`).join("");
+  const grande = l.findIndex(t => !/juego/i.test(t.n));
+  sel.value = antes && +antes < l.length ? antes : String(grande >= 0 ? grande : 0);
+}
+$("#fgEnvio").addEventListener("input", e => { e.target.value = e.target.value ? miles(num(e.target.value)) : ""; });
+$("#fgCopiar").onclick = async () => {
+  $("#fgError").textContent = "";
+  const t = tiposSkx()[+$("#fgTipo").value || 0], envio = num($("#fgEnvio").value), cont = $("#fgCont").value.trim();
+  if (!t) { $("#fgError").textContent = "Agrega primero el tipo de producto en Skydropx → Conexión y datos del remitente."; return; }
+  if (!(envio > 0)) { $("#fgError").textContent = "Escribe el costo del envío."; $("#fgEnvio").focus(); return; }
+  const c = C.nuevoCodigo() + C.nuevoCodigo();
+  try {
+    await setDoc(doc(db, "prepedidos", c), { grande: true, tipo: { n: t.n, l: t.l, a: t.a, h: t.h, kg: t.kg, v: t.v || 0 }, envio, contenido: cont || t.n, usado: false, creado: Date.now() });
+    await copiar(msgFormulario(URL_ENVIO + "?p=" + c), "Mensaje copiado: pégalo en el chat del cliente (link de un solo uso)");
+    $("#fgCont").value = "";
+  } catch (err) { $("#fgError").textContent = C.mensajeError(err); }
+};
 
 // Cada solicitud nueva se convierte en guía. Todo va en una transacción:
 // si el panel está abierto en dos equipos, solo uno la crea.
@@ -498,7 +526,7 @@ async function procesarSolicitudes(lista) {
         const d = sS.data(), refP = d.pedido ? doc(db, "prepedidos", d.pedido) : null;
         const pre = refP ? await tx.get(refP) : null;
         const pd = pre?.exists() && !pre.data().usado ? pre.data() : {};
-        tx.update(refS, { estado: "preparar", contenido: pd.contenido || "", valor: pd.valor || 0, tipoEnvio: pd.tipoEnvio || "", recibido: Date.now() });
+        tx.update(refS, { estado: "preparar", contenido: pd.contenido || "", valor: pd.valor || 0, tipoEnvio: pd.tipoEnvio || "", tipoProducto: pd.tipo || null, envioCobrado: pd.envio || 0, recibido: Date.now() });
         if (refP && pre?.exists()) tx.update(refP, { usado: true, guia: "", nacional: true });
       });
       enviarOrdenSkx(sol.id, true);
@@ -1080,6 +1108,7 @@ $("#skxMasTipo").onclick = () => { pintarTiposEditor([...leerTiposEditor(), { n:
 $("#skxTipos").addEventListener("input", e => { if (e.target.dataset.t === "v") e.target.value = miles(num(e.target.value)); });
 $("#skxTipos").addEventListener("click", e => { if (e.target.closest("[data-quitartipo]")) { e.target.closest(".tipo-fila").remove(); } });
 function pintarTiposSelect() {
+  pintarTiposGrande();
   const sel = $("#skxTipo"), antes = sel.value;
   sel.innerHTML = tiposSkx().map((t, i) => `<option value="${i}">${esc(t.n)}</option>`).join("");
   const def = S.skx?.tipoDefecto ?? 0;
@@ -1167,10 +1196,10 @@ async function enviarOrdenSkx(id, auto = false) {
   } catch (e) { console.warn("orden", id, e); }
   if (!x) return;
   const m = T.envBuscar(x.municipio || "")?.x;
-  const t = tiposSkx()[Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)] || TIPOS_BASE[0];
+  const t = x.tipoProducto?.l ? x.tipoProducto : (tiposSkx()[Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)] || TIPOS_BASE[0]);
   const contenido = x.contenido || (/juego/i.test(t.n) ? "Videojuego" : t.n);
   const transp = nombreTransp(x.transportadora);
-  const nota = `Transportadora elegida por el cliente: ${transp || "sin elegir"}`;
+  const nota = `Transportadora elegida por el cliente: ${transp || "sin elegir"}${x.envioCobrado ? ` · Envío cobrado al cliente: ${C.cop(x.envioCobrado)}` : ""}`;
   const dir = (p) => ({
     address: p.dir, street1: p.dir, internal_number: "", reference: cortaRef(p.ref) || "N/A", sector: p.barrio || p.ciudad,
     city: p.ciudad, state: p.depto, postal_code: p.cp || "", zip: p.cp || "", country: "CO", country_code: "co",
@@ -1190,7 +1219,7 @@ async function enviarOrdenSkx(id, auto = false) {
   const prov = { envia: "envia", inter: "interrapidisimo" }[x.transportadora] || "";
   // Skydropx acepta objetos ahí pero los descarta (queda vacío): va como lista de nombres de transportadora.
   const prefs = prov ? [[prov], []] : [[]];
-  if (transp) cuerpo.order.tags = [transp];
+  if (transp) cuerpo.order.tags = [transp, ...(x.tipoProducto?.n ? [x.tipoProducto.n] : [])];
   try {
     let r = null, err = null;
     for (const sp of prefs) {
@@ -1215,7 +1244,7 @@ async function enviarOrdenSkx(id, auto = false) {
 }
 let skxSolicitud = null, skxPref = "";
 function ordenesPrep() {
-  const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo || "", error: x.errorSkydropx || "", ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.ciudadOriginal ? `marcó ${C.CIUDADES[x.ciudadOriginal]?.nombre || x.ciudadOriginal} pero la dirección es en ${(x.municipio || "").split(" - ")[0]}: revisa ciudad y transportadora` : "", x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario", erronea: x.guiaErronea && S.guias[x.guiaErronea] ? x.guiaErronea : "" }));
+  const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo || "", error: x.errorSkydropx || "", ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.envioCobrado ? `envío cobrado ${C.cop(x.envioCobrado)}` : "", x.tipoProducto?.n || "", x.ciudadOriginal ? `marcó ${C.CIUDADES[x.ciudadOriginal]?.nombre || x.ciudadOriginal} pero la dirección es en ${(x.municipio || "").split(" - ")[0]}: revisa ciudad y transportadora` : "", x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario", erronea: x.guiaErronea && S.guias[x.guiaErronea] ? x.guiaErronea : "" }));
   const res = Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida)
     .map(([id, r]) => { const c = r.confirmacion; return { tipo: "res", id, nombre: titulo(r.nombre), tel: c.telefono, correo: c.correo || "", ciudad: c.ciudad || "", dir: c.direccion, comp: c.complemento, barrio: c.barrio, transp: c.transportadora || "", extra: `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""} · pagó por ${c.metodoTxt || c.metodo || ""}`, t: c.t, origen: "Link de saldo" }; });
   return [...sol, ...res].sort((a, b) => a.t - b.t);
@@ -1254,7 +1283,8 @@ function prepararOrden(tipo, id) {
   $("#skxNom").value = titulo(x.nombre); $("#skxTel").value = x.telefono || ""; $("#skxMail").value = x.correo || "";
   $("#skxCiudad").value = x.municipio || ""; $("#skxDir").value = x.direccion || ""; $("#skxComp").value = x.complemento || ""; $("#skxBarrio").value = x.barrio || "";
   skxUnidades = 1;
-  $("#skxTipo").value = String(Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)); mostrarMedidas();
+  const iT = x.tipoProducto?.n ? tiposSkx().findIndex(t => t.n === x.tipoProducto.n) : -1;
+  $("#skxTipo").value = String(iT >= 0 ? iT : Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)); mostrarMedidas();
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
   avisoOrden(titulo(x.nombre), nombreTransp(x.transportadora), [x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "Cobrar " : "Valor ") + C.cop(x.valor) : ""].filter(Boolean).join(" · "));
 }
@@ -1583,7 +1613,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112v";
+const VERSION_PANEL = "20261112w";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
