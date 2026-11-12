@@ -57,6 +57,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .aviso-ubic{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
 .aviso-ubic b{color:var(--ink)}
 .opciones-cobro{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#cbMetodos{grid-template-columns:repeat(3,1fr)}
+@media (max-width:520px){#cbMetodos{grid-template-columns:1fr}}
 .opciones-cobro label{flex-direction:row;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:11px;color:var(--ink);font-weight:600;background:var(--surface)}
 .opciones-cobro input{width:auto;margin:0}
 .opciones-cobro label:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
@@ -155,6 +157,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <button role="tab" data-tab="nueva" aria-selected="false">Nueva guía</button>
         <button role="tab" data-tab="mensajeros" aria-selected="false">Mensajeros</button>
         <button role="tab" data-tab="recaudo" aria-selected="false">Recaudo</button>
+        <button role="tab" data-tab="cobros" aria-selected="false">Cobros</button>
       </nav>
 
       <!-- GUÍAS -->
@@ -253,6 +256,46 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <h3>Cierre del día</h3>
         <div class="btns" style="align-items:flex-end"><label style="max-width:12em">Día<input type="date" id="cDia"></label><button class="btn chico" type="button" id="cExcel">Descargar Excel</button></div>
         <div id="cierre"></div>
+      </section>
+
+      <!-- COBROS: calculadora de saldos -->
+      <section class="panel" id="t-cobros" hidden>
+        <h2>Calcular saldo y cobrar</h2>
+        <p class="nota" style="margin:0">Para reservas y abonos: escribe el precio final, lo que ya pagó y el envío. El saldo se calcula solo y puedes enviarle el cobro por WhatsApp.</p>
+        <form id="fCobro" class="lista" autocomplete="off">
+          <div class="fila"><label>Cliente<input id="cbCli" placeholder="Pepito Pérez"></label><label>Celular<input id="cbTel" inputmode="numeric" placeholder="3001234567"></label></div>
+          <label>Artículo<input id="cbArt" placeholder="Ej. PS5 Slim 1 TB"></label>
+          <div class="fila"><label>Precio final<input class="din" id="cbPrecio" inputmode="numeric" placeholder="250.000"></label><label>Descuento<input class="din" id="cbDesc" inputmode="numeric" placeholder="0"></label></div>
+          <div id="cbAbonos" class="lista" style="gap:8px"></div>
+          <button class="btn sec chico" type="button" id="cbMasAbono" style="align-self:flex-start">+ Agregar otro abono</button>
+          <div class="fila"><label>Ciudad de entrega<select id="cbCiudad"><option value="bogota">Bogotá</option><option value="soacha">Soacha</option><option value="chia">Chía</option><option value="ninguna">Sin envío</option></select></label><label>Costo del envío<input class="din" id="cbEnvio" inputmode="numeric" placeholder="0"></label></div>
+          <div class="item" id="cbResumen"></div>
+          <div><b style="font-size:14px">Método de pago del saldo</b>
+            <div class="opciones-cobro" id="cbMetodos" style="margin-top:6px">
+              <label><input type="radio" name="cbMet" value="breb" checked> Transferencia Bre-B</label>
+              <label><input type="radio" name="cbMet" value="nequi"> Nequi</label>
+              <label><input type="radio" name="cbMet" value="contraentrega"> Contra entrega</label>
+            </div></div>
+          <div class="aviso" id="cbAvisoLlave" hidden></div>
+          <div class="btns">
+            <button class="btn" type="button" id="cbWa">Enviar cobro por WhatsApp</button>
+            <button class="btn sec chico" type="button" id="cbCopiar">Copiar mensaje</button>
+            <button class="btn sec chico" type="button" id="cbGuia">Crear guía con estos datos</button>
+            <button class="btn sec chico" type="button" id="cbLimpiar">Limpiar</button>
+          </div>
+        </form>
+        <details class="item" id="cbAjustes">
+          <summary style="cursor:pointer"><b>Datos de pago y tarifas de envío</b></summary>
+          <div class="lista" style="margin-top:10px">
+            <div class="fila"><label>Llave Bre-B<input id="ajLlave" placeholder="Pendiente"></label><label>A nombre de<input id="ajTitular" placeholder="Pipe Games"></label></div>
+            <label>Número Nequi<input id="ajNequi" inputmode="numeric" placeholder="3001234567"></label>
+            <div class="fila"><label>Envío Bogotá<input class="din" id="ajTBogota" inputmode="numeric"></label><label>Envío Soacha<input class="din" id="ajTSoacha" inputmode="numeric"></label></div>
+            <label style="max-width:50%">Envío Chía<input class="din" id="ajTChia" inputmode="numeric"></label>
+            <button class="btn chico" type="button" id="ajGuardar" style="align-self:flex-start">Guardar</button>
+          </div>
+        </details>
+        <h3>Cobros enviados</h3>
+        <div class="lista" id="cbLista"></div>
       </section>
     </div>
   </div>
@@ -428,6 +471,135 @@ async function desconectarMensajero(id, b) {
   catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
 }
 
+/* ---------- COBROS: calculadora de saldos ---------- */
+const num = v => parseInt(String(v || "").replace(/\D/g, ""), 10) || 0;
+const miles = n => n ? n.toLocaleString("es-CO") : "";
+const NOMBRE_CIUDAD = { bogota: "Bogotá", soacha: "Soacha", chia: "Chía" };
+const metodoCobro = () => document.querySelector("input[name=cbMet]:checked")?.value || "breb";
+let ajustesCargados = false;
+function cargarAjustesCobro() {
+  if (ajustesCargados) return; ajustesCargados = true;
+  const a = S.ajustesCobro || {};
+  $("#ajLlave").value = a.llaveBreB || ""; $("#ajTitular").value = a.titular || S.recogida?.remitente || ""; $("#ajNequi").value = a.nequi || "";
+  $("#ajTBogota").value = miles(a.tarifas?.bogota); $("#ajTSoacha").value = miles(a.tarifas?.soacha); $("#ajTChia").value = miles(a.tarifas?.chia);
+  ponerTarifa();
+}
+function ponerTarifa() {
+  const c = $("#cbCiudad").value;
+  $("#cbEnvio").value = c === "ninguna" ? "" : miles(S.ajustesCobro?.tarifas?.[c] || 0);
+  calcular();
+}
+function agregarAbono(v = "") {
+  const n = $("#cbAbonos").children.length + 1;
+  const d = document.createElement("div"); d.className = "fila";
+  d.innerHTML = `<label>${n === 1 ? "Reserva o abono" : "Abono " + n}<input class="din abono" inputmode="numeric" placeholder="100.000" value="${miles(num(v))}"></label>${n > 1 ? `<button class="btn sec chico" type="button" data-quitarab style="align-self:flex-end">Quitar</button>` : "<span></span>"}`;
+  $("#cbAbonos").appendChild(d);
+}
+function datosCobro() {
+  const precio = num($("#cbPrecio").value), desc = num($("#cbDesc").value);
+  const abonos = [...document.querySelectorAll("#cbAbonos .abono")].map(i => num(i.value)).filter(Boolean);
+  const abonado = abonos.reduce((a, b) => a + b, 0);
+  const ciudad = $("#cbCiudad").value, envio = ciudad === "ninguna" ? 0 : num($("#cbEnvio").value);
+  return { cliente: $("#cbCli").value.trim(), telefono: $("#cbTel").value.trim(), articulo: $("#cbArt").value.trim(), precio, desc, abonos, abonado, ciudad, envio, saldo: precio - desc + envio - abonado, metodo: metodoCobro() };
+}
+function calcular() {
+  const d = datosCobro();
+  $("#cbEnvio").disabled = d.ciudad === "ninguna";
+  const linea = (t, v, signo = "") => `<div style="display:flex;justify-content:space-between;gap:10px"><span>${t}</span><span>${signo}${C.cop(v)}</span></div>`;
+  $("#cbResumen").innerHTML = `${linea("Precio final", d.precio)}${d.desc ? linea("Descuento", d.desc, "− ") : ""}${d.envio ? linea("Envío a " + NOMBRE_CIUDAD[d.ciudad], d.envio, "+ ") : ""}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}
+    <div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700"><span>${d.saldo < 0 ? "Saldo a favor del cliente" : "Saldo a pagar"}</span><span style="color:${d.saldo > 0 ? "var(--accent)" : "var(--ok)"}">${C.cop(Math.abs(d.saldo))}</span></div>`;
+  const a = S.ajustesCobro || {};
+  const falta = d.metodo === "breb" && !a.llaveBreB ? "Aún no has guardado la llave Bre-B: el mensaje dirá “llave por confirmar”. Agrégala en “Datos de pago y tarifas de envío”."
+    : d.metodo === "nequi" && !a.nequi ? "Aún no has guardado el número Nequi. Agrégalo en “Datos de pago y tarifas de envío”." : "";
+  $("#cbAvisoLlave").hidden = !falta; $("#cbAvisoLlave").textContent = falta;
+  $("#cbGuia").textContent = d.metodo === "contraentrega" && d.saldo > 0 ? `Crear guía contra entrega por ${C.cop(d.saldo)}` : "Crear guía con estos datos";
+}
+function mensajeCobro(d) {
+  const a = S.ajustesCobro || {}, tienda = a.titular || S.recogida?.remitente || "la tienda";
+  const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""} 👋 Este es el resumen de tu pedido:`];
+  if (d.articulo) l.push(`• Artículo: ${d.articulo}`);
+  l.push(`• Precio final: ${C.cop(d.precio)}`);
+  if (d.desc) l.push(`• Descuento: −${C.cop(d.desc)}`);
+  if (d.envio) l.push(`• Envío a ${NOMBRE_CIUDAD[d.ciudad]}: ${C.cop(d.envio)}`);
+  d.abonos.forEach((v, i) => l.push(`• ${i === 0 ? "Reserva/abono" : "Abono " + (i + 1)}: −${C.cop(v)}`));
+  if (d.saldo <= 0) { l.push("", d.saldo < 0 ? `Tienes un saldo a favor de ${C.cop(-d.saldo)}.` : "Tu pedido está totalmente pago ✅", "¡Gracias por tu compra!"); return l.join("\n"); }
+  l.push("", `*Saldo a pagar: ${C.cop(d.saldo)}*`, "");
+  if (d.metodo === "breb") l.push(`Puedes pagarlo por transferencia Bre-B a la llave: *${a.llaveBreB || "(llave por confirmar)"}*${tienda ? " a nombre de " + tienda : ""}.`, "Envíanos el comprobante por aquí y despachamos tu pedido.");
+  if (d.metodo === "nequi") l.push(`Puedes pagarlo por Nequi al número *${a.nequi || "(por confirmar)"}*${tienda ? " a nombre de " + tienda : ""}.`, "Envíanos el comprobante por aquí y despachamos tu pedido.");
+  if (d.metodo === "contraentrega") l.push("Lo pagas al recibir tu pedido, en efectivo o Nequi.");
+  l.push("¡Gracias por tu compra!");
+  return l.join("\n");
+}
+async function registrarCobro(d) {
+  if (!d.precio) return;
+  const id = Date.now().toString(36);
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { cobros: { [id]: { ...d, creado: Date.now(), pagado: d.saldo <= 0 ? Date.now() : 0 } } }, { merge: true }); } catch {}
+}
+function validarCobro(d) {
+  if (!d.precio) { toast("Escribe el precio final"); $("#cbPrecio").focus(); return false; }
+  return true;
+}
+$("#fCobro").addEventListener("input", e => {
+  if (e.target.classList.contains("din")) { const v = num(e.target.value); const pos = e.target.value.length - e.target.selectionStart; e.target.value = miles(v); try { const p = Math.max(0, e.target.value.length - pos); e.target.setSelectionRange(p, p); } catch {} }
+  calcular();
+});
+$("#fCobro").addEventListener("change", calcular);
+$("#cbCiudad").addEventListener("change", ponerTarifa);
+$("#cbMasAbono").onclick = () => { agregarAbono(); $("#cbAbonos").lastElementChild.querySelector("input").focus(); };
+$("#cbAbonos").addEventListener("click", e => { if (e.target.closest("[data-quitarab]")) { e.target.closest(".fila").remove(); calcular(); } });
+$("#cbWa").onclick = () => {
+  const d = datosCobro(); if (!validarCobro(d)) return;
+  const tel = C.telWhatsApp(d.telefono);
+  if (!/^57\d{10}$/.test(tel)) { toast("Escribe el celular del cliente (10 dígitos) o usa “Copiar mensaje”"); $("#cbTel").focus(); return; }
+  window.open(C.linkWhatsApp(d.telefono, mensajeCobro(d)), "_blank", "noopener");
+  registrarCobro(d);
+};
+$("#cbCopiar").onclick = () => { const d = datosCobro(); if (!validarCobro(d)) return; copiar(mensajeCobro(d), "Mensaje de cobro copiado"); registrarCobro(d); };
+$("#cbGuia").onclick = () => {
+  const d = datosCobro();
+  irA("nueva");
+  $("#nCli").value = d.cliente; $("#nTel").value = d.telefono; $("#nCont").value = d.articulo;
+  if (d.ciudad !== "ninguna") $("#nCiudad").value = d.ciudad;
+  $("#nTipo").value = d.metodo === "contraentrega" && d.saldo > 0 ? "Contra entrega" : "Directo"; $("#nTipo").onchange();
+  if (d.metodo === "contraentrega" && d.saldo > 0) $("#nVal").value = d.saldo;
+  $("#nTel").dispatchEvent(new Event("input"));
+  $("#nDir").focus();
+  toast("Datos pasados a Nueva guía: completa la dirección");
+};
+$("#cbLimpiar").onclick = () => { $("#fCobro").reset(); $("#cbAbonos").innerHTML = ""; agregarAbono(); ponerTarifa(); };
+$("#ajGuardar").onclick = async () => {
+  const a = { llaveBreB: $("#ajLlave").value.trim(), titular: $("#ajTitular").value.trim(), nequi: $("#ajNequi").value.trim(), tarifas: { bogota: num($("#ajTBogota").value), soacha: num($("#ajTSoacha").value), chia: num($("#ajTChia").value) } };
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { ajustesCobro: a }, { merge: true }); S.ajustesCobro = a; ponerTarifa(); toast("Datos de pago guardados"); $("#cbAjustes").open = false; }
+  catch (err) { toast(C.mensajeError(err)); }
+};
+$("#cbAjustes").addEventListener("input", e => { if (e.target.classList.contains("din")) e.target.value = miles(num(e.target.value)); });
+function pintarCobros() {
+  calcular();
+  const l = Object.entries(S.cobros || {}).map(([id, c]) => ({ id, ...c })).sort((a, b) => b.creado - a.creado).slice(0, 30);
+  const MET = { breb: "Bre-B", nequi: "Nequi", contraentrega: "Contra entrega" };
+  $("#cbLista").innerHTML = l.length ? l.map(c => `<div class="item"><div class="arriba"><span><b>${esc(c.cliente || "Cliente")}</b>${c.articulo ? " · " + esc(c.articulo) : ""}</span><span class="pill ${c.pagado ? "entregada" : "novedad"}">${c.pagado ? "Pagado" : "Pendiente"}</span></div>
+      <div class="meta">Saldo ${C.cop(c.saldo)} · ${MET[c.metodo] || ""} · ${C.fecha(c.creado)}${c.pagado && c.saldo > 0 ? " · pagado " + C.fecha(c.pagado) : ""}</div>
+      <div class="btns">${!c.pagado ? `<button class="btn chico" data-cbpag="${c.id}">Marcar pagado</button>` : ""}<button class="btn sec chico" data-cbusar="${c.id}">Abrir en la calculadora</button><button class="btn sec chico" data-cbdel="${c.id}">Borrar</button></div></div>`).join("")
+    : `<div class="vacio">Aquí quedan los cobros que envíes, para marcar cuáles ya pagaron.</div>`;
+}
+$("#cbLista").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const ref = doc(db, "usuarios", ADMIN_UID);
+  try {
+    if (b.dataset.cbpag) await updateDoc(ref, { [`cobros.${b.dataset.cbpag}.pagado`]: Date.now() });
+    if (b.dataset.cbdel) await updateDoc(ref, { [`cobros.${b.dataset.cbdel}`]: deleteField() });
+    if (b.dataset.cbusar) {
+      const c = S.cobros[b.dataset.cbusar]; if (!c) return;
+      $("#cbCli").value = c.cliente || ""; $("#cbTel").value = c.telefono || ""; $("#cbArt").value = c.articulo || "";
+      $("#cbPrecio").value = miles(c.precio); $("#cbDesc").value = miles(c.desc); $("#cbCiudad").value = c.ciudad || "bogota"; $("#cbEnvio").value = miles(c.envio);
+      $("#cbAbonos").innerHTML = ""; (c.abonos?.length ? c.abonos : [""]).forEach(v => agregarAbono(v));
+      const r = document.querySelector(`input[name=cbMet][value=${c.metodo || "breb"}]`); if (r) r.checked = true;
+      calcular(); $("#fCobro").scrollIntoView({ behavior: "smooth" });
+    }
+  } catch (err) { toast(C.mensajeError(err)); }
+});
+agregarAbono();
+
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
 async function copiar(texto, ok = "Copiado") { try { await navigator.clipboard.writeText(texto); toast(ok); } catch { prompt("Copia este texto:", texto); } }
 
@@ -490,7 +662,7 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */
@@ -595,7 +767,7 @@ function irA(t) {
   if (t !== "nueva" && S.editRec) { S.editRec = false; S.recPin = null; pintarRecogida(); }
   S.tab = t; S.abierta = null; $("#vDetalle").hidden = true; if (t !== "mensajeros") S.verMens = null;
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  ["guias", "nueva", "mensajeros", "recaudo"].forEach(x => $("#t-" + x).hidden = x !== t);
+  ["guias", "nueva", "mensajeros", "recaudo", "cobros"].forEach(x => $("#t-" + x).hidden = x !== t);
   pintar();
 }
 
@@ -1581,6 +1753,7 @@ function pintar() {
   if (S.tab === "guias") pintarGuias();
   if (S.tab === "mensajeros") pintarMensajeros();
   if (S.tab === "recaudo") { pintarRecaudo(); pintarCierre(); }
+  if (S.tab === "cobros") pintarCobros();
   if (S.abierta) pintarDetalle();
   pintarMapa();
 }
