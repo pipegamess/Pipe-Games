@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112t">
+<link rel="stylesheet" href="estilos.css?v=20261112u">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -388,9 +388,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112t";
-import * as C from "./comun.js?v=20261112t";
-import * as T from "./tarifas-envio.js?v=20261112t";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112u";
+import * as C from "./comun.js?v=20261112u";
+import * as T from "./tarifas-envio.js?v=20261112u";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1407,7 +1407,7 @@ function pintarSkxOrdenes() {
   const l = Object.entries(S.skxOrdenes || {}).map(([k, o]) => ({ k, ...o })).sort((a, b) => b.t - a.t).slice(0, 20);
   $("#skxOrdenes").innerHTML = l.length ? l.map(o => `<div class="item"><div class="arriba"><span><b>${esc(o.cliente)}</b> · ${esc(o.ciudad)}</span><span class="pill">${esc(o.transportadora || "Sin transportadora")}</span></div>
       <div class="meta">Orden ${esc(o.orden || "")} · ${C.fecha(o.t)}</div>
-      <div class="btns"><button class="btn sec chico" type="button" data-ordver="${esc(o.k)}">Ver respuesta técnica</button>${o.orden ? `<button class="btn sec chico" type="button" data-ordget="${esc(o.k)}">Consultar en Skydropx</button>` : ""}</div></div>`).join("")
+      <div class="btns"><button class="btn sec chico" type="button" data-ordver="${esc(o.k)}">Ver respuesta técnica</button>${o.orden ? `<button class="btn sec chico" type="button" data-ordget="${esc(o.k)}">Consultar en Skydropx</button>` : ""}<button class="btn peligro chico" type="button" data-skxborrar="ordenesSkydropx|${esc(o.k)}">Eliminar</button></div></div>`).join("")
     : `<div class="vacio">Aquí quedan las órdenes que se envían a Skydropx.</div>`;
 }
 document.addEventListener("click", async e => {
@@ -1418,11 +1418,20 @@ document.addEventListener("click", async e => {
   else { g.disabled = true; try { await skx("GET", "/orders/" + o.orden); } catch (err) { toast(err.message || String(err)); } g.disabled = false; }
   const det = $("#skxRaw").closest("details"); det.open = true; setTimeout(() => det.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
 });
+// Quitar del panel una orden o guía de Skydropx (dos toques). No la cancela en Skydropx.
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-skxborrar]"); if (!b) return;
+  if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.textContent = "¿Seguro? Toca otra vez"; setTimeout(() => { if (b.isConnected) { b.dataset.ok = ""; b.textContent = "Eliminar"; } }, 4000); return; }
+  const [campo, k] = b.dataset.skxborrar.split("|");
+  b.disabled = true;
+  try { await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`${campo}.${k}`]: deleteField() }); toast("Eliminada del panel. Si también quieres anularla en Skydropx, cancélala allá."); }
+  catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
+});
 function pintarSkxLista() {
   const l = Object.entries(S.skxGuias || {}).map(([k, g]) => ({ k, ...g })).sort((a, b) => b.creado - a.creado).slice(0, 30);
   $("#skxLista").innerHTML = l.length ? l.map(g => `<div class="item"><div class="arriba"><span><b>${esc(g.cliente)}</b> · ${esc(g.ciudad)}</span><span class="pill ${g.guia ? "entregada" : "novedad"}">${g.guia ? esc(g.transportadora) : "Sin número aún"}</span></div>
       <div class="meta">${g.guia ? "Guía " + esc(g.guia) + " · " : ""}${C.cop(g.costo)} · ${C.fecha(g.creado)}</div>
-      <div class="btns">${g.etiqueta ? `<a class="btn chico" href="${esc(g.etiqueta)}" target="_blank" rel="noopener">Etiqueta (PDF)</a>` : ""}${g.guia ? `<button class="btn sec chico" type="button" data-skxwa="${g.k}">Enviar guía al cliente</button>` : ""}${g.envioId ? `<button class="btn sec chico" type="button" data-skxact="${g.k}">Actualizar</button>` : ""}</div></div>`).join("")
+      <div class="btns">${g.etiqueta ? `<a class="btn chico" href="${esc(g.etiqueta)}" target="_blank" rel="noopener">Etiqueta (PDF)</a>` : ""}${g.guia ? `<button class="btn sec chico" type="button" data-skxwa="${g.k}">Enviar guía al cliente</button>` : ""}${g.envioId ? `<button class="btn sec chico" type="button" data-skxact="${g.k}">Actualizar</button>` : ""}<button class="btn peligro chico" type="button" data-skxborrar="guiasSkydropx|${esc(g.k)}">Eliminar</button></div></div>`).join("")
     : `<div class="vacio">Aquí quedan las guías que crees con Skydropx.</div>`;
 }
 document.addEventListener("click", async e => {
@@ -1567,7 +1576,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112t";
+const VERSION_PANEL = "20261112u";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {

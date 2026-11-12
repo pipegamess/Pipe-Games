@@ -6,7 +6,7 @@
 <title>Mensajería Prueba</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112t">
+<link rel="stylesheet" href="estilos.css?v=20261112u">
 <style>
 body{padding-top:env(safe-area-inset-top,0px)}
 .pantalla{padding:14px max(16px,env(safe-area-inset-right,0px)) calc(90px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px;max-width:640px;margin:0 auto}
@@ -108,8 +108,8 @@ body.escaneando>*:not(#capaEscaner){visibility:hidden!important}
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261112t";
-import * as C from "./comun.js?v=20261112t";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261112u";
+import * as C from "./comun.js?v=20261112u";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
