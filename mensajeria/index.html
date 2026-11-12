@@ -208,9 +208,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div class="sug-caja"><label>Municipio de destino<input id="skxCiudad" autocomplete="off" placeholder="Ej. Medellín"></label><div class="sugerencias" id="skxCiudadSug" hidden></div></div>
             <label>Dirección<input id="skxDir"></label>
             <div class="fila"><label>Complemento y referencias<input id="skxComp"></label><label>Barrio<input id="skxBarrio"></label></div>
-            <div class="fila"><label>Código postal (si lo pide la transportadora)<input id="skxCp" inputmode="numeric"></label><label>Contenido<input id="skxCont"></label></div>
-            <div class="fila"><label>Tipo de producto<select id="skxTipo"></select></label><label>Medidas y peso<input id="skxMedidas" readonly tabindex="-1" style="background:var(--chip)"></label></div>
-            <label>Valor declarado del contenido (COP)<input class="din" id="skxValor" inputmode="numeric" placeholder="Ej. 280.000"></label>
+            <div class="fila"><label>Tipo de producto<select id="skxTipo"></select></label><label>Unidades<input id="skxUnid" type="number" min="1" value="1" inputmode="numeric"></label></div>
+            <div class="nota" id="skxMedidas"></div>
             <div class="btns"><button class="btn chico" type="button" id="skxCotizar">Cotizar con Skydropx</button></div>
             <div id="skxTarifas"></div>
             <div id="skxRes"></div>
@@ -972,15 +971,17 @@ function cargarSkx() {
   if (!a.remitente?.direccion) $("#skxAjustes").open = true;
 }
 // Tipos de producto con sus medidas; el primero es el que se usa por defecto
-const TIPOS_BASE = [{ n: "Juego (sobre de seguridad)", l: 22, a: 19, h: 4, kg: 1 }];
-const tiposSkx = () => (S.skx?.tipos?.length ? S.skx.tipos : TIPOS_BASE);
+const TIPOS_BASE = [{ n: "Juego (sobre de seguridad)", l: 22, a: 19, h: 4, kg: 1, v: 50000 }];
+// Tipos guardados antes de existir el valor declarado: el juego queda en $50.000
+const tiposSkx = () => (S.skx?.tipos?.length ? S.skx.tipos : TIPOS_BASE).map(t => ({ ...t, v: t.v ?? (/juego/i.test(t.n) ? 50000 : 0) }));
 function pintarTiposEditor(lista = tiposSkx()) {
-  $("#skxTipos").innerHTML = lista.map(t => `<div class="fila tipo-fila" style="grid-template-columns:2fr repeat(4,1fr) auto;align-items:end;gap:6px">
-    <label>Tipo<input data-t="n" value="${esc(t.n)}"></label><label>Largo<input data-t="l" inputmode="decimal" value="${t.l}"></label><label>Ancho<input data-t="a" inputmode="decimal" value="${t.a}"></label><label>Alto<input data-t="h" inputmode="decimal" value="${t.h}"></label><label>Kg<input data-t="kg" inputmode="decimal" value="${t.kg}"></label>
+  $("#skxTipos").innerHTML = lista.map(t => `<div class="fila tipo-fila" style="grid-template-columns:2fr repeat(4,1fr) 1.4fr auto;align-items:end;gap:6px">
+    <label>Tipo<input data-t="n" value="${esc(t.n)}"></label><label>Largo<input data-t="l" inputmode="decimal" value="${t.l}"></label><label>Ancho<input data-t="a" inputmode="decimal" value="${t.a}"></label><label>Alto<input data-t="h" inputmode="decimal" value="${t.h}"></label><label>Kg<input data-t="kg" inputmode="decimal" value="${t.kg}"></label><label>Valor declarado<input data-t="v" inputmode="numeric" value="${t.v ? miles(t.v) : ""}"></label>
     <button class="btn sec chico" type="button" data-quitartipo>Quitar</button></div>`).join("");
 }
-const leerTiposEditor = () => [...document.querySelectorAll("#skxTipos .tipo-fila")].map(f => { const v = k => f.querySelector(`[data-t="${k}"]`).value.trim(); const n2 = k => +String(v(k)).replace(",", ".") || 0; return { n: v("n"), l: n2("l"), a: n2("a"), h: n2("h"), kg: n2("kg") }; }).filter(t => t.n && t.l && t.a && t.h && t.kg);
-$("#skxMasTipo").onclick = () => { pintarTiposEditor([...leerTiposEditor(), { n: "", l: "", a: "", h: "", kg: "" }]); };
+const leerTiposEditor = () => [...document.querySelectorAll("#skxTipos .tipo-fila")].map(f => { const v = k => f.querySelector(`[data-t="${k}"]`).value.trim(); const n2 = k => +String(v(k)).replace(",", ".") || 0; return { n: v("n"), l: n2("l"), a: n2("a"), h: n2("h"), kg: n2("kg"), v: num(v("v")) }; }).filter(t => t.n && t.l && t.a && t.h && t.kg);
+$("#skxMasTipo").onclick = () => { pintarTiposEditor([...leerTiposEditor(), { n: "", l: "", a: "", h: "", kg: "", v: 0 }]); };
+$("#skxTipos").addEventListener("input", e => { if (e.target.dataset.t === "v") e.target.value = miles(num(e.target.value)); });
 $("#skxTipos").addEventListener("click", e => { if (e.target.closest("[data-quitartipo]")) { e.target.closest(".tipo-fila").remove(); } });
 function pintarTiposSelect() {
   const sel = $("#skxTipo"), antes = sel.value;
@@ -988,8 +989,12 @@ function pintarTiposSelect() {
   if (antes && +antes < tiposSkx().length) sel.value = antes;
   mostrarMedidas();
 }
-function mostrarMedidas() { const t = tiposSkx()[+$("#skxTipo").value || 0]; $("#skxMedidas").value = t ? `${t.l} × ${t.a} × ${t.h} cm · ${t.kg} kg` : ""; }
+function mostrarMedidas() {
+  const t = tiposSkx()[+$("#skxTipo").value || 0], u = Math.max(1, num($("#skxUnid").value) || 1);
+  $("#skxMedidas").textContent = t ? `Paquete ${t.l} × ${t.a} × ${t.h} cm · ${t.kg} kg · valor declarado ${C.cop((t.v || 0) * u)}${u > 1 ? ` (${u} × ${C.cop(t.v || 0)})` : ""}. Para cambiarlo, edita el tipo en “Conexión y datos del remitente”.` : "";
+}
 $("#skxTipo").onchange = mostrarMedidas;
+$("#skxUnid").addEventListener("input", mostrarMedidas);
 $("#skxGuardar").onclick = async () => {
   const datos = { url: $("#skxUrl").value.trim().replace(/\/+$/, ""),
     remitente: { nombre: $("#skxRNom").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() },
@@ -1047,8 +1052,7 @@ function skxDesdeReserva(id) {
   irA("nueva"); $("#skx").open = true;
   $("#skxNom").value = titulo(r.nombre); $("#skxTel").value = c.telefono || ""; $("#skxMail").value = c.correo || "";
   $("#skxCiudad").value = c.ciudad || ""; $("#skxDir").value = c.direccion || ""; $("#skxComp").value = c.complemento || ""; $("#skxBarrio").value = c.barrio || "";
-  $("#skxCont").value = r.producto + ((r.unidades || 1) > 1 ? " x" + r.unidades : "");
-  $("#skxValor").value = miles((S.preciosReserva?.[claveProd(r.producto)] || 0) * (r.unidades || 1));
+  $("#skxUnid").value = r.unidades || 1;
   $("#skxTipo").value = "0"; mostrarMedidas();
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
   setTimeout(() => $("#skx").scrollIntoView({ behavior: "smooth" }), 50);
@@ -1061,9 +1065,9 @@ function datosSkx() {
   const m = T.envBuscar($("#skxCiudad").value)?.x;
   const t = tiposSkx()[+$("#skxTipo").value || 0] || TIPOS_BASE[0];
   return {
-    m, rem, valor: num($("#skxValor").value),
+    m, rem, valor: (t.v || 0) * Math.max(1, num($("#skxUnid").value) || 1),
     paquete: { length: t.l, width: t.a, height: t.h, weight: t.kg }, tipo: t.n,
-    dest: { nombre: $("#skxNom").value.trim(), tel: $("#skxTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""), correo: $("#skxMail").value.trim(), dir: $("#skxDir").value.trim(), comp: $("#skxComp").value.trim(), barrio: $("#skxBarrio").value.trim(), cp: $("#skxCp").value.trim(), cont: $("#skxCont").value.trim() }
+    dest: { nombre: $("#skxNom").value.trim(), tel: $("#skxTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""), correo: $("#skxMail").value.trim(), dir: $("#skxDir").value.trim(), comp: $("#skxComp").value.trim(), barrio: $("#skxBarrio").value.trim() }
   };
 }
 const quitarTildes = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -1071,7 +1075,7 @@ $("#skxCotizar").onclick = async () => {
   const d = datosSkx(), b = $("#skxCotizar");
   if (!d.m) { toast("Elige el municipio de destino de la lista"); $("#skxCiudad").focus(); return; }
   if (!d.dest.nombre || !d.dest.dir || !/^\d{10}$/.test(d.dest.tel)) { toast("Completa destinatario, celular (10 dígitos) y dirección"); return; }
-  if (!d.valor) { toast("Escribe el valor declarado del contenido (lo pide la transportadora para el seguro)"); $("#skxValor").focus(); return; }
+  if (!d.valor) { $("#skxAjustes").open = true; toast("Falta el valor declarado de ese tipo de producto (en Conexión y datos del remitente)"); return; }
   if (!d.rem.direccion || !/^\d{10}$/.test(d.rem.telefono || "")) { $("#skxAjustes").open = true; toast("Completa y guarda los datos del remitente (dirección y celular)"); return; }
   b.disabled = true; b.textContent = "Cotizando…"; $("#skxTarifas").innerHTML = `<div class="vacio">Consultando tarifas en Skydropx…</div>`; $("#skxRes").innerHTML = "";
   try {
@@ -1085,7 +1089,7 @@ $("#skxCotizar").onclick = async () => {
         .map(([a1, a2]) => ({ country_code: "co", ...(cp ? { postal_code: cp } : {}), area_level1: a1, area_level2: a2, area_level3: quitarTildes(barrio || a2) }));
     };
     const vFrom = variantes(d.rem.ciudad || "Bogotá", d.rem.depto || "Cundinamarca", d.rem.barrio, d.rem.cp);
-    const vTo = variantes(d.m.c, d.m.d, d.dest.barrio, d.dest.cp);
+    const vTo = variantes(d.m.c, d.m.d, d.dest.barrio, "");
     let iF = Math.max(0, S.skx?.variante ?? 0), iT = 0, q = null, ultimoError = null;
     for (let intento = 0; intento < 12; intento++) {
       const cuerpo = { quotation: { address_from: vFrom[Math.min(iF, vFrom.length - 1)], address_to: vTo[Math.min(iT, vTo.length - 1)], parcel: d.paquete, declared_amount: d.valor } };
