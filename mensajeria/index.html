@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113j">
+<link rel="stylesheet" href="estilos.css?v=20261113k">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -406,9 +406,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113j";
-import * as C from "./comun.js?v=20261113j";
-import * as T from "./tarifas-envio.js?v=20261113j";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113k";
+import * as C from "./comun.js?v=20261113k";
+import * as T from "./tarifas-envio.js?v=20261113k";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1561,10 +1561,10 @@ $("#skxTarifas").addEventListener("click", async e => {
     const corta = (t, max = 30) => { let x = String(t || "").replace(/\s+/g, " ").trim()
       .replace(/conjunto( residencial)?/ig, "Conj.").replace(/torre/ig, "T").replace(/apartamento|apto\.?/ig, "Ap").replace(/barrio/ig, "B.").replace(/\s*·\s*/g, " ")
       .replace(/\s+-\s+/g, " ").replace(/\b(de|del|la|el)\s+/ig, "").replace(/\b(T|Ap)\s+(\d)/g, "$1$2").replace(/\s+/g, " ").trim(); return x.length > max ? x.slice(0, max).trim() : x; };
-    const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: corta(ref) || "N/A" });
+    const dirDe = (nombre, tel, correo, dir, ref, empresa = "") => ({ street1: dir, name: nombre, company: empresa, phone: tel, email: correo || "ventas@pipegames.com.co", reference: corta(ref) || "N/A" });
     if (!(d.valor > 0)) throw new Error("El valor declarado quedó en $0. Revisa el valor del tipo de producto en “Conexión y datos del remitente”.");
     const base = { rate_id: rateId, printing_format: S.skx?.formatoEtiqueta || "thermal", declared_amount: d.valor,
-      address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio),
+      address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio, d.rem.nombre || "Pipe Games"),
       address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · ")) };
     // Colombia pide tipo y contenido de cada paquete. El valor exacto del tipo no está documentado:
     // se prueba en orden y se recuerda el que Skydropx acepte.
@@ -1580,6 +1580,8 @@ $("#skxTarifas").addEventListener("click", async e => {
         errUlt = err; const msg = String(err.message || "");
         // Si el problema sigue siendo el tipo de paquete (valor no válido), probar el siguiente
         if (/422/.test(msg) && /package_type/.test(msg) && !/requerido|required/i.test(msg)) { iTipo++; continue; }
+        // El destinatario es persona natural: sin empresa; si Skydropx la exige, "Particular"
+        if (/422/.test(msg) && /company|empresa/i.test(msg) && !base.address_to.company) { base.address_to.company = "Particular"; continue; }
         // Si dice que falta aunque va en el paquete, enviarlo también a nivel del envío
         if (/422/.test(msg) && /package_(type|content)/.test(msg) && /requerido|required/i.test(msg) && !arriba) { arriba = true; continue; }
         throw err;
@@ -1784,7 +1786,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113j";
+const VERSION_PANEL = "20261113k";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
