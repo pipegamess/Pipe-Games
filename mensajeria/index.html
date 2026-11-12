@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113m">
+<link rel="stylesheet" href="estilos.css?v=20261113n">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -406,9 +406,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113m";
-import * as C from "./comun.js?v=20261113m";
-import * as T from "./tarifas-envio.js?v=20261113m";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113n";
+import * as C from "./comun.js?v=20261113n";
+import * as T from "./tarifas-envio.js?v=20261113n";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -566,7 +566,7 @@ $("#fgCopiar").onclick = async () => {
   const c = C.nuevoCodigo() + C.nuevoCodigo();
   try {
     await setDoc(doc(db, "prepedidos", c), { grande: true, tipo: { n: t.n, l: t.l, a: t.a, h: t.h, kg: t.kg, v: t.v || 0 }, envio, contenido: cont || t.n, usado: false, creado: Date.now() });
-    await copiar(msgFormulario(URL_ENVIO + "?p=" + c), "Mensaje copiado: pégalo en el chat del cliente (link de un solo uso)");
+    await copiar(msgFormulario(URL_ENVIO + "?p=" + c + "&v=" + VERSION_PANEL), "Mensaje copiado: pégalo en el chat del cliente (link de un solo uso)");
     $("#fgCont").value = "";
   } catch (err) { $("#fgError").textContent = C.mensajeError(err); }
 };
@@ -1057,7 +1057,7 @@ async function enviarLinkSaldo(id) {
   b.set(doc(db, "saldos", token), datos);
   b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
   try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
-  const link = URL_SALDO + "?c=" + token;
+  const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL; // ?v= evita que el navegador muestre una copia vieja
   const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, la espera terminó. Queremos informarte que ya está disponible ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
   const tel = /^\d{10}$/.test(r.contacto) ? r.contacto : "";
   const url = tel ? `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
@@ -1799,7 +1799,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113m";
+const VERSION_PANEL = "20261113n";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
