@@ -1086,20 +1086,26 @@ $("#skxCotizar").onclick = async () => {
       const c = quitarTildes(ciudad), dp = quitarTildes(depto), esBog = /^bogota/i.test(c);
       const l = esBog ? [["Cundinamarca", "Bogota"], ["Bogota D.C.", "Bogota"], ["Bogota, D.C.", "Bogota, D.C."], ["Distrito Capital", "Bogota"], ["Bogota", "Bogota"], [dp, c]] : [[dp, c], [dp, c.split(",")[0]]];
       const vistos = new Set();
-      return l.filter(([a, b]) => { const k = a + "|" + b; if (vistos.has(k)) return false; vistos.add(k); return true; })
-        .map(([a1, a2]) => ({ country_code: "co", ...(cp ? { postal_code: cp } : {}), area_level1: a1, area_level2: a2, area_level3: quitarTildes(barrio || a2) }));
+      const formas = l.filter(([a, b]) => { const k = a + "|" + b; if (vistos.has(k)) return false; vistos.add(k); return true; });
+      const dir = (a1, a2, conCp) => ({ country_code: "co", ...(conCp ? { postal_code: cp } : {}), area_level1: a1, area_level2: a2, area_level3: quitarTildes(barrio || a2) });
+      // Primero con código postal (si hay); si Skydropx no lo reconoce, las mismas formas sin código postal
+      return [...(cp ? formas.map(([a1, a2]) => dir(a1, a2, true)) : []), ...formas.map(([a1, a2]) => dir(a1, a2, false))];
     };
     const vFrom = variantes(d.rem.ciudad || "Bogotá", d.rem.depto || "Cundinamarca", d.rem.barrio, d.rem.cp);
     const vTo = variantes(d.m.c, d.m.d, d.dest.barrio, "");
     let iF = Math.max(0, S.skx?.variante ?? 0), iT = 0, q = null, ultimoError = null;
-    for (let intento = 0; intento < 12; intento++) {
+    for (let intento = 0; intento < 16; intento++) {
       const cuerpo = { quotation: { address_from: vFrom[Math.min(iF, vFrom.length - 1)], address_to: vTo[Math.min(iT, vTo.length - 1)], parcel: d.paquete, declared_amount: d.valor } };
       try { q = await skx("POST", "/quotations", cuerpo); break; }
       catch (err) {
         ultimoError = err; const msg = String(err.message || "");
         if (!/422/.test(msg)) throw err;
         let avanzo = false;
-        if (/address_from/.test(msg) && iF < vFrom.length - 1) { iF++; avanzo = true; }
+        if (/address_from/.test(msg) && iF < vFrom.length - 1) {
+          // Código postal desconocido: saltar directo a las formas sin código postal
+          if (/postal_code/.test(msg) && vFrom[iF].postal_code) { const j = vFrom.findIndex(v => !v.postal_code); iF = j >= 0 ? j : iF + 1; } else iF++;
+          avanzo = true;
+        }
         if (/address_to/.test(msg) && iT < vTo.length - 1) { iT++; avanzo = true; }
         if (!avanzo) throw err;
       }
