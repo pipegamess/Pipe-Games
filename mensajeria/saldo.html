@@ -8,12 +8,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113u">
+<link rel="stylesheet" href="estilos.css?v=20261113v">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261113u";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261113v";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261113u">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261113v">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -94,9 +94,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113u";
-import * as C from "./comun.js?v=20261113u";
-import * as T from "./tarifas-envio.js?v=20261113u";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113v";
+import * as C from "./comun.js?v=20261113v";
+import * as T from "./tarifas-envio.js?v=20261113v";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -117,11 +117,12 @@ const precioTotal = () => (S.unitario || 0) * (S.unidades || 1);
 const saldoBase = () => precioTotal() - (S.abono || 0);
 
 function iniciar() {
-  $("#intro").textContent = `Hola ${C.primerNombre(titulo(S.nombre))}, este es el saldo de tu reserva.`;
+  $("#intro").textContent = `Hola ${C.primerNombre(titulo(S.nombre))}, este es el saldo de tu ${S.venta ? "pedido" : "reserva"}.`;
   const ab = S.abonos?.length ? S.abonos : (S.abono ? [S.abono] : []);
   $("#resumen").innerHTML = `<div class="panel">
-    <div class="linea"><span><b>${esc(S.producto)}</b>${S.unidades > 1 ? ` · ${S.unidades} unidades` : ""}</span><span>${C.cop(precioTotal())}</span></div>
-    ${S.unidades > 1 ? `<div class="linea nota" style="margin:0"><span>${S.unidades} × ${C.cop(S.unitario)}</span><span></span></div>` : ""}
+    ${S.items?.length ? S.items.map(i => `<div class="linea"><span><b>${esc(i.n)}</b>${i.q > 1 ? ` · ${i.q} × ${C.cop(i.v)}` : ""}</span><span>${C.cop(i.q * i.v)}</span></div>`).join("")
+      : `<div class="linea"><span><b>${esc(S.producto)}</b>${S.unidades > 1 ? ` · ${S.unidades} unidades` : ""}</span><span>${C.cop(precioTotal())}</span></div>
+    ${S.unidades > 1 ? `<div class="linea nota" style="margin:0"><span>${S.unidades} × ${C.cop(S.unitario)}</span><span></span></div>` : ""}`}
     ${ab.map((v, i) => `<div class="linea"><span>${ab.length > 1 ? "Abono " + (i + 1) : "Tu abono"}</span><span>− ${C.cop(v)}</span></div>`).join("")}
     <div class="total"><span>Saldo</span><span>${C.cop(Math.max(saldoBase(), 0))}</span></div>
     <p class="nota" style="margin:0">Elige la ciudad y el medio de pago para ver el total con envío.</p></div>`;

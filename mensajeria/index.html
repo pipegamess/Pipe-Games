@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113u">
+<link rel="stylesheet" href="estilos.css?v=20261113v">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -339,10 +339,11 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <!-- COBROS: calculadora de saldos (mismas reglas del simulador del catálogo) -->
       <section class="panel" id="t-cobros" hidden>
         <h2>Calcular saldo y cobrar</h2>
-        <p class="nota" style="margin:0">Mismas reglas del simulador de precios de pipegames.com.co: domicilio de $10.000 en Bogotá, Chía y Soacha, y el recargo de cada medio de pago.</p>
+        <p class="nota" style="margin:0">Mismas reglas del simulador de precios de pipegames.com.co: domicilio de $10.000 en Bogotá, Chía y Soacha, y el recargo de cada medio de pago. <b>Enviar link de saldo</b> le manda al cliente el link donde ve sus productos, elige ciudad de envío y medio de pago y deja sus datos (igual que en las reservas); queda en Reservas → “Ventas con link de cobro”.</p>
         <form id="fCobro" class="lista" autocomplete="off">
           <label>Cliente<input id="cbCli" placeholder="Escribe o elige un cliente" list="cbClientes" autocomplete="off"></label>
           <datalist id="cbClientes"></datalist>
+          <label>Producto<input id="cbProd" list="cbCatalogo" placeholder="Busca el videojuego en el catálogo" autocomplete="off"></label>
           <div class="fila"><label>Precio final por unidad<input class="din" id="cbPrecio" inputmode="numeric" placeholder="250.000"></label><label>Unidades<input id="cbUnid" type="number" min="1" step="1" value="1" inputmode="numeric"></label></div>
           <div class="lista" style="gap:8px"><b style="font-size:14px">Artículos adicionales</b>
             <div id="cbArts" class="lista" style="gap:8px"></div>
@@ -356,7 +357,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div class="aviso" id="cbAviso" hidden></div>
           <div class="item" id="cbResumen"></div>
           <div class="btns">
-            <button class="btn" type="button" id="cbWa">Enviar cobro por WhatsApp</button>
+            <button class="btn" type="button" id="cbLink">Enviar link de saldo</button>
+            <button class="btn sec" type="button" id="cbWa">Enviar cobro por WhatsApp</button>
             <button class="btn sec chico" type="button" id="cbCopiar">Copiar mensaje</button>
             <button class="btn sec chico" type="button" id="cbGuia">Crear guía con estos datos</button>
             <button class="btn sec chico" type="button" id="cbLimpiar">Limpiar</button>
@@ -410,10 +412,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113u";
-import * as C from "./comun.js?v=20261113u";
-import * as T from "./tarifas-envio.js?v=20261113u";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261113u";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113v";
+import * as C from "./comun.js?v=20261113v";
+import * as T from "./tarifas-envio.js?v=20261113v";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261113v";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -731,7 +733,7 @@ function datosCobro() {
   const base = precio + envio - abonado; // saldo antes del recargo
   const m = C.METODOS_PAGO.find(x => x.id === cbMetodo);
   const total = base > 0 ? m.calc(base) : base;
-  return { cliente: $("#cbCli").value.trim(), unitario, unidades, extras, precioExtras, precio, abonos, abonado, ciudad, destino, envio, base, metodo: cbMetodo, metodoTxt: m.t, recargo: base > 0 ? total - base : 0, saldo: total, permitidos };
+  return { cliente: $("#cbCli").value.trim(), producto: $("#cbProd").value.trim(), unitario, unidades, extras, precioExtras, precio, abonos, abonado, ciudad, destino, envio, base, metodo: cbMetodo, metodoTxt: m.t, recargo: base > 0 ? total - base : 0, saldo: total, permitidos };
 }
 function calcular() {
   const d = datosCobro();
@@ -743,7 +745,7 @@ function calcular() {
   }).join("");
   if (calcular.htmlMet !== htmlMet) { calcular.htmlMet = htmlMet; $("#cbMetodos").innerHTML = htmlMet; }
   const linea = (t, v, signo = "") => `<div style="display:flex;justify-content:space-between;gap:10px"><span>${t}</span><span>${signo}${C.cop(v)}</span></div>`;
-  $("#cbResumen").innerHTML = `${linea(d.unidades > 1 ? `Precio final (${d.unidades} × ${C.cop(d.unitario)})` : "Precio final", d.unitario * d.unidades)}${d.extras.map(x => linea(esc(x.n) + (x.q > 1 ? ` (${x.q} × ${C.cop(x.v)})` : ""), x.q * x.v)).join("")}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
+  $("#cbResumen").innerHTML = `${linea((d.producto ? esc(d.producto) : "Precio final") + (d.unidades > 1 ? ` (${d.unidades} × ${C.cop(d.unitario)})` : ""), d.unitario * d.unidades)}${d.extras.map(x => linea(esc(x.n) + (x.q > 1 ? ` (${x.q} × ${C.cop(x.v)})` : ""), x.q * x.v)).join("")}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
     <div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700"><span>${d.saldo < 0 ? "Saldo a favor del cliente" : "Saldo a pagar"}</span><span style="color:${d.saldo > 0 ? "var(--accent)" : "var(--ok)"}">${C.cop(Math.abs(d.saldo))}</span></div>`;
   const a = S.ajustesCobro || {};
   const aviso = d.precio >= C.LIMITE_CREDITO ? "Desde $1.000.000 solo aplica transferencia Bre-B o tarjeta de crédito (no Addi ni Sistecrédito)."
@@ -756,7 +758,8 @@ function mensajeCobro(d) {
   const v = C.copTxt;
   const base = d.unitario * d.unidades;
   const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""}, este es el saldo de tu pedido:`, ""];
-  if (base) l.push(d.unidades > 1 ? `Precio final: ${d.unidades} unidades x ${v(d.unitario)} = ${v(base)}` : `Precio final: ${v(base)}`);
+  const nomP = d.producto || "Precio final";
+  if (base) l.push(d.unidades > 1 ? `${nomP}: ${d.unidades} unidades x ${v(d.unitario)} = ${v(base)}` : `${nomP}: ${v(base)}`);
   d.extras.forEach(x => l.push(`${x.n}${x.q > 1 ? ` (${x.q} x ${v(x.v)})` : ""}: ${v(x.q * x.v)}`));
   l.push(d.ciudad === "otro" ? `Envío${d.destino ? " a " + d.destino : ""}: ${v(d.envio)}` : `Domicilio ${d.destino}: ${v(d.envio)}`);
   d.abonos.forEach((x, i) => l.push(`${i === 0 ? "Abono" : "Abono " + (i + 1)}: -${v(x)}`));
@@ -797,6 +800,33 @@ function agregarArticulo() {
   $("#cbArts").appendChild(f); f.querySelector(".artN").focus();
 }
 $("#cbMasArt").onclick = agregarArticulo;
+$("#cbProd").addEventListener("input", () => {
+  const val = $("#cbProd").value.trim().toLowerCase();
+  const p = PRODUCTOS.find(x => `${x.n} · ${x.p}`.toLowerCase() === val);
+  if (p) { $("#cbPrecio").value = miles(p.v); calcular(); }
+});
+// Link de saldo desde la calculadora: crea una "reserva" de venta y el cliente completa todo en el link
+$("#cbLink").onclick = async () => {
+  const d = datosCobro();
+  if (!d.cliente) { toast("Escribe el nombre del cliente"); $("#cbCli").focus(); return; }
+  const items = [...(d.unitario ? [{ n: d.producto || "Producto", q: d.unidades, v: d.unitario }] : []), ...d.extras];
+  const total = items.reduce((a, x) => a + x.q * x.v, 0);
+  if (!total) { toast("Elige el producto o escribe el precio"); $("#cbProd").focus(); return; }
+  const dest = destinoCobro();
+  const ventana = window.open("", "_blank");
+  const id = "v" + Date.now().toString(36), token = C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo();
+  const resumen = items.length === 1 ? items[0].n + (items[0].q > 1 ? " (" + items[0].q + " unidades)" : "") : `${items[0].n} y ${items.length - 1} artículo${items.length > 2 ? "s" : ""} más`;
+  const hoy = new Date().toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "2-digit" }).replace(/\./g, "").replace(/ /g, "-");
+  const b = writeBatch(db);
+  b.set(doc(db, "saldos", token), { qr: S.ajustesCobro?.qr || "", nombre: titulo(d.cliente), producto: resumen, items, unidades: 1, unitario: total, abonos: d.abonos, abono: d.abonado, reservaId: id, venta: true, estado: "enviado", creado: Date.now() });
+  b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { nombre: d.cliente, contacto: dest.tel || "", producto: "Ventas con link de cobro", detalle: resumen, items, total, unidades: 1, abono: d.abonado, abonos: d.abonos, red: "Link de cobro", fecha: hoy, orden: Date.now(), venta: true, saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
+  try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
+  const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL;
+  const texto = `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}`;
+  const url = dest.tel ? `https://api.whatsapp.com/send?phone=57${dest.tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+  if (ventana) ventana.location.href = url; else window.open(url, "_blank");
+  toast(dest.tel ? "Link de saldo enviado" : "Escoge el chat del cliente en WhatsApp (no hay celular guardado)");
+};
 $("#cbArts").addEventListener("click", e => { if (e.target.closest("[data-quitarart]")) { e.target.closest(".art").remove(); calcular(); } });
 $("#cbArts").addEventListener("input", e => {
   if (!e.target.classList.contains("artN")) return;
@@ -886,7 +916,7 @@ function pintarReservas() {
   const lista = del.filter(r => (f === "todas" || estadoReserva(r) === f) && (!q || (r.nombre + " " + r.contacto).toLowerCase().includes(q)))
     .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
   const abonado = del.reduce((s, r) => s + (r.abono || 0), 0);
-  const uds = r => r.unidades || 1, saldoR = r => Math.max(precio * uds(r) - (r.abono || 0), 0);
+  const uds = r => r.unidades || 1, saldoR = r => Math.max((r.total ?? precio * uds(r)) - (r.abono || 0), 0);
   $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Clientes</span></div><div><b>${del.reduce((s, r) => s + uds(r), 0)}</b><span>Unidades</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + saldoR(r), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div><div><b style="color:var(--warn)">${del.filter(r => !r.pagado).length}</b><span>Pendientes por pago</span></div>`;
   const EST = { pendiente: ["Por cobrar", "disponible"], cobrado: ["Cobro enviado", "en_camino"], confirmado: ["Confirmó datos", "recogida"], pagado: ["Pagada", "entregada"], sinabono: ["Sin abono", "novedad"] };
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item${r.linkEnviado ? " rs-enviado" : ""}"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
@@ -1074,19 +1104,19 @@ const redSocial = red => ({ whatsapp: "WhatsApp", instagram: "Instagram", ml: "M
 const URL_SALDO = C.URL_ENVIO.replace(/envio\.html$/, "saldo.html");
 async function enviarLinkSaldo(id) {
   const r = S.reservas?.[id]; if (!r) return;
-  const unitario = S.preciosReserva?.[claveProd(r.producto)] || 0;
+  const unitario = r.total || S.preciosReserva?.[claveProd(r.producto)] || 0;
   if (!unitario) { toast("Primero escribe el precio final del producto"); $("#rsPrecio").focus(); return; }
   if (r.confirmacion) { toast("Este cliente ya confirmó. Para cambiar algo, cóbrale desde la calculadora."); return; }
   // Abrir la pestaña de WhatsApp ya (con el clic), y llenarla después de guardar: así el navegador no la bloquea
   const ventana = window.open("", "_blank");
   const token = r.saldoToken || (C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo());
-  const datos = { qr: S.ajustesCobro?.qr || "", nombre: titulo(r.nombre), producto: r.producto, unidades: r.unidades || 1, unitario, abonos: r.abonos?.length ? r.abonos : (r.abono ? [r.abono] : []), abono: r.abono || 0, reservaId: id, estado: "enviado", creado: Date.now() };
+  const datos = { qr: S.ajustesCobro?.qr || "", nombre: titulo(r.nombre), producto: r.detalle || r.producto, ...(r.items ? { items: r.items, venta: true } : {}), unidades: r.unidades || 1, unitario, abonos: r.abonos?.length ? r.abonos : (r.abono ? [r.abono] : []), abono: r.abono || 0, reservaId: id, estado: "enviado", creado: Date.now() };
   const b = writeBatch(db);
   b.set(doc(db, "saldos", token), datos);
   b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
   try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
   const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL; // ?v= evita que el navegador muestre una copia vieja
-  const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, la espera terminó. Queremos informarte que ya está disponible ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
+  const texto = r.venta ? `Hola ${C.primerNombre(titulo(r.nombre))}, este es el link para completar tu pedido de ${r.detalle}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}` : `Hola ${C.primerNombre(titulo(r.nombre))}, la espera terminó. Queremos informarte que ya está disponible ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
   const tel = /^\d{10}$/.test(r.contacto) ? r.contacto : "";
   const url = tel ? `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
   if (ventana) ventana.location.href = url; else window.open(url, "_blank");
@@ -1126,7 +1156,7 @@ async function procesarSaldos(lista) {
             origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
             cliente: titulo(sd.nombre), telefono: rsp.telefono || "",
             destino: { direccion: rsp.direccion, complemento: rsp.complemento || "", barrio: rsp.barrio || "", referencia: [rsp.complemento, rsp.barrio ? "Barrio " + rsp.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[rsp.ciudadLocal].nombre, lat: rsp.lat, lng: rsp.lng, aprox: !!rsp.sinUbicacion, verificar: !!rsp.sinUbicacion },
-            contenido: sd.producto + ((sd.unidades || 1) > 1 ? " x" + sd.unidades : ""), nota: "",
+            contenido: sd.items ? sd.items.map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") : sd.producto + ((sd.unidades || 1) > 1 ? " x" + sd.unidades : ""), nota: "",
             valor: 0, cobro: "pagado", tipoEnvio: "Directo", tipoEnvioOtro: "", marketplace: null,
             zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
             estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
@@ -1167,7 +1197,8 @@ function cargarReserva(id) {
   const r = S.reservas?.[id]; if (!r) return;
   $("#fCobro").reset(); $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = "";
   $("#cbCli").value = titulo(r.nombre);
-  $("#cbPrecio").value = miles(S.preciosReserva?.[claveProd(r.producto)] || 0);
+  $("#cbPrecio").value = miles(r.total || S.preciosReserva?.[claveProd(r.producto)] || 0);
+  $("#cbProd").value = r.detalle || r.producto || "";
   $("#cbUnid").value = r.unidades || 1;
   (r.abonos?.length ? r.abonos : [r.abono || ""]).forEach(v => agregarAbono(v));
   cbMetodo = "transf";
@@ -1368,7 +1399,7 @@ async function enviarOrdenReserva2(id, auto) {
     return;
   }
   const x = { nombre: res.nombre, telefono: c.telefono || res.contacto, correo: c.correo || "", municipio: c.ciudad || "", direccion: c.direccion || "", complemento: c.complemento || "", barrio: c.barrio || "",
-    transportadora: idTransp(c.transportadora), contenido: `${res.producto}${uds > 1 ? " x" + uds : ""}`, envioCobrado: c.envio || 0 };
+    transportadora: idTransp(c.transportadora), contenido: res.items ? res.items.map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ").slice(0, 100) : `${res.producto}${uds > 1 ? " x" + uds : ""}`, envioCobrado: c.envio || 0 };
   try {
     const { oid, r, transp } = await postOrdenSkx(x, "R" + id);
     await updateDoc(ref, { [`reservas.${id}.skydropx.orden`]: oid || "creada", [`reservas.${id}.skydropx.enviando`]: null, [`reservas.${id}.skydropx.error`]: null, [`reservas.${id}.skydropx.enviada`]: Date.now() });
@@ -1830,7 +1861,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113u";
+const VERSION_PANEL = "20261113v";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
