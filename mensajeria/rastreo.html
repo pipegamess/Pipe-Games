@@ -7,7 +7,7 @@
 <meta name="description" content="Sigue tu pedido en tiempo real con tu número de guía.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112i">
+<link rel="stylesheet" href="estilos.css?v=20261112j">
 <style>
 .envoltura{max-width:720px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .buscar{display:flex;gap:8px;flex-wrap:wrap}
@@ -35,8 +35,8 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261112i";
-import * as C from "./comun.js?v=20261112i";
+import { firebaseConfig, FIREBASE_VERSION } from "./config.js?v=20261112j";
+import * as C from "./comun.js?v=20261112j";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, onSnapshot } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
