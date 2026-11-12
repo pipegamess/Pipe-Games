@@ -270,7 +270,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <h2>Calcular saldo y cobrar</h2>
         <p class="nota" style="margin:0">Mismas reglas del simulador de precios de pipegames.com.co: domicilio de $10.000 en Bogotá, Chía y Soacha, y el recargo de cada medio de pago.</p>
         <form id="fCobro" class="lista" autocomplete="off">
-          <label>Cliente<input id="cbCli" placeholder="Pepito Pérez"></label>
+          <label>Cliente<input id="cbCli" placeholder="Escribe o elige un cliente" list="cbClientes" autocomplete="off"></label>
+          <datalist id="cbClientes"></datalist>
           <div class="fila"><label>Precio final por unidad<input class="din" id="cbPrecio" inputmode="numeric" placeholder="250.000"></label><label>Unidades<input id="cbUnid" type="number" min="1" step="1" value="1" inputmode="numeric"></label></div>
           <div id="cbAbonos" class="lista" style="gap:8px"></div>
           <button class="btn sec chico" type="button" id="cbMasAbono" style="align-self:flex-start">+ Agregar otro abono</button>
@@ -563,12 +564,12 @@ function mensajeCobro(d) {
   if (d.metodo === "contraentrega") l.push("Pago contra entrega, en efectivo o Nequi.");
   return l.join("\n");
 }
-async function registrarCobro(d) {
+async function registrarCobro(d, dest = destinoCobro()) {
   if (!d.precio) return;
   const id = Date.now().toString(36);
   const { permitidos, ...guardar } = d;
-  const datos = { cobros: { [id]: { ...guardar, reserva: cbReserva?.id || null, creado: Date.now(), pagado: d.saldo <= 0 ? Date.now() : 0 } } };
-  if (cbReserva) datos.reservas = { [cbReserva.id]: { cobrado: Date.now(), saldoCobrado: d.saldo, ...(d.saldo <= 0 ? { pagado: Date.now() } : {}) } };
+  const datos = { cobros: { [id]: { ...guardar, reserva: dest.reservaId || null, telefono: dest.tel || "", creado: Date.now(), pagado: d.saldo <= 0 ? Date.now() : 0 } } };
+  if (dest.reservaId) datos.reservas = { [dest.reservaId]: { cobrado: Date.now(), saldoCobrado: d.saldo, ...(d.saldo <= 0 ? { pagado: Date.now() } : {}) } };
   try { await setDoc(doc(db, "usuarios", ADMIN_UID), datos, { merge: true }); } catch {}
 }
 function validarCobro(d) {
@@ -586,10 +587,12 @@ $("#cbMasAbono").onclick = () => { agregarAbono(); $("#cbAbonos").lastElementChi
 $("#cbAbonos").addEventListener("click", e => { if (e.target.closest("[data-quitarab]")) { e.target.closest(".fila").remove(); calcular(); } });
 $("#cbWa").onclick = () => {
   const d = datosCobro(); if (!validarCobro(d)) return;
-  // Si viene de una reserva con celular, abre ese chat; si no, WhatsApp pide escoger el chat
-  const tel = cbReserva && /^\d{10}$/.test(cbReserva.tel) ? "57" + cbReserva.tel : "";
-  window.open(`https://wa.me/${tel}?text=` + encodeURIComponent(mensajeCobro(d)), "_blank", "noopener");
-  registrarCobro(d);
+  // Celular: el de la reserva cargada o, si no, el del cliente con ese nombre en reservas o guías
+  const dest = destinoCobro();
+  const texto = encodeURIComponent(mensajeCobro(d));
+  const url = dest.tel ? `https://api.whatsapp.com/send?phone=57${dest.tel}&text=${texto}` : `https://api.whatsapp.com/send?text=${texto}`;
+  window.open(url, "_blank");
+  registrarCobro(d, dest);
 };
 $("#cbCopiar").onclick = () => { const d = datosCobro(); if (!validarCobro(d)) return; copiar(mensajeCobro(d), "Mensaje de cobro copiado"); registrarCobro(d); };
 $("#cbGuia").onclick = () => {
@@ -605,12 +608,46 @@ $("#cbGuia").onclick = () => {
 $("#cbLimpiar").onclick = () => { cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
 /* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
 let cbReserva = null; // reserva cargada en la calculadora {id, tel}
+// Busca el celular del cliente: primero la reserva cargada con "Cobrar"; si no, por nombre
+// en las reservas (producto elegido primero) y luego en las guías.
+function buscarCliente(nombre) {
+  const k = normNombre(nombre); if (!k) return null;
+  const prod = $("#rsProd")?.value;
+  const res = Object.entries(S.reservas || {}).filter(([, r]) => normNombre(r.nombre) === k).sort(([, a], [, b]) => (b.producto === prod) - (a.producto === prod));
+  const conTel = res.find(([, r]) => /^\d{10}$/.test(r.contacto));
+  if (conTel) return { tel: conTel[1].contacto, reservaId: conTel[0], nombre: titulo(conTel[1].nombre), fuente: "reserva de " + conTel[1].producto };
+  const g = Object.values(S.guias || {}).filter(x => normNombre(x.cliente) === k && /^3\d{9}$/.test(soloDig(x.telefono))).sort((a, b) => b.creado - a.creado)[0];
+  if (g) return { tel: soloDig(g.telefono), reservaId: res[0]?.[0] || null, nombre: g.cliente, fuente: "guía " + g.numero };
+  if (res[0]) return { tel: "", reservaId: res[0][0], nombre: titulo(res[0][1].nombre), contacto: res[0][1].contacto, fuente: "reserva de " + res[0][1].producto };
+  return null;
+}
+function destinoCobro() {
+  if (cbReserva && normNombre(cbReserva.nombre) === normNombre($("#cbCli").value)) return { tel: /^\d{10}$/.test(cbReserva.tel) ? cbReserva.tel : "", reservaId: cbReserva.id, contacto: cbReserva.contacto, fuente: "reserva" };
+  return buscarCliente($("#cbCli").value) || { tel: "" };
+}
 function pintarDestinoWa() {
   let el = document.getElementById("cbDestinoWa");
   if (!el) { el = document.createElement("div"); el.id = "cbDestinoWa"; el.className = "nota"; $("#cbWa").parentElement.before(el); }
-  el.textContent = cbReserva ? (/^\d{10}$/.test(cbReserva.tel) ? `Se abrirá el chat de WhatsApp ${cbReserva.tel} (reserva de ${cbReserva.nombre}).` : `La reserva de ${cbReserva.nombre} no tiene celular: WhatsApp te pedirá escoger el chat${cbReserva.contacto ? " (contacto: " + cbReserva.contacto + ")" : ""}.`) : "";
-  el.hidden = !cbReserva;
+  const d = destinoCobro(), hay = $("#cbCli").value.trim();
+  el.innerHTML = !hay ? "" : d.tel ? `Se enviará al WhatsApp <b>${esc(d.tel)}</b> (${esc(d.fuente)}).`
+    : `No hay celular guardado para este cliente${d.contacto ? " (contacto: " + esc(d.contacto) + ")" : ""}: WhatsApp te pedirá escoger el chat.`;
+  el.hidden = !hay;
 }
+function listaClientes() {
+  const nombres = new Map();
+  Object.values(S.reservas || {}).forEach(r => nombres.set(normNombre(r.nombre), titulo(r.nombre)));
+  Object.values(S.guias || {}).filter(g => g.telefono && g.cliente).forEach(g => { const k = normNombre(g.cliente); if (!nombres.has(k)) nombres.set(k, g.cliente); });
+  $("#cbClientes").innerHTML = [...nombres.values()].sort().slice(0, 400).map(n => `<option value="${esc(n)}">`).join("");
+}
+$("#cbCli").addEventListener("input", () => {
+  if (cbReserva && normNombre(cbReserva.nombre) !== normNombre($("#cbCli").value)) cbReserva = null;
+  pintarDestinoWa();
+});
+// Al elegir de la lista un cliente con reserva, cargar su reserva
+$("#cbCli").addEventListener("change", () => {
+  const c = buscarCliente($("#cbCli").value);
+  if (c?.reservaId && !cbReserva && S.reservas?.[c.reservaId]) cargarReserva(c.reservaId);
+});
 const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
 const claveProd = t => String(t || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 function estadoReserva(r) { return r.pagado ? "pagado" : r.cobrado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
@@ -646,19 +683,7 @@ $("#rsLista").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const ref = doc(db, "usuarios", ADMIN_UID);
   try {
-    if (b.dataset.rscobrar) {
-      const r = S.reservas[b.dataset.rscobrar]; if (!r) return;
-      $("#fCobro").reset(); $("#cbAbonos").innerHTML = "";
-      $("#cbCli").value = titulo(r.nombre);
-      $("#cbPrecio").value = miles(S.preciosReserva?.[claveProd(r.producto)] || 0);
-      $("#cbUnid").value = r.unidades || 1;
-      (r.abonos?.length ? r.abonos : [r.abono || ""]).forEach(v => agregarAbono(v));
-      cbMetodo = "transf";
-      cbReserva = { id: b.dataset.rscobrar, tel: r.contacto, contacto: r.contacto, nombre: titulo(r.nombre) };
-      pintarDestinoWa(); calcular();
-      $("#fCobro").scrollIntoView({ behavior: "smooth" });
-      if (!num($("#cbPrecio").value)) { toast("Escribe el precio final"); $("#cbPrecio").focus(); }
-    }
+    if (b.dataset.rscobrar) cargarReserva(b.dataset.rscobrar);
     if (b.dataset.rspagado) await updateDoc(ref, { [`reservas.${b.dataset.rspagado}.pagado`]: Date.now() });
     if (b.dataset.rsdeshacer) await updateDoc(ref, { [`reservas.${b.dataset.rsdeshacer}.pagado`]: deleteField() });
     if (b.dataset.rsborrar) {
@@ -721,7 +746,21 @@ $("#rsImp").onclick = async () => {
 const normNombre = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim();
 const redSocial = red => ({ whatsapp: "WhatsApp", instagram: "Instagram", ml: "Mercado Libre", facebook: "Facebook", tiktok: "TikTok" })[String(red || "").trim().toLowerCase()] || titulo(red || "");
 
+function cargarReserva(id) {
+  const r = S.reservas?.[id]; if (!r) return;
+  $("#fCobro").reset(); $("#cbAbonos").innerHTML = "";
+  $("#cbCli").value = titulo(r.nombre);
+  $("#cbPrecio").value = miles(S.preciosReserva?.[claveProd(r.producto)] || 0);
+  $("#cbUnid").value = r.unidades || 1;
+  (r.abonos?.length ? r.abonos : [r.abono || ""]).forEach(v => agregarAbono(v));
+  cbMetodo = "transf";
+  cbReserva = { id, tel: r.contacto, contacto: r.contacto, nombre: titulo(r.nombre) };
+  pintarDestinoWa(); calcular();
+  $("#fCobro").scrollIntoView({ behavior: "smooth" });
+  if (!num($("#cbPrecio").value)) { toast("Escribe el precio final"); $("#cbPrecio").focus(); }
+}
 function pintarCobros() {
+  listaClientes(); pintarDestinoWa();
   pintarReservas();
   calcular();
   const l = Object.entries(S.cobros || {}).map(([id, c]) => ({ id, ...c })).sort((a, b) => b.creado - a.creado).slice(0, 30);
@@ -739,6 +778,7 @@ $("#cbLista").addEventListener("click", async e => {
     if (b.dataset.cbusar) {
       const c = S.cobros[b.dataset.cbusar]; if (!c) return;
       $("#cbCli").value = c.cliente || ""; $("#cbPrecio").value = miles(c.unitario || c.precio); $("#cbUnid").value = c.unidades || 1;
+      cbReserva = c.reserva || c.telefono ? { id: c.reserva || null, tel: c.telefono || S.reservas?.[c.reserva]?.contacto || "", contacto: c.telefono || "", nombre: c.cliente || "" } : null;
       $("#cbCiudad").value = NOMBRE_CIUDAD[c.ciudad] || c.ciudad === "otro" ? c.ciudad : "bogota";
       if (c.ciudad === "otro") { $("#cbOtroCiudad").value = c.destino || ""; $("#cbOtroValor").value = miles(c.envio); }
       $("#cbAbonos").innerHTML = ""; (c.abonos?.length ? c.abonos : [""]).forEach(v => agregarAbono(v));
