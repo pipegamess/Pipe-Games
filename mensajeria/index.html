@@ -724,7 +724,7 @@ function pintarReservas() {
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
       <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)} · ${esc(r.confirmacion.correo)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
-      <div class="btns"><button class="btn chico" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>` : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+      <div class="btns"><button class="btn chico" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
 $("#rsProd").onchange = pintarReservas;
@@ -742,6 +742,7 @@ $("#rsLista").addEventListener("click", async e => {
     if (b.dataset.rscobrar) cargarReserva(b.dataset.rscobrar);
     if (b.dataset.rslink) await enviarLinkSaldo(b.dataset.rslink);
     if (b.dataset.rsguia) guiaDesdeReserva(b.dataset.rsguia);
+    if (b.dataset.rsverguia) { if (S.guias[b.dataset.rsverguia]) abrirDetalle(b.dataset.rsverguia); else toast("La guía no está entre las últimas cargadas"); }
     if (b.dataset.rsskx) skxDesdeReserva(b.dataset.rsskx);
     if (b.dataset.rspagado) await updateDoc(ref, { [`reservas.${b.dataset.rspagado}.pagado`]: Date.now() });
     if (b.dataset.rsdeshacer) await updateDoc(ref, { [`reservas.${b.dataset.rsdeshacer}.pagado`]: deleteField() });
@@ -886,17 +887,62 @@ async function enviarLinkSaldo(id) {
   if (!tel) toast(`${titulo(r.nombre)} no tiene celular guardado: escoge su chat en WhatsApp`);
 }
 // Cuando el cliente confirma, sus datos pasan a la reserva y el link queda cerrado.
+// Cuando el cliente confirma: sus datos pasan a la reserva y el link queda cerrado.
+// Si es de Bogotá, Chía o Soacha (con punto en el mapa), la guía de domicilio se crea sola.
+// Todo va en una transacción: aunque el panel esté abierto en dos equipos, se hace una sola vez.
+let procesandoSaldos = false;
 async function procesarSaldos(lista) {
+  if (procesandoSaldos) return;
+  procesandoSaldos = true;
   for (const sd of lista) {
     if (sd.estado !== "confirmado" || !sd.respuesta) continue;
     try {
-      const b = writeBatch(db);
-      if (sd.reservaId) b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [sd.reservaId]: { confirmacion: { ...sd.respuesta, t: sd.confirmado || Date.now() } } } }, { merge: true });
-      b.update(doc(db, "saldos", sd.id), { estado: "recibido" });
-      await b.commit();
-      toast(`🧾 ${titulo(sd.nombre)} confirmó: ${sd.respuesta?.ciudad || ""} · total ${C.cop(sd.respuesta?.total)}`); sonido();
+      const rsp = sd.respuesta, local = rsp.ciudadLocal && C.CIUDADES[rsp.ciudadLocal] && rsp.lat != null;
+      const rec = S.recogida, puedeGuia = local && rec && rec.lat != null;
+      if (local && !puedeGuia) continue; // aún no carga el punto de recogida: se intenta otra vez cuando cargue
+      let creada = null;
+      await runTransaction(db, async tx => {
+        const refS = doc(db, "saldos", sd.id), refA = doc(db, "usuarios", ADMIN_UID);
+        const sS = await tx.get(refS);
+        if (!sS.exists() || sS.data().estado !== "confirmado") return;
+        const datosA = { };
+        const confirmacion = { ...rsp, t: sd.confirmado || Date.now() };
+        let numero = "", g = null;
+        if (puedeGuia) {
+          const prefijo = C.prefijoTienda(rec.remitente);
+          const a = await tx.get(refA);
+          let k = (a.exists() ? a.data().consecutivos?.[prefijo] || 0 : 0) + 1;
+          numero = C.numeroGuia(prefijo, k);
+          for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
+          const loc = C.localidadEn(rsp.ciudadLocal, { lat: rsp.lat, lng: rsp.lng });
+          g = {
+            numero, remitente: rec.remitente,
+            origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
+            cliente: titulo(sd.nombre), telefono: rsp.telefono || "",
+            destino: { direccion: rsp.direccion, complemento: rsp.complemento || "", barrio: rsp.barrio || "", referencia: [rsp.complemento, rsp.barrio ? "Barrio " + rsp.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[rsp.ciudadLocal].nombre, lat: rsp.lat, lng: rsp.lng, aprox: false, verificar: false },
+            contenido: sd.producto + ((sd.unidades || 1) > 1 ? " x" + sd.unidades : ""), nota: "",
+            valor: 0, cobro: "pagado", tipoEnvio: "Directo", tipoEnvioOtro: "", marketplace: null,
+            zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
+            estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
+            reserva: sd.reservaId || null, origenWeb: true,
+            creado: Date.now(), actualizado: Date.now(),
+            eventos: [C.evento("disponible", "Datos confirmados por el cliente en su link de saldo", "Link de saldo")]
+          };
+          g.clave = C.claveDeseada(g);
+          datosA.consecutivos = { [prefijo]: k };
+          confirmacion.guia = numero;
+          tx.set(doc(db, "guias", numero), g);
+          tx.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(g));
+        }
+        if (sd.reservaId) datosA.reservas = { [sd.reservaId]: { confirmacion } };
+        if (Object.keys(datosA).length) tx.set(refA, datosA, { merge: true });
+        tx.update(refS, { estado: "recibido", ...(numero ? { guia: numero } : {}) });
+        creada = g;
+      });
+      toast(`🧾 ${titulo(sd.nombre)} confirmó: ${rsp.ciudad || ""} · total ${C.cop(rsp.total)}${creada ? ` · guía ${creada.numero} creada` : ""}`); sonido();
     } catch (e) { console.warn("saldo", sd.id, e); }
   }
+  procesandoSaldos = false;
 }
 function guiaDesdeReserva(id) {
   const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
@@ -1268,7 +1314,8 @@ function escuchar() {
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
   subs.push(onSnapshot(query(collection(db, "saldos"), where("estado", "==", "confirmado")), s => {
-    procesarSaldos(s.docs.map(d => ({ id: d.id, ...d.data() })));
+    S.saldosPend = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    procesarSaldos(S.saldosPend);
   }, () => {}));
   subs.push(onSnapshot(query(collection(db, "solicitudes"), where("estado", "==", "nueva")), s => {
     S.solicitudes = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.creado - b.creado);
@@ -1276,7 +1323,7 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; cargarSkx(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; cargarSkx(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */
