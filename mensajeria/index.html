@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113i">
+<link rel="stylesheet" href="estilos.css?v=20261113j">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -406,9 +406,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113i";
-import * as C from "./comun.js?v=20261113i";
-import * as T from "./tarifas-envio.js?v=20261113i";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113j";
+import * as C from "./comun.js?v=20261113j";
+import * as T from "./tarifas-envio.js?v=20261113j";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1363,7 +1363,7 @@ async function postOrdenSkx(x, id) {
     address: p.dir, street1: p.dir, internal_number: "", reference: cortaRef(p.ref) || "N/A", sector: p.barrio || p.ciudad,
     city: p.ciudad, state: p.depto, postal_code: p.cp || "", zip: p.cp || "", country: "CO", country_code: "co",
     area_level1: quitarTildes(p.depto), area_level2: quitarTildes(p.ciudad), area_level3: quitarTildes(p.barrio || p.ciudad),
-    person_name: p.nombre, name: p.nombre, company: p.empresa || p.nombre, phone: p.tel, email: p.correo || "ventas@pipegames.com.co"
+    person_name: p.nombre, name: p.nombre, company: p.empresa || "", phone: p.tel, email: p.correo || "ventas@pipegames.com.co"
   });
   const cuerpo = { order: {
     reference: "PG-" + id.slice(0, 10), reference_number: id, payment_status: "paid", total_price: String(t.v || 0), platform: "Pipe Games", declared_amount: t.v || 50000, declared_value: t.v || 50000,
@@ -1392,6 +1392,8 @@ async function postOrdenSkx(x, id) {
         err = e; const msg = String(e.message || "");
         if (!/422/.test(msg)) break;
         if (/tags/i.test(msg) && cuerpo.order.tags) { delete cuerpo.order.tags; continue; }
+        // Si Skydropx exige empresa en el destinatario (persona natural): "Particular"
+        if (/company|empresa/i.test(msg) && !cuerpo.order.recipient_address.company) { cuerpo.order.recipient_address.company = "Particular"; continue; }
         if (/shipping_preferences|preferenc/i.test(msg) && iP < prefs.length - 1) { iP++; continue; }
         if (/address_to|recipient/i.test(msg) && iD < formasDest.length - 1) { iD++; continue; }
         break;
@@ -1782,7 +1784,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113i";
+const VERSION_PANEL = "20261113j";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
