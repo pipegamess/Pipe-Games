@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113g">
+<link rel="stylesheet" href="estilos.css?v=20261113h">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -406,9 +406,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113g";
-import * as C from "./comun.js?v=20261113g";
-import * as T from "./tarifas-envio.js?v=20261113g";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113h";
+import * as C from "./comun.js?v=20261113h";
+import * as T from "./tarifas-envio.js?v=20261113h";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1289,6 +1289,57 @@ async function enviarOrdenSkx(id, auto = false) {
     });
   } catch (e) { console.warn("orden", id, e); }
   if (!x) return;
+  try {
+    const { oid, r, transp } = await postOrdenSkx(x, id);
+    await updateDoc(ref, { ordenSkydropx: oid || "creada", estado: "skydropx", enviando: null, errorSkydropx: null, enviadoSkydropx: Date.now() });
+    await registrarOrdenSkx(id, x, transp, oid, r);
+  } catch (e) {
+    await updateDoc(ref, { enviando: null, errorSkydropx: String(e.message || e).slice(0, 400) }).catch(() => {});
+    if (!auto) toast("Skydropx no recibió la orden: " + (e.message || e));
+  }
+}
+async function registrarOrdenSkx(id, x, transp, oid, r) {
+  // Registro de órdenes enviadas (con la respuesta de Skydropx, para revisar sus campos)
+  await setDoc(doc(db, "usuarios", ADMIN_UID), { ordenesSkydropx: { [id]: { cliente: titulo(x.nombre), ciudad: x.municipio || "", transportadora: transp, orden: oid, t: Date.now(), resp: JSON.stringify(r).slice(0, 8000) } } }, { merge: true }).catch(() => {});
+  toast(`Orden de ${C.primerNombre(titulo(x.nombre))} (${(x.municipio || "").split(" - ")[0]}) enviada a Skydropx → Órdenes`); sonido();
+}
+/* Reservas confirmadas fuera de Bogotá, Chía y Soacha (link de saldo): también van solas a Skydropx → Órdenes */
+const idTransp = n => /env/i.test(n || "") ? "envia" : /inter/i.test(n || "") ? "inter" : "";
+const enviandoRes = new Set();
+async function enviarOrdenReserva(id, auto = false) {
+  if (enviandoRes.has(id)) return;
+  enviandoRes.add(id);
+  try { await enviarOrdenReserva2(id, auto); } finally { setTimeout(() => enviandoRes.delete(id), 5000); }
+}
+async function enviarOrdenReserva2(id, auto) {
+  const rem = S.skx?.remitente || {};
+  if (!rem.direccion || !/^\d{10}$/.test(rem.telefono || "")) { if (!auto) toast("Primero guarda los datos del remitente (Conexión y datos del remitente)"); return; }
+  const ref = doc(db, "usuarios", ADMIN_UID);
+  let res = null;
+  try {
+    await runTransaction(db, async tx => {
+      const sn = await tx.get(ref); const r = sn.data()?.reservas?.[id], k = r?.skydropx || {};
+      if (!r?.confirmacion || r.confirmacion.ciudadLocal || k.orden || k.guia || k.envioId || k.omitida) return;
+      if (k.enviando && Date.now() - k.enviando < 120000) return;
+      tx.update(ref, { [`reservas.${id}.skydropx.enviando`]: Date.now() }); res = r;
+    });
+  } catch (e) { console.warn("orden reserva", id, e); }
+  if (!res) return;
+  const c = res.confirmacion, uds = res.unidades || 1;
+  const x = { nombre: res.nombre, telefono: c.telefono || res.contacto, correo: c.correo || "", municipio: c.ciudad || "", direccion: c.direccion || "", complemento: c.complemento || "", barrio: c.barrio || "",
+    transportadora: idTransp(c.transportadora), contenido: `${res.producto}${uds > 1 ? " x" + uds : ""}`, envioCobrado: c.envio || 0 };
+  try {
+    const { oid, r, transp } = await postOrdenSkx(x, "R" + id);
+    await updateDoc(ref, { [`reservas.${id}.skydropx.orden`]: oid || "creada", [`reservas.${id}.skydropx.enviando`]: null, [`reservas.${id}.skydropx.error`]: null, [`reservas.${id}.skydropx.enviada`]: Date.now() });
+    await registrarOrdenSkx("res_" + id, x, transp, oid, r);
+  } catch (e) {
+    await updateDoc(ref, { [`reservas.${id}.skydropx.enviando`]: null, [`reservas.${id}.skydropx.error`]: String(e.message || e).slice(0, 400) }).catch(() => {});
+    if (!auto) toast("Skydropx no recibió la orden: " + (e.message || e));
+  }
+}
+// Arma y envía la orden a Skydropx; devuelve el id de la orden o lanza el error de Skydropx
+async function postOrdenSkx(x, id) {
+  const rem = S.skx?.remitente || {};
   const m = T.envBuscar(x.municipio || "")?.x;
   const t = x.tipoProducto?.l ? x.tipoProducto : (tiposSkx()[Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)] || TIPOS_BASE[0]);
   const contenido = x.contenido || (/juego/i.test(t.n) ? "Videojuego" : t.n);
@@ -1314,7 +1365,7 @@ async function enviarOrdenSkx(id, auto = false) {
   // Skydropx acepta objetos ahí pero los descarta (queda vacío): va como lista de nombres de transportadora.
   const prefs = prov ? [[prov], []] : [[]];
   if (transp) cuerpo.order.tags = [transp, ...(x.tipoProducto?.n ? [x.tipoProducto.n] : [])];
-  try {
+  {
     let r = null, err = null;
     for (const sp of prefs) {
       cuerpo.order.shipping_preferences = sp;
@@ -1326,21 +1377,14 @@ async function enviarOrdenSkx(id, auto = false) {
       }
     }
     if (!r) throw err || new Error("Skydropx no recibió la orden");
-    const oid = String(hallar(r, "id") || "");
-    await updateDoc(ref, { ordenSkydropx: oid || "creada", estado: "skydropx", enviando: null, errorSkydropx: null, enviadoSkydropx: Date.now() });
-    // Registro de órdenes enviadas (con la respuesta de Skydropx, para revisar sus campos)
-    await setDoc(doc(db, "usuarios", ADMIN_UID), { ordenesSkydropx: { [id]: { cliente: titulo(x.nombre), ciudad: x.municipio || "", transportadora: transp, orden: oid, t: Date.now(), resp: JSON.stringify(r).slice(0, 8000) } } }, { merge: true }).catch(() => {});
-    toast(`Orden de ${C.primerNombre(titulo(x.nombre))} (${(x.municipio || "").split(" - ")[0]}) enviada a Skydropx → Órdenes`); sonido();
-  } catch (e) {
-    await updateDoc(ref, { enviando: null, errorSkydropx: String(e.message || e).slice(0, 400) }).catch(() => {});
-    if (!auto) toast("Skydropx no recibió la orden: " + (e.message || e));
+    return { oid: String(hallar(r, "id") || ""), r, transp };
   }
 }
 let skxSolicitud = null, skxPref = "";
 function ordenesPrep() {
   const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo || "", error: x.errorSkydropx || "", ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.envioCobrado ? `envío cobrado ${C.cop(x.envioCobrado)}` : "", x.tipoProducto?.n || "", x.ciudadOriginal ? `marcó ${C.CIUDADES[x.ciudadOriginal]?.nombre || x.ciudadOriginal} pero la dirección es en ${(x.municipio || "").split(" - ")[0]}: revisa ciudad y transportadora` : "", x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario", erronea: x.guiaErronea && S.guias[x.guiaErronea] ? x.guiaErronea : "" }));
-  const res = Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida)
-    .map(([id, r]) => { const c = r.confirmacion; return { tipo: "res", id, nombre: titulo(r.nombre), tel: c.telefono, correo: c.correo || "", ciudad: c.ciudad || "", dir: c.direccion, comp: c.complemento, barrio: c.barrio, transp: c.transportadora || "", extra: `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""} · pagó por ${c.metodoTxt || c.metodo || ""}`, t: c.t, origen: "Link de saldo" }; });
+  const res = Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida && !r.skydropx?.orden)
+    .map(([id, r]) => { const c = r.confirmacion; return { tipo: "res", id, nombre: titulo(r.nombre), tel: c.telefono, correo: c.correo || "", error: r.skydropx?.error || "", ciudad: c.ciudad || "", dir: c.direccion, comp: c.complemento, barrio: c.barrio, transp: c.transportadora || "", extra: `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""} · pagó por ${c.metodoTxt || c.metodo || ""}`, t: c.t, origen: "Link de saldo" }; });
   return [...sol, ...res].sort((a, b) => a.t - b.t);
 }
 function pintarPrep() {
@@ -1351,12 +1395,12 @@ function pintarPrep() {
       <div class="meta">${o.extra ? esc(o.extra) + " · " : ""}${o.origen} · ${C.hace(o.t)}</div>
       ${o.error ? `<div class="aviso">Skydropx no recibió la orden: ${esc(o.error)}</div>` : ""}
       ${o.erronea ? `<div class="aviso">Por error se creó la guía <b>${esc(o.erronea)}</b> como si fuera de Bogotá (la creó un panel abierto con la versión anterior). Ábrela y toca “Eliminar guía”. <button class="btn sec chico" type="button" data-verguia="${esc(o.erronea)}">Abrir guía ${esc(o.erronea)}</button></div>` : ""}
-      <div class="btns">${o.tipo === "sol" ? `<button class="btn chico" type="button" data-orden="${esc(o.id)}">${o.error ? "Reintentar enviar a Skydropx" : "Enviar a Skydropx (Órdenes)"}</button>` : ""}<button class="btn ${o.tipo === "sol" ? "sec " : ""}chico" type="button" data-prep="${o.tipo}|${esc(o.id)}">Crear guía aquí</button><button class="btn sec chico" type="button" data-prepno="${o.tipo}|${esc(o.id)}">Descartar</button></div></div>`).join("")
+      <div class="btns"><button class="btn chico" type="button" data-orden="${o.tipo}|${esc(o.id)}">${o.error ? "Reintentar enviar a Skydropx" : "Enviar a Skydropx (Órdenes)"}</button><button class="btn sec chico" type="button" data-prep="${o.tipo}|${esc(o.id)}">Crear guía aquí</button><button class="btn sec chico" type="button" data-prepno="${o.tipo}|${esc(o.id)}">Descartar</button></div></div>`).join("")
     : `<div class="vacio">No hay órdenes por preparar.</div>`;
 }
 $("#skxPrep").addEventListener("click", async e => {
   const vg = e.target.closest("[data-verguia]"); if (vg) { abrirDetalle(vg.dataset.verguia); return; }
-  const od = e.target.closest("[data-orden]"); if (od) { od.disabled = true; od.textContent = "Enviando…"; await enviarOrdenSkx(od.dataset.orden); if (od.isConnected) { od.disabled = false; od.textContent = "Reintentar enviar a Skydropx"; } return; }
+  const od = e.target.closest("[data-orden]"); if (od) { od.disabled = true; od.textContent = "Enviando…"; const [tp, oi] = od.dataset.orden.split("|"); await (tp === "res" ? enviarOrdenReserva(oi) : enviarOrdenSkx(oi)); if (od.isConnected) { od.disabled = false; od.textContent = "Reintentar enviar a Skydropx"; } return; }
   const p = e.target.closest("[data-prep]"); if (p) { const [t, id] = p.dataset.prep.split("|"); prepararOrden(t, id); return; }
   const n = e.target.closest("[data-prepno]"); if (!n) return;
   const [t, id] = n.dataset.prepno.split("|");
@@ -1710,11 +1754,13 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa();
+    if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.orden && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida && !r.skydropx?.error && !(r.skydropx?.enviando && Date.now() - r.skydropx.enviando < 120000)).forEach(([id]) => enviarOrdenReserva(id, true));
+  }, err));
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113g";
+const VERSION_PANEL = "20261113h";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
