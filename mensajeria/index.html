@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112h">
+<link rel="stylesheet" href="estilos.css?v=20261112i">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -190,8 +190,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <details class="item" id="skx">
           <summary style="cursor:pointer"><b>Envío nacional con Skydropx</b> <span class="nota">· clientes fuera de Bogotá, Chía y Soacha</span></summary>
           <div class="lista" style="margin-top:10px">
-            <div class="item" id="skxPrepCaja"><b>Preparar órdenes <span class="pill" id="skxPrepN">0</span></b>
-              <span class="nota">Clientes de otras ciudades que llenaron el formulario o confirmaron su saldo. Toca “Preparar” para pasar sus datos al formulario de abajo, corrige lo que haga falta y crea la guía.</span>
+            <div class="item" id="skxPrepCaja"><b>Órdenes pendientes <span class="pill" id="skxPrepN">0</span></b>
+              <span class="nota">Los pedidos de otras ciudades que llegan por el formulario se envían solos a <b>Skydropx → Órdenes</b> (con la transportadora que eligió el cliente en la nota) para que los prepares allá. Aquí quedan solo los que Skydropx no recibió y las reservas confirmadas fuera de Bogotá. “Crear guía aquí” pasa los datos al formulario de abajo.</span>
               <div class="lista" id="skxPrep" style="gap:6px"></div></div>
             <div class="aviso" id="skxOrden" hidden></div>
             <details class="item" id="skxAjustes"><summary style="cursor:pointer"><b>Conexión y datos del remitente</b> <span class="nota" id="skxEstado"></span></summary>
@@ -370,9 +370,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112h";
-import * as C from "./comun.js?v=20261112h";
-import * as T from "./tarifas-envio.js?v=20261112h";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112i";
+import * as C from "./comun.js?v=20261112i";
+import * as T from "./tarifas-envio.js?v=20261112i";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -483,6 +483,7 @@ async function procesarSolicitudes(lista) {
         tx.update(refS, { estado: "preparar", contenido: pd.contenido || "", valor: pd.valor || 0, tipoEnvio: pd.tipoEnvio || "", recibido: Date.now() });
         if (refP && pre?.exists()) tx.update(refP, { usado: true, guia: "", nacional: true });
       });
+      enviarOrdenSkx(sol.id, true);
     } catch (e) { console.warn("solicitud nacional", sol.id, e); }
   }
   if (!S.recogida || S.recogida.lat == null) { procesando = false; return; }
@@ -1126,9 +1127,59 @@ $("#skxCiudadSug").addEventListener("click", e => { const b = e.target.closest("
 document.addEventListener("click", e => { if (!e.target.closest("#skxCiudad, #skxCiudadSug")) $("#skxCiudadSug").hidden = true; });
 /* ---------- PREPARAR ÓRDENES: clientes de otras ciudades, antes de crear la guía ---------- */
 const nombreTransp = id => T.ENVIO_TRANSP.find(t => t.id === id)?.n || id || "";
+const cortaRef = (t, max = 30) => { let x = String(t || "").replace(/\s+/g, " ").trim()
+  .replace(/conjunto( residencial)?/ig, "Conj.").replace(/torre/ig, "T").replace(/apartamento|apto\.?/ig, "Ap").replace(/barrio/ig, "B.").replace(/\s*·\s*/g, " ")
+  .replace(/\s+-\s+/g, " ").replace(/\b(de|del|la|el)\s+/ig, "").replace(/\b(T|Ap)\s+(\d)/g, "$1$2").replace(/\s+/g, " ").trim(); return x.length > max ? x.slice(0, max).trim() : x; };
+
+/* Envía la solicitud a Skydropx como ORDEN (sección "Órdenes" de Skydropx, para preparar allá).
+   Una transacción marca "enviando" para que dos paneles abiertos no la envíen dos veces. */
+async function enviarOrdenSkx(id, auto = false) {
+  const a = S.skx || {}, rem = a.remitente || {};
+  if (!rem.direccion || !/^\d{10}$/.test(rem.telefono || "")) { if (!auto) toast("Primero guarda los datos del remitente (Conexión y datos del remitente)"); return; }
+  const ref = doc(db, "solicitudes", id);
+  let x = null;
+  try {
+    await runTransaction(db, async tx => {
+      const sn = await tx.get(ref); if (!sn.exists()) return;
+      const d = sn.data();
+      if (d.estado !== "preparar" || d.ordenSkydropx) return;
+      if (d.enviando && Date.now() - d.enviando < 120000) return;
+      tx.update(ref, { enviando: Date.now() }); x = { id, ...d };
+    });
+  } catch (e) { console.warn("orden", id, e); }
+  if (!x) return;
+  const m = T.envBuscar(x.municipio || "")?.x;
+  const t = tiposSkx()[Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)] || TIPOS_BASE[0];
+  const contenido = x.contenido || (/juego/i.test(t.n) ? "Videojuego" : t.n);
+  const transp = nombreTransp(x.transportadora);
+  const nota = `Transportadora elegida por el cliente: ${transp || "sin elegir"}`;
+  const dir = (p) => ({
+    address: p.dir, street1: p.dir, internal_number: "", reference: cortaRef(p.ref) || "N/A", sector: p.barrio || p.ciudad,
+    city: p.ciudad, state: p.depto, postal_code: p.cp || "", zip: p.cp || "", country: "CO", country_code: "co",
+    area_level1: quitarTildes(p.depto), area_level2: quitarTildes(p.ciudad), area_level3: quitarTildes(p.barrio || p.ciudad),
+    person_name: p.nombre, name: p.nombre, company: p.empresa || p.nombre, phone: p.tel, email: p.correo || "ventas@pipegames.com.co"
+  });
+  const cuerpo = { order: {
+    reference: "PG-" + id.slice(0, 10), reference_number: id, payment_status: "paid", total_price: String(t.v || 0), platform: "Pipe Games",
+    notes: nota, comments: nota,
+    parcels: [{ weight: t.kg, length: t.l, width: t.a, height: t.h, quantity: 1, dimension_unit: "CM", mass_unit: "KG", package_type: S.skx?.tipoPaquete || "package", consignment_note: contenido, declared_value: t.v || 0 }],
+    products: [{ name: contenido, sku: "PG", price: String(t.v || 0), quantity: 1 }],
+    shipper_address: dir({ nombre: rem.nombre || "Pipe Games", empresa: rem.nombre || "Pipe Games", tel: rem.telefono, correo: rem.correo, dir: rem.direccion, ref: rem.barrio, barrio: rem.barrio, ciudad: rem.ciudad || "Bogotá", depto: rem.depto || "Cundinamarca", cp: rem.cp }),
+    recipient_address: dir({ nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo, dir: x.direccion, ref: [x.complemento, x.barrio ? "Barrio " + x.barrio : ""].filter(Boolean).join(" · "), barrio: x.barrio, ciudad: m?.c || (x.municipio || "").split(" - ")[0], depto: m?.d || (x.municipio || "").split(" - ")[1] || "" })
+  } };
+  try {
+    const r = await skx("POST", "/orders", cuerpo);
+    const oid = String(hallar(r, "id") || "");
+    await updateDoc(ref, { ordenSkydropx: oid || "creada", estado: "skydropx", enviando: null, errorSkydropx: null, enviadoSkydropx: Date.now() });
+    toast(`Orden de ${C.primerNombre(titulo(x.nombre))} (${(x.municipio || "").split(" - ")[0]}) enviada a Skydropx → Órdenes`); sonido();
+  } catch (e) {
+    await updateDoc(ref, { enviando: null, errorSkydropx: String(e.message || e).slice(0, 400) }).catch(() => {});
+    if (!auto) toast("Skydropx no recibió la orden: " + (e.message || e));
+  }
+}
 let skxSolicitud = null, skxPref = "";
 function ordenesPrep() {
-  const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo || "", ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.ciudadOriginal ? `marcó ${C.CIUDADES[x.ciudadOriginal]?.nombre || x.ciudadOriginal} pero la dirección es en ${(x.municipio || "").split(" - ")[0]}: revisa ciudad y transportadora` : "", x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario", erronea: x.guiaErronea && S.guias[x.guiaErronea] ? x.guiaErronea : "" }));
+  const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo || "", error: x.errorSkydropx || "", ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.ciudadOriginal ? `marcó ${C.CIUDADES[x.ciudadOriginal]?.nombre || x.ciudadOriginal} pero la dirección es en ${(x.municipio || "").split(" - ")[0]}: revisa ciudad y transportadora` : "", x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario", erronea: x.guiaErronea && S.guias[x.guiaErronea] ? x.guiaErronea : "" }));
   const res = Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida)
     .map(([id, r]) => { const c = r.confirmacion; return { tipo: "res", id, nombre: titulo(r.nombre), tel: c.telefono, correo: c.correo || "", ciudad: c.ciudad || "", dir: c.direccion, comp: c.complemento, barrio: c.barrio, transp: c.transportadora || "", extra: `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""} · pagó por ${c.metodoTxt || c.metodo || ""}`, t: c.t, origen: "Link de saldo" }; });
   return [...sol, ...res].sort((a, b) => a.t - b.t);
@@ -1139,12 +1190,14 @@ function pintarPrep() {
   $("#skxPrep").innerHTML = l.length ? l.map(o => `<div class="item${(o.tipo === "sol" ? skxSolicitud : skxReserva) === o.id ? " sel" : ""}"><div class="arriba"><span><b>${esc(o.nombre)}</b> · ${esc(o.ciudad || "sin municipio")}</span><span class="pill">${o.transp ? esc(o.transp) : "Sin transportadora"}</span></div>
       <div class="meta">${esc(o.dir || "")}${o.comp ? " · " + esc(o.comp) : ""}${o.barrio ? " · Barrio " + esc(o.barrio) : ""} · ${esc(o.tel || "")}${o.correo ? " · " + esc(o.correo) : ""}</div>
       <div class="meta">${o.extra ? esc(o.extra) + " · " : ""}${o.origen} · ${C.hace(o.t)}</div>
+      ${o.error ? `<div class="aviso">Skydropx no recibió la orden: ${esc(o.error)}</div>` : ""}
       ${o.erronea ? `<div class="aviso">Por error se creó la guía <b>${esc(o.erronea)}</b> como si fuera de Bogotá (la creó un panel abierto con la versión anterior). Ábrela y toca “Eliminar guía”. <button class="btn sec chico" type="button" data-verguia="${esc(o.erronea)}">Abrir guía ${esc(o.erronea)}</button></div>` : ""}
-      <div class="btns"><button class="btn chico" type="button" data-prep="${o.tipo}|${esc(o.id)}">Preparar</button><button class="btn sec chico" type="button" data-prepno="${o.tipo}|${esc(o.id)}">Descartar</button></div></div>`).join("")
+      <div class="btns">${o.tipo === "sol" ? `<button class="btn chico" type="button" data-orden="${esc(o.id)}">${o.error ? "Reintentar enviar a Skydropx" : "Enviar a Skydropx (Órdenes)"}</button>` : ""}<button class="btn ${o.tipo === "sol" ? "sec " : ""}chico" type="button" data-prep="${o.tipo}|${esc(o.id)}">Crear guía aquí</button><button class="btn sec chico" type="button" data-prepno="${o.tipo}|${esc(o.id)}">Descartar</button></div></div>`).join("")
     : `<div class="vacio">No hay órdenes por preparar.</div>`;
 }
 $("#skxPrep").addEventListener("click", async e => {
   const vg = e.target.closest("[data-verguia]"); if (vg) { abrirDetalle(vg.dataset.verguia); return; }
+  const od = e.target.closest("[data-orden]"); if (od) { od.disabled = true; od.textContent = "Enviando…"; await enviarOrdenSkx(od.dataset.orden); if (od.isConnected) { od.disabled = false; od.textContent = "Reintentar enviar a Skydropx"; } return; }
   const p = e.target.closest("[data-prep]"); if (p) { const [t, id] = p.dataset.prep.split("|"); prepararOrden(t, id); return; }
   const n = e.target.closest("[data-prepno]"); if (!n) return;
   const [t, id] = n.dataset.prepno.split("|");
@@ -1410,6 +1463,7 @@ function escuchar() {
     S.solicitudes = todas.filter(x => x.estado === "nueva");
     S.prepSol = todas.filter(x => x.estado === "preparar");
     pintarPrep(); notiYaVistas ? revisarNotis() : pintarNotis();
+    S.prepSol.filter(x => !x.errorSkydropx && !x.ordenSkydropx && !x.guiaErronea).forEach(x => enviarOrdenSkx(x.id, true));
     procesarSolicitudes(S.solicitudes);
   }, () => {}));
   // Reparación: solicitudes de otra ciudad que un panel con versión vieja convirtió en guía local
@@ -1422,7 +1476,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112h";
+const VERSION_PANEL = "20261112i";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
