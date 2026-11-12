@@ -7,7 +7,7 @@
 <meta name="description" content="Escribe tus datos de entrega para que te enviemos tu pedido.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112c">
+<link rel="stylesheet" href="estilos.css?v=20261112d">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 #mapa{height:min(42vh,360px);min-height:240px}
@@ -42,6 +42,7 @@
   <form class="panel" id="fEnvio" novalidate>
     <label>Nombre de quien recibe<input id="eNom" autocomplete="name" maxlength="80" required></label>
     <label>Celular<input id="eTel" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16" placeholder="3001234567" required></label>
+    <label><span>Correo electrónico <span class="nota" id="eMailNota">(opcional)</span></span><input id="eMail" type="email" inputmode="email" autocomplete="email" maxlength="100" placeholder="nombre@correo.com"></label>
     <div class="sug-caja"><label>Ciudad o municipio<input id="eCiudad" autocomplete="off" maxlength="80" value="Bogotá - Cundinamarca" placeholder="Ej. Medellín" required></label><div class="sugerencias" id="eCiudadSug" hidden></div></div>
     <div id="eTransp" hidden></div>
     <div class="sug-caja"><label>Dirección<input id="eDir" autocomplete="off" maxlength="120" placeholder="Ej. Calle 26 # 68-10" required></label><div class="sugerencias" id="eSug" hidden></div></div>
@@ -62,9 +63,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261112c";
-import * as C from "./comun.js?v=20261112c";
-import * as T from "./tarifas-envio.js?v=20261112c";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261112d";
+import * as C from "./comun.js?v=20261112d";
+import * as T from "./tarifas-envio.js?v=20261112d";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, setDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -114,6 +115,7 @@ function pintarCiudad() {
   const antes = claveLocal(env);
   env = T.envioDeCiudad($("#eCiudad").value);
   const local = claveLocal(env), nac = esNacional();
+  $("#eMailNota").textContent = nac ? "(para avisarte de tu guía)" : "(opcional)";
   $("#secMapa").hidden = !local;
   if (local) { setTimeout(() => mapa.invalidateSize(), 30); if (local !== antes && !pin) { const c = C.CIUDADES[local]; mapa.setView([c.centro.lat, c.centro.lng], 13); } }
   const box = $("#eTransp");
@@ -230,13 +232,15 @@ $("#fEnvio").onsubmit = async e => {
   env = T.envioDeCiudad($("#eCiudad").value);
   const nac = esNacional();
   const datos = {
-    nombre: $("#eNom").value.trim(), telefono: tel, ciudad: nac ? "nacional" : ciudad(),
+    nombre: $("#eNom").value.trim(), telefono: tel, correo: $("#eMail").value.trim().toLowerCase(), ciudad: nac ? "nacional" : ciudad(),
     direccion: nac ? $("#eDir").value.trim() : C.quitarCiudad($("#eDir").value.trim()), complemento: $("#eComp").value.trim(), barrio: $("#eBarrio").value.trim(),
     lat: nac ? null : pin?.lat ?? null, lng: nac ? null : pin?.lng ?? null, pedido, estado: "nueva", creado: Date.now()
   };
   if (nac) { datos.municipio = env.ciudad; datos.transportadora = transp; }
   if (datos.nombre.length < 2) return error("Escribe el nombre de quien recibe.", "#eNom");
   if (!/^\d{10}$/.test(tel)) return error("Escribe un celular de 10 dígitos.", "#eTel");
+  if (datos.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(datos.correo)) return error("Revisa el correo electrónico.", "#eMail");
+  if (nac && !datos.correo) return error("Escribe tu correo electrónico: la transportadora te envía ahí el número de guía.", "#eMail");
   if (!nac && !claveLocal(env)) return error("Escribe tu ciudad o municipio y elígelo de la lista.", "#eCiudad");
   if (nac && !transp) return error("Elige con qué transportadora te lo enviamos.");
   if (datos.direccion.length < 4) return error("Escribe la dirección.", "#eDir");
