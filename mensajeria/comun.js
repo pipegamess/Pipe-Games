@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111b";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111c";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -272,6 +272,8 @@ export async function huellaAcceso(numeroDocumento) {
   return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, "0")).join("");
 }
 export const idRastreo = g => `${g.numero}_${g.clave}`;
+// Formulario donde el cliente escribe sus datos de envío (misma carpeta que el rastreo)
+export const URL_ENVIO = URL_RASTREO.replace(/rastreo\.html$/, "envio.html");
 export const linkRastreo = g => `${URL_RASTREO}?g=${encodeURIComponent(g.numero)}&c=${encodeURIComponent(g.clave || "")}`;
 
 // Número colombiano a formato internacional para WhatsApp.

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261111b">
+<link rel="stylesheet" href="estilos.css?v=20261111c">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -171,6 +171,15 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <section class="panel" id="t-nueva" hidden>
         <div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2>Nueva guía</h2>
           <label class="formato" for="fmtImp">Formato de impresión <select id="fmtImp"><option value="etiqueta">Etiqueta 10 × 15 cm</option><option value="carta">Hoja carta</option></select></label></div>
+        <details class="item" id="formCli">
+          <summary style="cursor:pointer"><b>Formulario para que el cliente llene sus datos</b> <span class="nota">· la guía se crea sola</span></summary>
+          <p class="nota" style="margin:6px 0">Envíale al cliente el link por WhatsApp. Él escribe nombre, celular, dirección, complemento y barrio, y marca su casa en el mapa. Al enviarlo, la guía se crea sola mientras este panel esté abierto (en cualquier equipo) y te llega a la campana.</p>
+          <div class="fila"><label>Tipo de envío<select id="fcTipo"><option>Directo</option><option>Contra entrega</option><option>Otros</option></select></label><label id="fcLVal" hidden>Valor a cobrar<input id="fcVal" inputmode="numeric" placeholder="150000"></label></div>
+          <label>Contenido (opcional)<input id="fcCont" placeholder="Ej. Control PS5"></label>
+          <div class="btns"><button class="btn chico" type="button" id="fcCrear">Crear link y copiar mensaje</button><button class="btn sec chico" type="button" id="fcGen">Copiar link general</button></div>
+          <p class="nota" style="margin:0">El link personalizado sirve una sola vez y lleva el tipo de envío, el cobro y el contenido. El link general sirve para cualquiera y crea guías “Directo · Sin cobro”.</p>
+          <div id="fcRes"></div>
+        </details>
         <div class="item ml-caja" id="mlCaja">
           <b>Etiquetas de Mercado Libre y Falabella</b>
           <span class="nota">Arrastra aquí los PDF de etiquetas que descargas de Mercado Libre (Flex) o de Falabella (Despacho directo), o toca el botón. Las guías se crean solas y el mensajero las recibe escaneando el código de esa misma etiqueta.</span>
@@ -263,8 +272,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111b";
-import * as C from "./comun.js?v=20261111b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111c";
+import * as C from "./comun.js?v=20261111c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -281,12 +290,12 @@ const S = { guias: {}, ubic: {}, mens: {}, inv: [], entregas: [], tab: "guias", 
 let subs = [];
 
 /* ---------- NOTIFICACIONES (campana): entregas y novedades que reportan los mensajeros ---------- */
-const TIPOS_NOTI = { entregada: { ic: "✅", txt: "entregada" }, novedad: { ic: "⚠️", txt: "con novedad" } };
+const TIPOS_NOTI = { entregada: { ic: "✅", txt: "entregada" }, novedad: { ic: "⚠️", txt: "con novedad" }, disponible: { ic: "🆕", txt: "creada por el cliente (formulario)" } };
 let notiYaVistas = null; // claves de avisos ya conocidos (para avisar solo de los nuevos)
 function listaNotis() {
   const l = [];
   Object.values(S.guias).forEach(g => (g.eventos || []).forEach(e => {
-    if (TIPOS_NOTI[e.estado] && e.por !== "despacho") l.push({ g, e, k: g.numero + "|" + e.estado + "|" + e.t });
+    if (TIPOS_NOTI[e.estado] && e.por !== "despacho" && (e.estado !== "disponible" || e.por === "Formulario web")) l.push({ g, e, k: g.numero + "|" + e.estado + "|" + e.t });
   }));
   return l.sort((a, b) => b.e.t - a.e.t).slice(0, 40);
 }
@@ -298,7 +307,7 @@ function pintarNotis() {
   const el = $("#listaNoti");
   if (el.hidden) return;
   el.innerHTML = `<div class="cab-noti"><b>Notificaciones</b>${nuevas ? `<button class="btn sec chico" id="notiLeidas">Marcar todas como leídas</button>` : ""}</div>`
-    + (l.length ? l.map(({ g, e }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
+    + (l.length ? l.map(({ g, e }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por && e.por !== "Formulario web" ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
       : `<div class="vacio" style="margin:12px">Aquí aparecerán las entregas y novedades que marquen los mensajeros.</div>`);
 }
 async function marcarNotisLeidas() {
@@ -317,8 +326,7 @@ function revisarNotis() {
   if (notiYaVistas) {
     const nuevas = l.filter(x => !notiYaVistas.has(x.k) && Date.now() - x.e.t < 30 * 60e3);
     nuevas.slice(0, 3).forEach(({ g, e }) => {
-      const t = `${TIPOS_NOTI[e.estado].ic} ${g.numero} ${TIPOS_NOTI[e.estado].txt}${e.por ? " por " + C.primerNombre(e.por) : ""}`;
-      toast(t);
+      if (e.estado !== "disponible") toast(`${TIPOS_NOTI[e.estado].ic} ${g.numero} ${TIPOS_NOTI[e.estado].txt}${e.por ? " por " + C.primerNombre(e.por) : ""}`);
       if (document.hidden && "Notification" in window && Notification.permission === "granted") {
         try { const n = new Notification("Mensajería · " + (e.estado === "entregada" ? "Pedido entregado" : "Novedad"), { body: `${g.numero} · ${g.cliente || ""}`, tag: g.numero + e.estado }); n.onclick = () => { focus(); abrirDetalle(g.numero); n.close(); }; } catch {}
       }
@@ -345,6 +353,79 @@ document.addEventListener("click", e => {
   // El navegador solo deja sonar después de un clic en la página
   try { sonido.ctx ||= new (window.AudioContext || window.webkitAudioContext)(); sonido.ctx.resume(); } catch {}
 });
+
+/* ---------- FORMULARIO DEL CLIENTE (envio.html) ---------- */
+const URL_ENVIO = C.URL_ENVIO;
+$("#fcTipo").onchange = () => { $("#fcLVal").hidden = $("#fcTipo").value !== "Contra entrega"; };
+const msgFormulario = link => `Hola 👋 Para enviarte tu pedido, escribe tus datos de entrega aquí (menos de un minuto): ${link}`;
+$("#fcGen").onclick = () => copiar(msgFormulario(URL_ENVIO), "Mensaje con el link general copiado");
+$("#fcCrear").onclick = async () => {
+  const tipo = $("#fcTipo").value, valor = tipo === "Contra entrega" ? parseInt($("#fcVal").value.replace(/\D/g, ""), 10) || 0 : 0;
+  if (tipo === "Contra entrega" && !valor) { toast("Escribe el valor a cobrar"); $("#fcVal").focus(); return; }
+  const id = C.nuevoCodigo() + C.nuevoCodigo();
+  try {
+    await setDoc(doc(db, "prepedidos", id), { tipoEnvio: tipo, valor, contenido: $("#fcCont").value.trim(), usado: false, creado: Date.now() });
+    const link = URL_ENVIO + "?p=" + id;
+    $("#fcRes").innerHTML = `<div class="nota" style="margin-top:6px">Link: <a href="${esc(link)}" target="_blank" rel="noopener">${esc(link)}</a></div>`;
+    copiar(msgFormulario(link), "Mensaje copiado: pégalo en el chat del cliente");
+    $("#fcCont").value = ""; $("#fcVal").value = "";
+  } catch (err) { toast(C.mensajeError(err)); }
+};
+
+// Cada solicitud nueva se convierte en guía. Todo va en una transacción:
+// si el panel está abierto en dos equipos, solo uno la crea.
+let procesando = false;
+async function procesarSolicitudes(lista) {
+  if (procesando || !S.recogida || S.recogida.lat == null) return;
+  procesando = true;
+  for (const sol of lista) {
+    try {
+      // Freno contra abuso del link general: máximo 3 guías por celular en una hora
+      const recientes = Object.values(S.guias).filter(g => g.origenWeb && C.telWhatsApp(g.telefono) === C.telWhatsApp(sol.telefono) && Date.now() - g.creado < 36e5).length;
+      if (!sol.pedido && recientes >= 3) { await updateDoc(doc(db, "solicitudes", sol.id), { estado: "rechazada", motivo: "demasiadas solicitudes" }); continue; }
+      const rec = S.recogida, prefijo = C.prefijoTienda(rec.remitente);
+      let creada = null;
+      await runTransaction(db, async tx => {
+        const refS = doc(db, "solicitudes", sol.id), refA = doc(db, "usuarios", ADMIN_UID);
+        const sS = await tx.get(refS);
+        if (!sS.exists() || sS.data().estado !== "nueva") return;
+        const d = sS.data();
+        const refP = d.pedido ? doc(db, "prepedidos", d.pedido) : null;
+        const pre = refP ? await tx.get(refP) : null;
+        const pd = pre?.exists() && !pre.data().usado ? pre.data() : {};
+        const a = await tx.get(refA);
+        let k = (a.exists() ? a.data().consecutivos?.[prefijo] || 0 : 0) + 1;
+        let numero = C.numeroGuia(prefijo, k);
+        for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
+        const ciudad = C.CIUDADES[d.ciudad] ? d.ciudad : "bogota";
+        const p = { lat: d.lat, lng: d.lng }, loc = C.localidadEn(ciudad, p);
+        const tipo = pd.tipoEnvio || "Directo", valor = tipo === "Contra entrega" ? pd.valor || 0 : 0;
+        const g = {
+          numero, remitente: rec.remitente,
+          origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
+          cliente: d.nombre, telefono: d.telefono,
+          destino: { direccion: d.direccion, complemento: d.complemento || "", barrio: d.barrio || "", referencia: [d.complemento, d.barrio ? "Barrio " + d.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[ciudad].nombre, lat: d.lat, lng: d.lng, aprox: false, verificar: false },
+          contenido: pd.contenido || "", nota: "",
+          valor, cobro: valor ? "contraentrega" : "pagado", tipoEnvio: tipo, tipoEnvioOtro: "", marketplace: null,
+          zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
+          estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
+          origenWeb: true, solicitud: sol.id,
+          creado: Date.now(), actualizado: Date.now(),
+          eventos: [C.evento("disponible", "Datos enviados por el cliente", "Formulario web")]
+        };
+        g.clave = C.claveDeseada(g);
+        tx.set(refA, { consecutivos: { [prefijo]: k } }, { merge: true });
+        tx.set(doc(db, "guias", numero), g);
+        tx.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(g));
+        tx.update(refS, { estado: "creada", guia: numero, clave: g.clave });
+        if (refP && pre?.exists()) tx.update(refP, { usado: true, guia: numero, clave: g.clave });
+        creada = g;
+      });
+      if (creada) { toast(`🆕 Guía ${creada.numero} creada desde el formulario de ${C.primerNombre(creada.cliente)}`); sonido(); }
+    } catch (e) { console.warn("solicitud", sol.id, e); }
+  }
+  procesando = false;
+}
 
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
 async function copiar(texto, ok = "Copiado") { try { await navigator.clipboard.writeText(texto); toast(ok); } catch { prompt("Copia este texto:", texto); } }
@@ -402,9 +483,13 @@ function escuchar() {
   subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubic = {}; s.forEach(d => S.ubic[d.id] = d.data()); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); pintar(); }, err));
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
+  subs.push(onSnapshot(query(collection(db, "solicitudes"), where("estado", "==", "nueva")), s => {
+    S.solicitudes = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.creado - b.creado);
+    procesarSolicitudes(S.solicitudes);
+  }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */
