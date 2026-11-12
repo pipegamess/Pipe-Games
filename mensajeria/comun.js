@@ -412,3 +412,19 @@ export const METODOS_PAGO = [
   { id: "siste", t: "Sistecrédito · Pago a cuotas", d: "Recargo 5% · requiere cédula y correo", calc: b => Math.ceil(b / (1 - 0.05)), credito: true },
   { id: "contraentrega", t: "Contra entrega", d: "Paga al recibir · efectivo o Nequi", calc: b => b }
 ];
+
+// Detecta otra ciudad escrita al final de la dirección ("Calle 10 # 40-20, Medellín") o como barrio.
+// Solo ciudades con tarifa en el catálogo (menos falsos positivos); nunca Bogotá, Chía ni Soacha.
+export function ciudadEnDireccion(T, direccion, barrio = "") {
+  const LOC = ["bogota", "chia", "soacha"];
+  const cand = [];
+  const partes = String(direccion || "").split(/,|\s-\s/);
+  if (partes.length > 1) cand.push(T.envNorm(partes[partes.length - 1]));
+  if (barrio) cand.push(T.envNorm(barrio));
+  for (const seg of cand) {
+    if (!seg || /^ciudad de/.test(seg)) continue;
+    const m = T.ENVIO_MUNI.find(x => x.tar && !x.tar.local && !LOC.includes(x.k) && (seg === x.k || seg === x.k + " " + x.kd || seg.startsWith(x.k + " ")));
+    if (m) return m;
+  }
+  return null;
+}

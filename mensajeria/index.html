@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112e">
+<link rel="stylesheet" href="estilos.css?v=20261112f">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -370,9 +370,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112e";
-import * as C from "./comun.js?v=20261112e";
-import * as T from "./tarifas-envio.js?v=20261112e";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112f";
+import * as C from "./comun.js?v=20261112f";
+import * as T from "./tarifas-envio.js?v=20261112f";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -488,6 +488,12 @@ async function procesarSolicitudes(lista) {
   if (!S.recogida || S.recogida.lat == null) { procesando = false; return; }
   for (const sol of lista.filter(x => x.ciudad !== "nacional")) {
     try {
+      // Dirección de otra ciudad con Bogotá/Chía/Soacha elegida (o formulario viejo en caché): no se crea guía local
+      const otra = C.ciudadEnDireccion(T, sol.direccion, sol.barrio);
+      if (otra) {
+        await updateDoc(doc(db, "solicitudes", sol.id), { ciudad: "nacional", municipio: T.envEtiqueta(otra), transportadora: "", lat: null, lng: null, estado: "preparar", ciudadOriginal: sol.ciudad, recibido: Date.now() });
+        continue;
+      }
       // Freno contra abuso del link general: máximo 3 guías por celular en una hora
       const recientes = Object.values(S.guias).filter(g => g.origenWeb && C.telWhatsApp(g.telefono) === C.telWhatsApp(sol.telefono) && Date.now() - g.creado < 36e5).length;
       if (!sol.pedido && recientes >= 3) { await updateDoc(doc(db, "solicitudes", sol.id), { estado: "rechazada", motivo: "demasiadas solicitudes" }); continue; }
@@ -1122,7 +1128,7 @@ document.addEventListener("click", e => { if (!e.target.closest("#skxCiudad, #sk
 const nombreTransp = id => T.ENVIO_TRANSP.find(t => t.id === id)?.n || id || "";
 let skxSolicitud = null, skxPref = "";
 function ordenesPrep() {
-  const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo || "", ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario", erronea: x.guiaErronea && S.guias[x.guiaErronea] ? x.guiaErronea : "" }));
+  const sol = (S.prepSol || []).map(x => ({ tipo: "sol", id: x.id, nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo || "", ciudad: x.municipio || "", dir: x.direccion, comp: x.complemento, barrio: x.barrio, transp: nombreTransp(x.transportadora), extra: [x.ciudadOriginal ? `marcó ${C.CIUDADES[x.ciudadOriginal]?.nombre || x.ciudadOriginal} pero la dirección es en ${(x.municipio || "").split(" - ")[0]}: revisa ciudad y transportadora` : "", x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "cobrar " : "") + C.cop(x.valor) : ""].filter(Boolean).join(" · "), t: x.creado, origen: "Formulario", erronea: x.guiaErronea && S.guias[x.guiaErronea] ? x.guiaErronea : "" }));
   const res = Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida)
     .map(([id, r]) => { const c = r.confirmacion; return { tipo: "res", id, nombre: titulo(r.nombre), tel: c.telefono, correo: c.correo || "", ciudad: c.ciudad || "", dir: c.direccion, comp: c.complemento, barrio: c.barrio, transp: c.transportadora || "", extra: `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""} · pagó por ${c.metodoTxt || c.metodo || ""}`, t: c.t, origen: "Link de saldo" }; });
   return [...sol, ...res].sort((a, b) => a.t - b.t);
