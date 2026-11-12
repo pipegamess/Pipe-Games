@@ -1095,7 +1095,7 @@ $("#skxCotizar").onclick = async () => {
     const vTo = variantes(d.m.c, d.m.d, d.dest.barrio, "");
     let iF = Math.max(0, S.skx?.variante ?? 0), iT = 0, q = null, ultimoError = null;
     for (let intento = 0; intento < 16; intento++) {
-      const cuerpo = { quotation: { address_from: vFrom[Math.min(iF, vFrom.length - 1)], address_to: vTo[Math.min(iT, vTo.length - 1)], parcel: d.paquete, declared_amount: d.valor } };
+      const cuerpo = { quotation: { address_from: vFrom[Math.min(iF, vFrom.length - 1)], address_to: vTo[Math.min(iT, vTo.length - 1)], parcels: [{ ...d.paquete, declared_amount: d.valor }], declared_amount: d.valor } };
       try { q = await skx("POST", "/quotations", cuerpo); break; }
       catch (err) {
         ultimoError = err; const msg = String(err.message || "");
