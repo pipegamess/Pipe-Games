@@ -184,14 +184,17 @@ A.onAuthStateChanged(auth, async user => {
   escuchar();
   $("#barra").hidden = false;
   if (!location.hash || ["#ingreso", "#registro"].includes(location.hash)) location.hash = "#inicio";
-  if (ls.get("turno") === "1") iniciarTurno(true);
+  if (ls.get("turno") === "1") {
+    if ((S.perfil.finTurno || 0) > (Number(ls.get("inicioTurno")) || 0)) { ls.set("turno", "0"); toast("Despacho terminó tu turno mientras la app estaba cerrada."); }
+    else iniciarTurno(true);
+  }
   ruta();
   // Recién instalada o con permisos pendientes: mostrar la pantalla de permisos
   if (await revisarPermisos()) { if (faltantes().some(p => p.clave)) location.hash = "#permisos"; else ruta(true); }
 });
 function escuchar() {
   const uid = S.u.uid;
-  subs.push(onSnapshot(doc(db, "usuarios", uid), s => { if (s.exists()) { S.perfil = s.data(); if (!S.perfil.activo) { terminarTurno(); A.signOut(auth); } } }));
+  subs.push(onSnapshot(doc(db, "usuarios", uid), s => { if (s.exists()) { S.perfil = s.data(); if (!S.perfil.activo) { terminarTurno(); A.signOut(auth); } else if (desconectadoPorDespacho()) finPorDespacho(); } }));
   subs.push(onSnapshot(query(collection(db, "guias"), where("mensajeroId", "==", uid)), s => { S.mios = s.docs.map(d => ({ numero: d.id, ...d.data() })); ruta(true); }, e => toast(C.mensajeError(e))));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), where("mensajeroId", "==", uid)), s => { S.entregas = s.docs.map(d => d.data()); ruta(true); }, () => {}));
 }
@@ -239,6 +242,28 @@ async function enviarUbicacion(lat, lng, precision, forzar = false) {
     S.ultimaSenal = ahora; S.errorSenal = "";
   } catch (e) { S.errorSenal = String(e.message || e); }
   enviando = 0;
+  revisarDesconexion();
+}
+// Despacho puede terminar el turno desde el panel (campo finTurno del perfil).
+// En segundo plano el listener puede dormirse, así que cada 5 minutos se consulta por HTTP.
+let ultimaRevisionFin = 0;
+const desconectadoPorDespacho = (fin = S.perfil?.finTurno) => !!S.turno && (fin || 0) > (S.inicioTurno || 0);
+async function revisarDesconexion() {
+  if (!S.turno || !Http || Date.now() - ultimaRevisionFin < 5 * 60000) return;
+  ultimaRevisionFin = Date.now();
+  try {
+    const r = await conLimite(Http.request({ method: "GET",
+      url: `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/usuarios/${S.u.uid}?mask.fieldPaths=finTurno`,
+      headers: { Authorization: "Bearer " + await token() } }), 15000, "servidor");
+    const d = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+    const fin = Number(d?.fields?.finTurno?.integerValue || d?.fields?.finTurno?.doubleValue || 0);
+    if (desconectadoPorDespacho(fin)) finPorDespacho();
+  } catch {}
+}
+function finPorDespacho() {
+  terminarTurno();
+  toast("Despacho terminó tu turno. Si sigues trabajando, inicia turno otra vez.");
+  try { Notif?.schedule({ notifications: [{ id: 7, title: "Turno terminado por despacho", body: "Si sigues trabajando, abre la app e inicia turno otra vez." }] }); } catch {}
 }
 async function iniciarTurno(silencioso = false) {
   if (S.turno) return;
@@ -265,7 +290,10 @@ async function iniciarTurno(silencioso = false) {
       if (location.hash === "#inicio") pintarInicio();
     });
     S.turno = true; S.sinPermiso = false; ls.set("turno", "1");
-    await setDoc(doc(db, "ubicaciones", S.u.uid), { enTurno: true, nombre: S.perfil.nombre, inicio: Date.now() }, { merge: true });
+    // Al reabrir la app (silencioso) se conserva la hora de inicio original
+    S.inicioTurno = silencioso && Number(ls.get("inicioTurno")) ? Number(ls.get("inicioTurno")) : Date.now();
+    ls.set("inicioTurno", String(S.inicioTurno));
+    await setDoc(doc(db, "ubicaciones", S.u.uid), { enTurno: true, nombre: S.perfil.nombre, inicio: S.inicioTurno }, { merge: true });
     if (!silencioso) toast("Turno iniciado");
   } catch (e) { toast("No se pudo iniciar el turno: " + C.mensajeError(e)); }
   ruta(true);

@@ -411,6 +411,23 @@ async function procesarSolicitudes(lista) {
   procesando = false;
 }
 
+/* ---------- desconectar mensajero (si olvidó terminar turno) ---------- */
+// Despacho no puede escribir la ubicación del mensajero; deja la marca finTurno en su perfil.
+// Aquí se muestra fuera de turno de inmediato, y la app termina el turno al enterarse.
+function aplicarDesconexiones() {
+  S.ubic = {};
+  Object.entries(S.ubicRaw || {}).forEach(([id, u]) => {
+    const fin = S.mens?.[id]?.finTurno || 0;
+    S.ubic[id] = u.enTurno && fin > (u.inicio || 0) ? { ...u, enTurno: false, desconectado: true } : u;
+  });
+}
+async function desconectarMensajero(id, b) {
+  if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para desconectar"; return; }
+  b.disabled = true;
+  try { await updateDoc(doc(db, "usuarios", id), { finTurno: Date.now() }); toast(`${C.primerNombre(S.mens[id]?.nombre || "Mensajero")} quedó fuera de turno`); }
+  catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
+}
+
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
 async function copiar(texto, ok = "Copiado") { try { await navigator.clipboard.writeText(texto); toast(ok); } catch { prompt("Copia este texto:", texto); } }
 
@@ -464,8 +481,8 @@ function escuchar() {
   subs.push(onSnapshot(query(collection(db, "guias"), orderBy("creado", "desc"), limit(500)), s => {
     S.guias = {}; s.forEach(d => S.guias[d.id] = { numero: d.id, ...d.data() }); pintar(); migrarClaves(); revisarNotis();
   }, err));
-  subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubic = {}; s.forEach(d => S.ubic[d.id] = d.data()); pintar(); }, err));
-  subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); pintar(); }, err));
+  subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubicRaw = {}; s.forEach(d => S.ubicRaw[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
+  subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
   subs.push(onSnapshot(query(collection(db, "solicitudes"), where("estado", "==", "nueva")), s => {
     S.solicitudes = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.creado - b.creado);
@@ -1414,7 +1431,7 @@ function pintarMensajeros() {
     return `<div class="item${S.verMens === id ? " viendo" : ""}"><div class="arriba"><span><button class="btn-nombre" data-vermens="${id}" title="Ver en el mapa"><b>${esc(m.nombre)}</b></button> <span class="meta">· ${esc(m.placa)}</span></span><span class="pill ${est[0]}">${est[1]}</span></div>
       <div class="meta">${esc(m.telefono)} · ${esc(m.email)} · cédula ${esc(m.cedula)}</div>
       <div class="meta">${act} pedido${act === 1 ? "" : "s"} en curso · última ubicación ${C.hace(u?.t)}</div>
-      <div class="btns">${u?.lat != null ? `<button class="btn chico" data-vermens="${id}">📍 Ver en el mapa</button>` : ""}<button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button></div></div>`;
+      <div class="btns">${u?.lat != null ? `<button class="btn chico" data-vermens="${id}">📍 Ver en el mapa</button>` : ""}${u?.enTurno ? `<button class="btn sec chico" data-desconectar="${id}" title="Termina su turno si olvidó hacerlo en la app">Desconectar</button>` : ""}<button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button></div></div>`;
   }).join("") : `<div class="vacio">Aún no hay mensajeros. Genera una invitación y envíasela.</div>`;
   const pend = S.inv.filter(i => !i.usada).sort((a, b) => b.creada - a.creada);
   $("#listaInv").innerHTML = pend.length ? pend.map(i => `<div class="item"><div class="arriba"><span class="guia">${esc(i.codigo)}</span><span class="meta">creada ${C.fecha(i.creada)}</span></div>
@@ -1460,6 +1477,7 @@ $("#genInv").onclick = async () => {
 };
 $("#t-mensajeros").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.desconectar) return desconectarMensajero(b.dataset.desconectar, b);
   if (b.dataset.vermens) return verMensajero(S.verMens === b.dataset.vermens ? null : b.dataset.vermens);
   if (b.dataset.copinv) return copiar(textoInvitacion(b.dataset.copinv), "Mensaje copiado. Pégalo en WhatsApp.");
   if (b.dataset.delinv) { try { await deleteDoc(doc(db, "invitaciones", b.dataset.delinv)); } catch (err) { toast(C.mensajeError(err)); } return; }
