@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112u">
+<link rel="stylesheet" href="estilos.css?v=20261112v">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -227,10 +227,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div id="skxTarifas"></div>
             <div id="skxRes"></div>
             <details><summary class="nota" style="cursor:pointer">Ver respuesta técnica de Skydropx</summary><pre id="skxRaw" style="white-space:pre-wrap;font-size:11px;max-height:260px;overflow:auto"></pre></details>
-            <h3 style="margin:6px 0 0">Órdenes enviadas a Skydropx</h3>
-            <div class="lista" id="skxOrdenes"></div>
-            <h3 style="margin:6px 0 0">Guías nacionales creadas</h3>
-            <div class="lista" id="skxLista"></div>
+            <details class="item plegable" id="plOrdenes" open><summary style="cursor:pointer"><b>Órdenes enviadas a Skydropx</b> <span class="pill" id="skxOrdenesN">0</span> <span class="nota">· toca para mostrar u ocultar</span></summary>
+              <div class="lista" id="skxOrdenes" style="margin-top:8px"></div></details>
+            <details class="item plegable" id="plGuiasSkx" open><summary style="cursor:pointer"><b>Guías nacionales creadas</b> <span class="pill" id="skxListaN">0</span> <span class="nota">· toca para mostrar u ocultar</span></summary>
+              <div class="lista" id="skxLista" style="margin-top:8px"></div></details>
           </div>
         </details>
         <div class="item ml-caja solo-maestro" id="mlCaja">
@@ -388,9 +388,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112u";
-import * as C from "./comun.js?v=20261112u";
-import * as T from "./tarifas-envio.js?v=20261112u";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112v";
+import * as C from "./comun.js?v=20261112v";
+import * as T from "./tarifas-envio.js?v=20261112v";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1403,7 +1403,13 @@ $("#skxTarifas").addEventListener("click", async e => {
     skxCot = null; limpiarOrden();
   } catch (err) { toast("No se pudo crear la guía: " + (err.message || err)); b.disabled = false; b.textContent = "Crear guía en Skydropx"; }
 });
+// Mostrar u ocultar las listas de Skydropx; se recuerda en este equipo
+document.querySelectorAll("details.plegable").forEach(d => {
+  try { const v = localStorage.getItem("pg_pl_" + d.id); if (v !== null) d.open = v === "1"; } catch {}
+  d.addEventListener("toggle", () => { try { localStorage.setItem("pg_pl_" + d.id, d.open ? "1" : "0"); } catch {} });
+});
 function pintarSkxOrdenes() {
+  $("#skxOrdenesN").textContent = Object.keys(S.skxOrdenes || {}).length;
   const l = Object.entries(S.skxOrdenes || {}).map(([k, o]) => ({ k, ...o })).sort((a, b) => b.t - a.t).slice(0, 20);
   $("#skxOrdenes").innerHTML = l.length ? l.map(o => `<div class="item"><div class="arriba"><span><b>${esc(o.cliente)}</b> · ${esc(o.ciudad)}</span><span class="pill">${esc(o.transportadora || "Sin transportadora")}</span></div>
       <div class="meta">Orden ${esc(o.orden || "")} · ${C.fecha(o.t)}</div>
@@ -1428,6 +1434,7 @@ document.addEventListener("click", async e => {
   catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
 });
 function pintarSkxLista() {
+  $("#skxListaN").textContent = Object.keys(S.skxGuias || {}).length;
   const l = Object.entries(S.skxGuias || {}).map(([k, g]) => ({ k, ...g })).sort((a, b) => b.creado - a.creado).slice(0, 30);
   $("#skxLista").innerHTML = l.length ? l.map(g => `<div class="item"><div class="arriba"><span><b>${esc(g.cliente)}</b> · ${esc(g.ciudad)}</span><span class="pill ${g.guia ? "entregada" : "novedad"}">${g.guia ? esc(g.transportadora) : "Sin número aún"}</span></div>
       <div class="meta">${g.guia ? "Guía " + esc(g.guia) + " · " : ""}${C.cop(g.costo)} · ${C.fecha(g.creado)}</div>
@@ -1576,7 +1583,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112u";
+const VERSION_PANEL = "20261112v";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
