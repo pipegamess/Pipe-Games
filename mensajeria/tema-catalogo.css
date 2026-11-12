@@ -1,0 +1,14 @@
+/* Paleta y tipografía del catálogo Pipe Games (pipegames.com.co).
+   Se carga después de estilos.css en las páginas para clientes (formulario de envío y rastreo). */
+:root,:root:not([data-theme]){
+  --bg:#0a0a0f; --surface:#12121a; --ink:#e8e8f0; --muted:#8a8aa8; --line:#26263a;
+  --accent:#f5c400; --accent-ink:#0a0a0f; --route:#5b95e6; --chip:#1a1a26;
+  --ok:#00c896; --warn:#f5c400; --bad:#e84040;
+  --f-display:"Rajdhani","Arial Narrow",Arial,sans-serif; --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0a0a0f; --surface:#12121a; --ink:#e8e8f0; --muted:#8a8aa8; --line:#26263a;
+  --accent:#f5c400; --accent-ink:#0a0a0f; --route:#5b95e6; --chip:#1a1a26;
+  --ok:#00c896; --warn:#f5c400; --bad:#e84040; color-scheme:dark}}
+h1,.btn{text-transform:uppercase;letter-spacing:.06em}
+h1{font-weight:700}
