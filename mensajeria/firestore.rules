@@ -18,6 +18,12 @@ service cloud.firestore {
         && get(rutaUsuario()).data.activo == true;
     }
 
+    // Otra empresa con panel propio (básico): solo ve y maneja sus guías
+    function rutaEmpresa() { return /databases/$(database)/documents/empresas/$(request.auth.uid); }
+    function esEmpresa() {
+      return autenticado() && exists(rutaEmpresa()) && get(rutaEmpresa()).data.activo == true;
+    }
+
     function soloCambia(campos) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos);
     }
@@ -56,10 +62,44 @@ service cloud.firestore {
       );
     }
 
+    match /empresas/{uid} {
+      allow get: if esAdmin() || (autenticado() && request.auth.uid == uid);
+      allow list, delete: if esAdmin();
+      allow create: if autenticado() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nombre', 'prefijo', 'activo', 'invitacion', 'correo', 'creado'])
+        && request.resource.data.activo == true
+        && request.resource.data.invitacion is string
+        && exists(/databases/$(database)/documents/invitacionesEmpresa/$(request.resource.data.invitacion))
+        && get(/databases/$(database)/documents/invitacionesEmpresa/$(request.resource.data.invitacion)).data.usada == false
+        && getAfter(/databases/$(database)/documents/invitacionesEmpresa/$(request.resource.data.invitacion)).data.usadaPor == uid
+        && request.resource.data.nombre == get(/databases/$(database)/documents/invitacionesEmpresa/$(request.resource.data.invitacion)).data.empresa
+        && request.resource.data.prefijo is string && request.resource.data.prefijo.matches('^[A-Z0-9]{3,12}$');
+      // La empresa solo cambia sus ajustes; nunca su nombre, prefijo ni si está activa
+      allow update: if esAdmin() || (autenticado() && request.auth.uid == uid && resource.data.activo == true
+        && soloCambia(['recogida', 'consecutivos', 'notiVisto']));
+    }
+
+    match /invitacionesEmpresa/{codigo} {
+      allow list, create, delete: if esAdmin();
+      allow get: if autenticado();
+      allow update: if esAdmin() || (
+        autenticado()
+        && resource.data.usada == false
+        && request.resource.data.usada == true
+        && request.resource.data.usadaPor == request.auth.uid
+        && soloCambia(['usada', 'usadaPor', 'usadaEn'])
+        && getAfter(rutaEmpresa()).data.invitacion == codigo
+      );
+    }
+
     match /guias/{numero} {
-      allow read: if esAdmin() || esMensajero();
-      allow create, delete: if esAdmin();
-      allow update: if esAdmin() || (esMensajero() && (
+      allow read: if esAdmin() || esMensajero()
+        || (esEmpresa() && (resource == null || resource.data.empresa == request.auth.uid));
+      allow create: if esAdmin() || (esEmpresa() && request.resource.data.empresa == request.auth.uid);
+      allow delete: if esAdmin() || (esEmpresa() && resource.data.empresa == request.auth.uid);
+      allow update: if esAdmin()
+        || (esEmpresa() && resource.data.empresa == request.auth.uid && request.resource.data.empresa == request.auth.uid)
+        || (esMensajero() && (
         (resource.data.estado == 'disponible'
           && resource.data.mensajeroId == null
           && request.resource.data.estado == 'tomada'
@@ -78,8 +118,9 @@ service cloud.firestore {
     match /rastreo/{id} {
       allow get: if id.matches('^[A-Z0-9-]+_([0-9]{4}|[A-Z0-9]{6})$');
       allow list: if esAdmin();
-      allow create, delete: if esAdmin();
-      allow update: if esAdmin() || (
+      allow create: if esAdmin() || (esEmpresa() && getAfter(guiaDe(request.resource.data.numero)).data.empresa == request.auth.uid);
+      allow delete: if esAdmin() || (esEmpresa() && get(guiaDe(resource.data.numero)).data.empresa == request.auth.uid);
+      allow update: if esAdmin() || (esEmpresa() && getAfter(guiaDe(request.resource.data.numero)).data.empresa == request.auth.uid) || (
         esMensajero()
         && request.resource.data.mensajeroId == request.auth.uid
         && getAfter(guiaDe(request.resource.data.numero)).data.mensajeroId == request.auth.uid
@@ -138,19 +179,20 @@ service cloud.firestore {
 
     match /ubicaciones/{uid} {
       allow get: if esAdmin() || (autenticado() && request.auth.uid == uid) || resource.data.enTurno == true;
-      allow list: if esAdmin();
+      allow list: if esAdmin() || esEmpresa();
       allow write: if esMensajero() && request.auth.uid == uid;
     }
 
     match /fotos/{numero} {
-      allow get: if esAdmin() || (esMensajero() && get(guiaDe(numero)).data.mensajeroId == request.auth.uid);
+      allow get: if esAdmin() || (esMensajero() && get(guiaDe(numero)).data.mensajeroId == request.auth.uid)
+        || (esEmpresa() && get(guiaDe(numero)).data.empresa == request.auth.uid);
       allow create, update: if esAdmin() || (
         esMensajero()
         && get(/databases/$(database)/documents/guias/$(numero)).data.mensajeroId == request.auth.uid
         && request.resource.data.imagen is string
         && request.resource.data.imagen.size() < 900000
       );
-      allow delete: if esAdmin();
+      allow delete: if esAdmin() || (esEmpresa() && get(guiaDe(numero)).data.empresa == request.auth.uid);
     }
 
     match /entregasDinero/{id} {

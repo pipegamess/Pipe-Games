@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112s">
+<link rel="stylesheet" href="estilos.css?v=20261112t">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -140,6 +140,14 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <button class="btn" type="submit">Entrar</button>
       <div class="error" id="lError"></div>
     </form>
+    <details style="margin-top:12px"><summary class="nota" style="cursor:pointer">¿Eres una empresa nueva? Crear cuenta con código de invitación</summary>
+      <form id="fEmpresaNueva" class="lista" style="margin-top:8px">
+        <label>Código de invitación<input id="enCodigo" autocomplete="off" required></label>
+        <label>Correo de la empresa<input id="enCorreo" type="email" autocomplete="username" required></label>
+        <label>Contraseña (mínimo 6 caracteres)<input id="enClave" type="password" autocomplete="new-password" minlength="6" required></label>
+        <button class="btn" type="submit">Crear cuenta de empresa</button>
+        <div class="error" id="enError"></div>
+      </form></details>
   </div>
 </section>
 
@@ -164,7 +172,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <button role="tab" data-tab="guias" aria-selected="true">Guías</button>
         <button role="tab" data-tab="nueva" aria-selected="false">Nueva guía</button>
         <button role="tab" data-tab="mensajeros" aria-selected="false">Mensajeros</button>
-        <button role="tab" data-tab="recaudo" aria-selected="false">Recaudo</button>
+        <button role="tab" data-tab="recaudo" aria-selected="false" class="solo-maestro">Recaudo</button>
         <button role="tab" data-tab="cobros" aria-selected="false" class="solo-maestro">Cobros</button>
       </nav>
 
@@ -275,14 +283,16 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <section class="panel" id="t-mensajeros" hidden>
         <h2>Mensajeros</h2>
         <div class="lista" id="listaMens"></div>
+        <div class="solo-maestro lista">
         <h3>Invitaciones</h3>
         <p class="nota">Genera un código y envíaselo al mensajero junto con el link de la app. Cada código sirve para una sola cuenta.</p>
         <div class="btns"><button class="btn chico" id="genInv">Generar invitación</button></div>
         <div id="invNueva"></div>
         <div class="lista" id="listaInv"></div>
+        </div>
         <div class="solo-maestro lista" id="secAcceso">
         <h3>Contraseña de acceso al panel</h3>
-        <p class="nota">Antes de iniciar sesión, el panel pide el número de documento (NIT o cédula) de una empresa registrada aquí. Solo se guarda una huella cifrada, nunca el número. Pipe Games entra al <b>panel maestro</b> (todas las funciones). Las demás empresas entran al <b>panel básico</b>: guías, mensajeros y recaudo en Bogotá, Soacha y Chía; sin Skydropx, cobros, reservas, formulario de clientes ni marketplaces.</p>
+        <p class="nota">Antes de iniciar sesión, el panel pide el número de documento (NIT o cédula) de una empresa registrada aquí. Solo se guarda una huella cifrada, nunca el número. </p>
         <form id="fAccesoNuevo" class="lista">
           <label>Empresa<input id="acEmpresa" placeholder="Pipe Games" required></label>
           <label>Número de documento<input id="acDoc" type="password" inputmode="numeric" autocomplete="off" required></label>
@@ -290,6 +300,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div class="error" id="acError"></div>
         </form>
         <div class="lista" id="listaAcceso"></div>
+        <h3>Empresas con panel propio</h3>
+        <p class="nota">Cada empresa tiene su propia cuenta y solo ve sus guías: no ve las de Pipe Games ni las de otras empresas, y no puede pasar a panel maestro. Tiene las funciones básicas: crear guías en Bogotá, Soacha y Chía y ver dónde van los mensajeros. Genera un código, envíaselo, y la empresa crea su cuenta en el panel con “¿Eres una empresa nueva?”. Agrega también su número de documento arriba para que pase la contraseña de acceso.</p>
+        <form id="fInvEmpresa" class="lista"><label>Nombre de la empresa<input id="ieNombre" required maxlength="60"></label><button class="btn chico" type="submit">Generar código para empresa</button></form>
+        <div class="lista" id="listaEmpresas"></div>
         </div>
       </section>
 
@@ -374,12 +388,12 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112s";
-import * as C from "./comun.js?v=20261112s";
-import * as T from "./tarifas-envio.js?v=20261112s";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112t";
+import * as C from "./comun.js?v=20261112t";
+import * as T from "./tarifas-envio.js?v=20261112t";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
-const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
+const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
 const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
 const { getFirestore, collection, doc, getDoc, getDocs, onSnapshot, query, where, orderBy, limit, writeBatch, setDoc, deleteDoc, updateDoc, addDoc, deleteField, runTransaction } = F;
 
@@ -417,7 +431,7 @@ function pintarNotis() {
 }
 async function marcarNotisLeidas() {
   S.notiVisto = Date.now(); pintarNotis();
-  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { notiVisto: S.notiVisto }, { merge: true }); } catch {}
+  try { await setDoc(refYo(), { notiVisto: S.notiVisto }, { merge: true }); } catch {}
 }
 function sonido() {
   try {
@@ -1444,25 +1458,28 @@ $("#fLogin").onsubmit = async e => {
   try { await signInWithEmailAndPassword(auth, $("#lCorreo").value.trim(), $("#lClave").value); }
   catch (err) { $("#lError").textContent = C.mensajeError(err); }
 };
-$("#salir").onclick = () => { try { ["acceso", "modoPanel", "empresa"].forEach(k => localStorage.removeItem("pg_" + k)); } catch {} signOut(auth); };
+$("#salir").onclick = () => { try { ["acceso"].forEach(k => localStorage.removeItem("pg_" + k)); } catch {} signOut(auth); };
 
 // Primer candado: antes del inicio de sesión se pide el número de documento de la empresa.
 // Se recuerda en este equipo (no se vuelve a pedir) hasta tocar "Salir".
 const ss = { get: k => { try { return localStorage.getItem("pg_" + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem("pg_" + k, v); } catch {} } };
 let intentosAcceso = 0;
-// Panel maestro (Pipe Games, todas las funciones) o básico (otras empresas: solo guías en Bogotá, Soacha y Chía)
-const esMaestro = () => ss.get("modoPanel") !== "basico";
+// Panel maestro: la cuenta de Pipe Games (todas las funciones). Panel básico: cuenta de otra empresa
+// (colección empresas/{uid}); solo ve y crea sus guías en Bogotá, Soacha y Chía. Lo deciden la cuenta y las reglas.
+let YO = null, EMPRESA = null, creandoEmpresa = false;
+const esMaestro = () => YO === ADMIN_UID;
+const refYo = () => esMaestro() ? doc(db, "usuarios", ADMIN_UID) : doc(db, "empresas", YO);
+const esMia = g => esMaestro() ? !g.empresa : g.empresa === YO;
 function aplicarModo() {
   const m = esMaestro();
   document.body.classList.toggle("basico", !m);
-  $("#tituloPanel").innerHTML = m ? `Pipe <span class="marca">Games</span> · Panel maestro` : `${esc(ss.get("empresa") || "Mensajería")} · <span class="marca">Despacho</span>`;
+  $("#tituloPanel").innerHTML = m ? `Pipe <span class="marca">Games</span> · Panel maestro` : `${esc(EMPRESA?.nombre || "Empresa")} · <span class="marca">Despacho</span>`;
   if (!m && S.tab === "cobros") irA("guias");
 }
 async function mostrarIngreso() {
   $("#vPanel").hidden = true;
   let activo = false;
   if (ss.get("acceso") !== "ok") { try { activo = (await getDoc(doc(db, "acceso", "_activo"))).exists(); } catch {} }
-  if (!activo && ss.get("acceso") !== "ok") ss.set("modoPanel", "maestro"); // sin contraseña de empresas: es el dueño
   $("#vAcceso").hidden = !activo; $("#vLogin").hidden = activo;
   if (activo) $("#aClave").focus();
 }
@@ -1473,8 +1490,8 @@ $("#fAcceso").onsubmit = async e => {
   const b = e.submitter || $("#fAcceso button"); b.disabled = true;
   try {
     const sn = v.length >= 5 ? await getDoc(doc(db, "acceso", await C.huellaAcceso(v))) : null, ok = !!sn?.exists();
-    if (ok) { const da = sn.data() || {}; ss.set("acceso", "ok"); ss.set("empresa", da.empresa || ""); ss.set("modoPanel", (da.maestro ?? true) ? "maestro" : "basico"); $("#aClave").value = "";
-      if (auth.currentUser?.uid === ADMIN_UID) entrarPanel(auth.currentUser); else { $("#vAcceso").hidden = true; $("#vLogin").hidden = false; $("#lCorreo").focus(); } }
+    if (ok) { const da = sn.data() || {}; ss.set("acceso", "ok"); $("#aClave").value = "";
+      if (auth.currentUser) entrarPanel(auth.currentUser); else { $("#vAcceso").hidden = true; $("#vLogin").hidden = false; $("#lCorreo").focus(); } }
     else { intentosAcceso++; $("#aError").textContent = "Contraseña incorrecta."; }
   } catch { $("#aError").textContent = "No se pudo comprobar. Revisa tu conexión."; }
   b.disabled = false;
@@ -1483,15 +1500,20 @@ $("#fAcceso").onsubmit = async e => {
 onAuthStateChanged(auth, async u => {
   subs.forEach(f => f()); subs = [];
   if (!u) { mostrarIngreso(); return; }
+  if (creandoEmpresa) return; // la cuenta se está creando: el panel se recarga al terminar
+  YO = u.uid; EMPRESA = null;
   if (u.uid !== ADMIN_UID) {
-    $("#lError").textContent = "Esta cuenta no es de despacho. Los mensajeros usan la app de Android.";
-    await signOut(auth); return;
+    let e = null; try { const sn = await getDoc(doc(db, "empresas", u.uid)); e = sn.exists() ? sn.data() : null; } catch {}
+    if (!e || e.activo !== true) {
+      $("#lError").textContent = e ? "La cuenta de esta empresa está desactivada." : "Esta cuenta no es de despacho. Los mensajeros usan la app de Android.";
+      YO = null; await signOut(auth); return;
+    }
+    EMPRESA = e;
   }
   // Con contraseña de empresas activa, se pide también con la sesión ya iniciada (define maestro o básico)
   if (ss.get("acceso") !== "ok") {
     let activo = false; try { activo = (await getDoc(doc(db, "acceso", "_activo"))).exists(); } catch {}
     if (activo) { $("#vPanel").hidden = true; $("#vLogin").hidden = true; $("#vAcceso").hidden = false; $("#aClave").focus(); return; }
-    ss.set("modoPanel", "maestro");
   }
   entrarPanel(u);
 });
@@ -1505,11 +1527,22 @@ function entrarPanel(u) {
 
 function escuchar() {
   const err = e => toast(C.mensajeError(e));
-  subs.push(onSnapshot(query(collection(db, "guias"), orderBy("creado", "desc"), limit(500)), s => {
-    S.guias = {}; s.forEach(d => S.guias[d.id] = { numero: d.id, ...d.data() }); pintar(); pintarPrep(); migrarClaves(); revisarNotis();
+  // Cada panel ve solo sus guías: Pipe Games las que no tienen empresa; cada empresa las suyas
+  const qGuias = esMaestro() ? query(collection(db, "guias"), orderBy("creado", "desc"), limit(500)) : query(collection(db, "guias"), where("empresa", "==", YO), limit(500));
+  subs.push(onSnapshot(qGuias, s => {
+    S.guias = {}; s.forEach(d => { const g = { numero: d.id, ...d.data() }; if (esMia(g)) S.guias[d.id] = g; }); pintar(); pintarPrep(); migrarClaves(); revisarNotis();
   }, err));
-  subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubicRaw = {}; s.forEach(d => S.ubicRaw[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
+  subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubicRaw = {}; s.forEach(d => S.ubicRaw[d.id] = d.data());
+    // Las empresas no leen los perfiles de los mensajeros (datos personales): usan nombre y ubicación
+    if (!esMaestro()) { S.mens = {}; Object.entries(S.ubicRaw).forEach(([id, u]) => S.mens[id] = { nombre: u.nombre || "Mensajero", activo: true, placa: "", telefono: "", email: "", cedula: "" }); }
+    aplicarDesconexiones(); pintar(); }, err));
+  if (!esMaestro()) {
+    subs.push(onSnapshot(doc(db, "empresas", YO), s => { const d = s.exists() ? s.data() : {}; EMPRESA = d; S.recogida = d.recogida || null; S.notiVisto = d.notiVisto || 0; aplicarModo(); pintarNotis(); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+    return;
+  }
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
+  subs.push(onSnapshot(collection(db, "empresas"), s => { S.empresas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintarEmpresas(); }, () => {}));
+  subs.push(onSnapshot(collection(db, "invitacionesEmpresa"), s => { S.invEmp = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintarEmpresas(); }, () => {}));
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
   subs.push(onSnapshot(query(collection(db, "saldos"), where("estado", "==", "confirmado")), s => {
     S.saldosPend = s.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1534,7 +1567,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112s";
+const VERSION_PANEL = "20261112t";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -1983,7 +2016,7 @@ $("#rGuardar").onclick = async () => {
   if (!remitente || !direccion) { toast("Escribe el remitente y la dirección de recogida"); return; }
   if (!S.recPin) { toast("Marca el punto de recogida en el mapa"); return; }
   try {
-    await setDoc(doc(db, "usuarios", ADMIN_UID), { recogida: { remitente, direccion, lat: S.recPin.lat, lng: S.recPin.lng, localidad: C.localidadCercana(S.recPin) } }, { merge: true });
+    await setDoc(refYo(), { recogida: { remitente, direccion, lat: S.recPin.lat, lng: S.recPin.lng, localidad: C.localidadCercana(S.recPin) } }, { merge: true });
     S.editRec = false; S.recPin = null; toast("Punto de recogida guardado");
     pintarRecogida(); ajustado = ""; pintarMapa();
   } catch (err) { toast(C.mensajeError(err)); }
@@ -2289,8 +2322,10 @@ async function crearGuiasML() {
 // Consecutivo por tienda, guardado en el perfil de despacho: PIPEGAMES-00001, 00002…
 async function guardarNuevaGuia(g, prefijo) {
   let numero = "";
+  // Guías de otra empresa: llevan su uid y su propio prefijo (nunca se cruzan con las de Pipe Games)
+  if (!esMaestro()) { g.empresa = YO; prefijo = EMPRESA?.prefijo || prefijo; }
   await runTransaction(db, async tx => {
-    const refA = doc(db, "usuarios", ADMIN_UID);
+    const refA = refYo();
     const a = await tx.get(refA);
     let k = (a.exists() ? a.data().consecutivos?.[prefijo] || 0 : 0) + 1;
     numero = C.numeroGuia(prefijo, k);
@@ -2488,23 +2523,69 @@ function pintarMensajeros() {
     const act = Object.values(S.guias).filter(g => g.mensajeroId === id && ["tomada", "recogida", "en_camino"].includes(g.estado)).length;
     const est = !m.activo ? ["cancelada", "Desactivado"] : u?.enTurno ? (fresco(u) ? ["en-linea", "En turno"] : ["devuelta", "En turno, sin señal reciente"]) : ["", "Fuera de turno"];
     return `<div class="item${S.verMens === id ? " viendo" : ""}"><div class="arriba"><span><button class="btn-nombre" data-vermens="${id}" title="Ver en el mapa"><b>${esc(m.nombre)}</b></button> <span class="meta">· ${esc(m.placa)}</span></span><span class="pill ${est[0]}">${est[1]}</span></div>
-      <div class="meta">${esc(m.telefono)} · ${esc(m.email)} · cédula ${esc(m.cedula)}</div>
+      ${esMaestro() ? `<div class="meta">${esc(m.telefono)} · ${esc(m.email)} · cédula ${esc(m.cedula)}</div>` : ""}
       <div class="meta">${act} pedido${act === 1 ? "" : "s"} en curso · última ubicación ${C.hace(u?.t)}</div>
-      <div class="btns">${u?.lat != null ? `<button class="btn chico" data-vermens="${id}">📍 Ver en el mapa</button>` : ""}${u?.enTurno ? `<button class="btn sec chico" data-desconectar="${id}" title="Termina su turno si olvidó hacerlo en la app">Desconectar</button>` : ""}<button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button></div></div>`;
+      <div class="btns">${u?.lat != null ? `<button class="btn chico" data-vermens="${id}">📍 Ver en el mapa</button>` : ""}${esMaestro() && u?.enTurno ? `<button class="btn sec chico" data-desconectar="${id}" title="Termina su turno si olvidó hacerlo en la app">Desconectar</button>` : ""}${esMaestro() ? `<button class="btn ${m.activo ? "peligro" : "sec"} chico" data-mens="${id}" data-activo="${m.activo ? 0 : 1}">${m.activo ? "Desactivar" : "Activar"}</button>` : ""}</div></div>`;
   }).join("") : `<div class="vacio">Aún no hay mensajeros. Genera una invitación y envíasela.</div>`;
   const pend = S.inv.filter(i => !i.usada).sort((a, b) => b.creada - a.creada);
   $("#listaInv").innerHTML = pend.length ? pend.map(i => `<div class="item"><div class="arriba"><span class="guia">${esc(i.codigo)}</span><span class="meta">creada ${C.fecha(i.creada)}</span></div>
     <div class="btns"><button class="btn sec chico" data-copinv="${esc(i.codigo)}">Copiar mensaje</button><button class="btn peligro chico" data-delinv="${esc(i.codigo)}">Eliminar</button></div></div>`).join("") : `<div class="nota">No hay invitaciones pendientes.</div>`;
 }
 const textoInvitacion = c => `Hola, te invito a trabajar con Mensajería Prueba.\n1. Descarga la app (archivo .apk) aquí: ${URL_APK}\n2. Instálala y toca "Crear cuenta".\n3. Usa este código de invitación: ${c}`;
+/* ---------- cuentas de empresa (panel básico) ---------- */
+$("#fEmpresaNueva").onsubmit = async e => {
+  e.preventDefault(); $("#enError").textContent = "";
+  const codigo = $("#enCodigo").value.trim().toUpperCase(), correo = $("#enCorreo").value.trim(), clave = $("#enClave").value;
+  const b = e.submitter || $("#fEmpresaNueva button"); b.disabled = true;
+  let cred = null; creandoEmpresa = true;
+  try {
+    cred = await createUserWithEmailAndPassword(auth, correo, clave);
+    const inv = await getDoc(doc(db, "invitacionesEmpresa", codigo));
+    if (!inv.exists() || inv.data().usada) throw new Error("codigo");
+    const nombre = inv.data().empresa || "Empresa";
+    const base = C.prefijoTienda(nombre).replace(/[^A-Z0-9]/g, "").slice(0, 6) || "EMP";
+    const bt = writeBatch(db);
+    bt.update(doc(db, "invitacionesEmpresa", codigo), { usada: true, usadaPor: cred.user.uid, usadaEn: Date.now() });
+    bt.set(doc(db, "empresas", cred.user.uid), { nombre, prefijo: base + cred.user.uid.slice(0, 3).toUpperCase(), activo: true, invitacion: codigo, correo, creado: Date.now() });
+    await bt.commit();
+    location.reload();
+  } catch (err) {
+    if (cred) { try { await cred.user.delete(); } catch {} }
+    creandoEmpresa = false; if (cred) { try { await signOut(auth); } catch {} }
+    $("#enError").textContent = err.message === "codigo" ? "Ese código no existe o ya se usó. Pídele uno nuevo a Pipe Games." : C.mensajeError(err);
+  }
+  b.disabled = false;
+};
+$("#fInvEmpresa").onsubmit = async e => {
+  e.preventDefault();
+  const nombre = $("#ieNombre").value.trim(); if (!nombre) return;
+  const c = C.nuevoCodigo() + C.nuevoCodigo();
+  try { await setDoc(doc(db, "invitacionesEmpresa", c), { empresa: nombre, usada: false, creada: Date.now() }); $("#ieNombre").value = ""; toast("Código creado: cópialo y envíaselo a la empresa"); } catch (err) { toast(C.mensajeError(err)); }
+};
+const textoInvEmpresa = (c, n) => `Hola, este es el acceso al panel de despacho para ${n}.\n1. Abre: ${location.origin + location.pathname}\n2. Escribe la contraseña (número de documento de la empresa).\n3. Toca "¿Eres una empresa nueva?" y crea tu cuenta con este código: ${c}`;
+function pintarEmpresas() {
+  const el = $("#listaEmpresas"); if (!el) return;
+  const emp = (S.empresas || []).sort((a, b) => b.creado - a.creado), pend = (S.invEmp || []).filter(i => !i.usada).sort((a, b) => b.creada - a.creada);
+  el.innerHTML = [...pend.map(i => `<div class="item"><div class="arriba"><span><b>${esc(i.empresa)}</b> · código <span class="guia">${esc(i.codigo)}</span></span><span class="pill">Sin usar</span></div>
+      <div class="btns"><button class="btn sec chico" data-copiemp="${esc(i.codigo)}">Copiar mensaje</button><button class="btn peligro chico" data-delemp="${esc(i.codigo)}">Eliminar código</button></div></div>`),
+    ...emp.map(x => `<div class="item"><div class="arriba"><span><b>${esc(x.nombre)}</b> · ${esc(x.correo || "")} · prefijo ${esc(x.prefijo || "")}</span><span class="pill ${x.activo ? "entregada" : "cancelada"}">${x.activo ? "Panel básico activo" : "Desactivada"}</span></div>
+      <div class="btns"><button class="btn ${x.activo ? "peligro" : "sec"} chico" data-actemp="${esc(x.id)}|${x.activo ? 0 : 1}">${x.activo ? "Desactivar" : "Activar"}</button></div></div>`)].join("")
+    || `<div class="vacio">Aún no hay empresas con panel propio.</div>`;
+}
+$("#listaEmpresas").addEventListener("click", async e => {
+  const cp = e.target.closest("[data-copiemp]"), de = e.target.closest("[data-delemp]"), ac = e.target.closest("[data-actemp]");
+  try {
+    if (cp) { const i = (S.invEmp || []).find(x => x.codigo === cp.dataset.copiemp); copiar(textoInvEmpresa(cp.dataset.copiemp, i?.empresa || "tu empresa"), "Mensaje copiado"); }
+    if (de) await deleteDoc(doc(db, "invitacionesEmpresa", de.dataset.delemp));
+    if (ac) { const [id, v] = ac.dataset.actemp.split("|"); await updateDoc(doc(db, "empresas", id), { activo: v === "1" }); toast(v === "1" ? "Empresa activada" : "Empresa desactivada: ya no puede entrar"); }
+  } catch (err) { toast(C.mensajeError(err)); }
+});
 /* ---------- contraseña de acceso (empresas) ---------- */
 function pintarAcceso() {
   const el = $("#listaAcceso"); if (!el) return;
   if (S.acceso === null) { el.innerHTML = `<div class="vacio">Para usar esta opción, publica las reglas nuevas en Firebase.</div>`; return; }
   const l = S.acceso || [];
-  // Las empresas registradas antes de existir el modo básico quedan como maestro
-  const maestroDe = a => a.maestro ?? true;
-  el.innerHTML = l.length ? l.map(a => `<div class="item"><div class="arriba"><span>${esc(a.empresa)} <span class="pill ${maestroDe(a) ? "entregada" : ""}">${maestroDe(a) ? "Panel maestro" : "Panel básico"}</span></span><span class="btns"><button class="btn sec chico" data-modoacc="${a.id}|${maestroDe(a) ? 0 : 1}">${maestroDe(a) ? "Pasar a básico" : "Hacer maestro"}</button><button class="btn sec chico" data-delacc="${a.id}">Quitar</button></span></div></div>`).join("")
+  el.innerHTML = l.length ? l.map(a => `<div class="item"><div class="arriba"><span>${esc(a.empresa)}</span><button class="btn sec chico" data-delacc="${a.id}">Quitar</button></div></div>`).join("")
     : `<div class="vacio">Sin empresas: el panel muestra el inicio de sesión directamente.</div>`;
 }
 $("#fAccesoNuevo").onsubmit = async e => {
@@ -2513,15 +2594,13 @@ $("#fAccesoNuevo").onsubmit = async e => {
   if (d.length < 5) { $("#acError").textContent = "Escribe el número de documento completo, solo números."; return; }
   try {
     const b = writeBatch(db);
-    b.set(doc(db, "acceso", await C.huellaAcceso(d)), { empresa: emp, maestro: /pipe\s*games/i.test(emp), creado: Date.now() });
+    b.set(doc(db, "acceso", await C.huellaAcceso(d)), { empresa: emp, creado: Date.now() });
     b.set(doc(db, "acceso", "_activo"), { activo: true });
     await b.commit();
     $("#acDoc").value = ""; $("#acEmpresa").value = ""; toast("Empresa agregada. El panel ya pide la contraseña.");
   } catch (err) { $("#acError").textContent = C.mensajeError(err); }
 };
 $("#listaAcceso").addEventListener("click", async e => {
-  const mo = e.target.closest("[data-modoacc]");
-  if (mo) { const [id, v] = mo.dataset.modoacc.split("|"); try { await updateDoc(doc(db, "acceso", id), { maestro: v === "1" }); toast(v === "1" ? "Esa empresa entra ahora al panel maestro" : "Esa empresa entra ahora al panel básico"); } catch (err) { toast(C.mensajeError(err)); } return; }
   const b = e.target.closest("[data-delacc]"); if (!b) return;
   try {
     const bt = writeBatch(db);
