@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112w">
+<link rel="stylesheet" href="estilos.css?v=20261112x">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -192,12 +192,20 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <label class="formato" for="fmtImp">Formato de impresión <select id="fmtImp"><option value="etiqueta">Etiqueta 10 × 15 cm</option><option value="carta">Hoja carta</option></select></label></div>
         <div class="item solo-maestro" id="formCli">
           <b>Formulario para que el cliente llene sus datos</b>
-          <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, ciudad, dirección, complemento y barrio. En <b>Bogotá, Chía y Soacha</b> marca su casa en el mapa y se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo). En <b>otras ciudades</b> elige Envía o Interrapidísimo y la orden queda en <b>Skydropx → Preparar órdenes</b>, sin crear guía, para que la revises. Todo te llega a la campana.</span>
+          <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, ciudad, dirección, complemento y barrio. En <b>Bogotá, Chía y Soacha</b> marca su casa en el mapa y se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo). En <b>otras ciudades</b> elige Envía o Interrapidísimo y la orden se envía sola a <b>Skydropx → Órdenes</b>, sin crear guía, para que la prepares allá. Todo te llega a la campana.</span>
           <div class="btns"><button class="btn chico" type="button" id="fcGen">Copiar mensaje con el link</button><a class="btn sec chico" id="fcVer" target="_blank" rel="noopener">Ver formulario</a></div>
           <details style="margin-top:6px"><summary style="cursor:pointer"><b>Link para producto grande</b> <span class="nota">· consola, parlante, iPad, MacBook…</span></summary>
             <div class="lista" style="margin-top:8px">
-              <span class="nota">Crea un link de un solo uso. Si el cliente es de otra ciudad, ve este costo de envío (se suma a su pedido) para Envía o Interrapidísimo, y la orden llega a Skydropx con las medidas y el valor declarado del tipo de producto. En Bogotá, Chía y Soacha el domicilio sigue igual. Los tipos de producto se agregan en Skydropx → Conexión y datos del remitente.</span>
-              <div class="fila"><label>Tipo de producto<select id="fgTipo"></select></label><label>Costo del envío (otras ciudades)<input id="fgEnvio" inputmode="numeric" placeholder="25.000"></label></div>
+              <span class="nota">Crea un link de un solo uso. Elige el producto (o crea uno con sus medidas, peso y valor asegurado), cotiza en Skydropx para ver cuánto cuesta el envío y toca una tarifa para usarla. El cliente de otra ciudad ve ese costo (se suma a su pedido) y la orden llega a Skydropx con esas medidas, peso y valor asegurado. En Bogotá, Chía y Soacha el domicilio sigue igual. Cambiar las medidas aquí sirve para este link; “Guardar producto” las deja guardadas.</span>
+              <label>Producto<select id="fgTipo"></select></label>
+              <label>Nombre del producto<input id="fgN" maxlength="60"></label>
+              <div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:6px;align-items:end"><label>Largo cm<input id="fgL" inputmode="decimal"></label><label>Ancho cm<input id="fgA" inputmode="decimal"></label><label>Alto cm<input id="fgH" inputmode="decimal"></label><label>Peso kg<input id="fgKg" inputmode="decimal"></label><label>Valor asegurado<input id="fgV" inputmode="numeric"></label>
+              </div>
+              <div class="btns"><button class="btn sec chico" type="button" id="fgGuardarProd">Guardar producto</button><button class="btn sec chico" type="button" id="fgNuevoProd">+ Nuevo producto</button></div>
+              <div class="sug-caja"><label>Cotizar envío a (municipio)<input id="fgMuni" autocomplete="off" placeholder="Ej. Medellín"></label><div class="sugerencias" id="fgMuniSug" hidden></div></div>
+              <div class="btns"><button class="btn sec chico" type="button" id="fgCotizar">Cotizar con Skydropx</button></div>
+              <div id="fgTarifas"></div>
+              <label style="max-width:20em">Costo del envío que verá el cliente (otras ciudades)<input id="fgEnvio" inputmode="numeric" placeholder="25.000"></label>
               <label>Qué compró (opcional)<input id="fgCont" maxlength="80" placeholder="Ej. PS5 Slim 1 TB"></label>
               <div class="btns"><button class="btn chico" type="button" id="fgCopiar">Copiar mensaje con el link</button></div>
               <div class="error" id="fgError"></div>
@@ -396,9 +404,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112w";
-import * as C from "./comun.js?v=20261112w";
-import * as T from "./tarifas-envio.js?v=20261112w";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112x";
+import * as C from "./comun.js?v=20261112x";
+import * as T from "./tarifas-envio.js?v=20261112x";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -489,17 +497,68 @@ const msgFormulario = link => `Hola, para enviarte tu pedido escribe tus datos d
 $("#fcGen").onclick = () => copiar(msgFormulario(URL_ENVIO), "Mensaje copiado: pégalo en el chat del cliente");
 $("#fcVer").href = URL_ENVIO;
 // Link de un solo uso para productos grandes: tipo de producto (medidas y valor declarado) y costo del envío nacional
-function pintarTiposGrande() {
+function pintarTiposGrande(elegir) {
   const sel = $("#fgTipo"), antes = sel.value, l = tiposSkx();
   sel.innerHTML = l.map((t, i) => `<option value="${i}">${esc(t.n)}</option>`).join("");
   const grande = l.findIndex(t => !/juego/i.test(t.n));
-  sel.value = antes && +antes < l.length ? antes : String(grande >= 0 ? grande : 0);
+  sel.value = elegir != null ? String(elegir) : antes && +antes < l.length ? antes : String(grande >= 0 ? grande : 0);
+  llenarProducto();
 }
+function llenarProducto() {
+  const t = tiposSkx()[+$("#fgTipo").value || 0] || {};
+  $("#fgN").value = t.n || ""; $("#fgL").value = t.l || ""; $("#fgA").value = t.a || ""; $("#fgH").value = t.h || ""; $("#fgKg").value = t.kg || ""; $("#fgV").value = t.v ? miles(t.v) : "";
+  $("#fgTarifas").innerHTML = "";
+}
+const leerProducto = () => { const n2 = id => +String($(id).value).replace(",", ".") || 0; return { n: $("#fgN").value.trim(), l: n2("#fgL"), a: n2("#fgA"), h: n2("#fgH"), kg: n2("#fgKg"), v: num($("#fgV").value) }; };
+$("#fgTipo").onchange = llenarProducto;
+$("#fgV").addEventListener("input", e => { e.target.value = e.target.value ? miles(num(e.target.value)) : ""; });
+$("#fgNuevoProd").onclick = () => { ["#fgN", "#fgL", "#fgA", "#fgH", "#fgKg", "#fgV"].forEach(id => $(id).value = ""); $("#fgTarifas").innerHTML = ""; $("#fgN").focus(); toast("Escribe nombre, medidas, peso y valor asegurado, y toca Guardar producto"); };
+$("#fgGuardarProd").onclick = async () => {
+  const t = leerProducto();
+  if (!t.n || !t.l || !t.a || !t.h || !t.kg || !t.v) { $("#fgError").textContent = "Completa nombre, las tres medidas, el peso y el valor asegurado."; return; }
+  $("#fgError").textContent = "";
+  const l = tiposSkx().map(x => ({ ...x }));
+  let i = l.findIndex(x => x.n.toLowerCase() === t.n.toLowerCase());
+  if (i >= 0) l[i] = t; else { l.push(t); i = l.length - 1; }
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: { tipos: l } }, { merge: true }); S.skx = { ...(S.skx || {}), tipos: l }; pintarTiposEditor(); pintarTiposSelect(); pintarTiposGrande(i); toast(`Producto “${t.n}” guardado`); }
+  catch (err) { toast(C.mensajeError(err)); }
+};
+// Municipio para cotizar
+$("#fgMuni").addEventListener("input", () => {
+  const box = $("#fgMuniSug"); let n = T.envNorm($("#fgMuni").value.split(" - ")[0]); n = T.ENVIO_ALIAS[n] || n;
+  if (n.length < 2) { box.hidden = true; return; }
+  const res = T.ENVIO_MUNI.filter(m => m.k.startsWith(n) || m.k.split(" ").some(w => w.startsWith(n))).sort((a, b) => (a.k === n ? 0 : 1) - (b.k === n ? 0 : 1) || a.k.localeCompare(b.k)).slice(0, 7);
+  box.innerHTML = res.map(m => `<button type="button" data-fgk="${esc(m.key)}"><span class="t1">${esc(m.c)}</span><span class="t2">${esc(m.d)}</span></button>`).join("");
+  box.hidden = !res.length;
+});
+$("#fgMuniSug").addEventListener("pointerdown", e => e.preventDefault());
+$("#fgMuniSug").addEventListener("click", e => { const b = e.target.closest("[data-fgk]"); if (!b) return; const m = T.ENVIO_MUNI.find(x => x.key === b.dataset.fgk); $("#fgMuni").value = T.envEtiqueta(m); $("#fgMuniSug").hidden = true; });
+document.addEventListener("click", e => { if (!e.target.closest("#fgMuni, #fgMuniSug")) $("#fgMuniSug").hidden = true; });
+$("#fgCotizar").onclick = async () => {
+  $("#fgError").textContent = "";
+  const t = leerProducto(), m = T.envBuscar($("#fgMuni").value)?.x, rem = S.skx?.remitente || {};
+  if (!m) { $("#fgError").textContent = "Elige el municipio de la lista."; $("#fgMuni").focus(); return; }
+  if (!t.l || !t.a || !t.h || !t.kg || !t.v) { $("#fgError").textContent = "Completa las medidas, el peso y el valor asegurado."; return; }
+  if (!rem.direccion) { $("#fgError").textContent = "Guarda primero los datos del remitente en Skydropx → Conexión y datos del remitente."; return; }
+  const b = $("#fgCotizar"); b.disabled = true; b.textContent = "Cotizando…"; $("#fgTarifas").innerHTML = `<div class="vacio">Consultando tarifas en Skydropx…</div>`;
+  try {
+    const { rates } = await cotizarSkydropx({ m, rem, valor: t.v, paquete: { length: t.l, width: t.a, height: t.h, weight: t.kg }, dest: { barrio: "" } });
+    rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount));
+    $("#fgTarifas").innerHTML = rates.length ? `<span class="nota">Toca una tarifa para usarla como costo del envío (se redondea a los mil de arriba).</span><div class="cb-metodos">${rates.map(x => `<button type="button" class="cb-m" data-fgval="${+x.total || +x.amount}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>`
+      : `<div class="aviso">Ninguna transportadora dio precio para ${esc(T.envEtiqueta(m))} con esas medidas.</div>`;
+  } catch (err) { $("#fgTarifas").innerHTML = `<div class="aviso">${esc(err.message || err)}</div>`; }
+  b.disabled = false; b.textContent = "Cotizar con Skydropx";
+};
+$("#fgTarifas").addEventListener("click", e => {
+  const b = e.target.closest("[data-fgval]"); if (!b) return;
+  $("#fgTarifas").querySelectorAll("[data-fgval]").forEach(x => x.classList.toggle("on", x === b));
+  $("#fgEnvio").value = miles(Math.ceil(+b.dataset.fgval / 1000) * 1000);
+});
 $("#fgEnvio").addEventListener("input", e => { e.target.value = e.target.value ? miles(num(e.target.value)) : ""; });
 $("#fgCopiar").onclick = async () => {
   $("#fgError").textContent = "";
-  const t = tiposSkx()[+$("#fgTipo").value || 0], envio = num($("#fgEnvio").value), cont = $("#fgCont").value.trim();
-  if (!t) { $("#fgError").textContent = "Agrega primero el tipo de producto en Skydropx → Conexión y datos del remitente."; return; }
+  const t = leerProducto(), envio = num($("#fgEnvio").value), cont = $("#fgCont").value.trim();
+  if (!t.n || !t.l || !t.a || !t.h || !t.kg || !t.v) { $("#fgError").textContent = "Completa nombre, medidas, peso y valor asegurado del producto."; return; }
   if (!(envio > 0)) { $("#fgError").textContent = "Escribe el costo del envío."; $("#fgEnvio").focus(); return; }
   const c = C.nuevoCodigo() + C.nuevoCodigo();
   try {
@@ -1327,6 +1386,22 @@ $("#skxCotizar").onclick = async () => {
   if (!d.rem.direccion || !/^\d{10}$/.test(d.rem.telefono || "")) { $("#skxAjustes").open = true; toast("Completa y guarda los datos del remitente (dirección y celular)"); return; }
   b.disabled = true; b.textContent = "Cotizando…"; $("#skxTarifas").innerHTML = `<div class="vacio">Consultando tarifas en Skydropx…</div>`; $("#skxRes").innerHTML = "";
   try {
+    const { id, rates, todas } = await cotizarSkydropx(d);
+    skxCot = { id, rates, d };
+    rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount));
+    // La transportadora que eligió el cliente queda marcada (la más barata de esa transportadora)
+    const pref = T.envNorm(skxPref).replace(/[^a-z]/g, "").slice(0, 5);
+    const esPref = x => !!pref && T.envNorm(x.provider_display_name || x.provider_name || "").replace(/[^a-z]/g, "").startsWith(pref);
+    const iSel = Math.max(0, rates.findIndex(esPref));
+    $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b>${pref && !rates.some(esPref) ? `<div class="aviso">${esc(skxPref)} (la que eligió el cliente) no dio precio para este destino. Elige otra.</div>` : ""}<div class="cb-metodos">${rates.map((x, i) => `<button type="button" class="cb-m${i === iSel ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}${esPref(x) ? ` <span class="pill entregada">Eligió el cliente</span>` : ""}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
+      <div class="btns"><button class="btn" type="button" id="skxCrear">Crear guía en Skydropx</button></div>`
+      : `<div class="aviso">Ninguna transportadora dio precio para ${esc(T.envEtiqueta(d.m))}${todas.length ? ` (Skydropx consultó ${todas.length} servicios y todos respondieron “no aplica”)` : ""}. Revisa el municipio o mira la respuesta técnica abajo.</div>`;
+  } catch (e) { $("#skxTarifas").innerHTML = `<div class="aviso">${esc(e.message || e)}</div>`; }
+  b.disabled = false; b.textContent = "Cotizar con Skydropx";
+};
+// Cotiza en Skydropx (origen = remitente guardado; destino = municipio d.m) y devuelve las tarifas con precio
+async function cotizarSkydropx(d) {
+  {
     // Skydropx valida ciudad y departamento contra su propia lista; se prueban las formas más comunes
     // (o el código postal, si se escribió) hasta que acepte cada dirección.
     const variantes = (ciudad, depto, barrio, cp) => {
@@ -1368,18 +1443,9 @@ $("#skxCotizar").onclick = async () => {
     const ocultas = (S.skx?.ocultas || ["coordinadora", "servientrega"]).map(x => T.envNorm(x).replace(/\s/g, ""));
     const oculta = x => ocultas.some(o => T.envNorm(x.provider_name || x.provider_display_name || "").replace(/\s/g, "").includes(o));
     const rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || "") && !oculta(x));
-    skxCot = { id, rates, d };
-    rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount));
-    // La transportadora que eligió el cliente queda marcada (la más barata de esa transportadora)
-    const pref = T.envNorm(skxPref).replace(/[^a-z]/g, "").slice(0, 5);
-    const esPref = x => !!pref && T.envNorm(x.provider_display_name || x.provider_name || "").replace(/[^a-z]/g, "").startsWith(pref);
-    const iSel = Math.max(0, rates.findIndex(esPref));
-    $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b>${pref && !rates.some(esPref) ? `<div class="aviso">${esc(skxPref)} (la que eligió el cliente) no dio precio para este destino. Elige otra.</div>` : ""}<div class="cb-metodos">${rates.map((x, i) => `<button type="button" class="cb-m${i === iSel ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}${esPref(x) ? ` <span class="pill entregada">Eligió el cliente</span>` : ""}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
-      <div class="btns"><button class="btn" type="button" id="skxCrear">Crear guía en Skydropx</button></div>`
-      : `<div class="aviso">Ninguna transportadora dio precio para ${esc(T.envEtiqueta(d.m))}${todas.length ? ` (Skydropx consultó ${todas.length} servicios y todos respondieron “no aplica”)` : ""}. Revisa el municipio o mira la respuesta técnica abajo.</div>`;
-  } catch (e) { $("#skxTarifas").innerHTML = `<div class="aviso">${esc(e.message || e)}</div>`; }
-  b.disabled = false; b.textContent = "Cotizar con Skydropx";
-};
+    return { id, rates, todas };
+  }
+}
 $("#skxTarifas").addEventListener("click", async e => {
   const op = e.target.closest("[data-rate]");
   if (op) { $("#skxTarifas").querySelectorAll("[data-rate]").forEach(x => x.classList.toggle("on", x === op)); return; }
@@ -1613,7 +1679,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112w";
+const VERSION_PANEL = "20261112x";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
