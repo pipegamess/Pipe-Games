@@ -56,7 +56,7 @@ import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=2026
 import * as C from "./comun.js?v=20261111c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
-const { getFirestore, doc, getDoc, setDoc, onSnapshot } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+const { getFirestore, doc, getDoc, setDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
 const db = getFirestore(initializeApp(firebaseConfig));
 const $ = s => document.querySelector(s);
 const { esc } = C;
@@ -73,8 +73,7 @@ if (pedido) {
     else {
       const d = p.data();
       if (d.usado) {
-        const link = d.guia ? C.linkRastreo({ numero: d.guia, clave: d.clave }) : "";
-        cerrado(`Este enlace ya se usó.${d.guia ? ` Tu guía es <span class="guia">${esc(d.guia)}</span>.` : ""}`, link);
+        cerrado("Este enlace ya se usó. Tu envío ya está creado.");
       } else if (d.contenido || d.valor) {
         $("#resumen").innerHTML = `<div class="panel"><dl class="kv">${d.contenido ? `<dt>Tu pedido</dt><dd>${esc(d.contenido)}</dd>` : ""}<dt>Pago</dt><dd>${d.valor ? "Pagas " + C.cop(d.valor) + " al recibir (efectivo o Nequi)" : "Ya está pago"}</dd></dl></div>`;
       }
@@ -174,28 +173,15 @@ $("#fEnvio").onsubmit = async e => {
   try {
     const id = C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo();
     await setDoc(doc(db, "solicitudes", id), datos);
-    ls.set("solicitud", id);
-    esperarGuia(id);
+    listo();
   } catch (err) { error("No se pudo enviar. Revisa tu conexión e intenta de nuevo."); b.disabled = false; b.textContent = "Enviar mis datos"; }
 };
 function error(t, foco) { $("#eErr").textContent = t; if (foco) $(foco).focus(); }
 
-function esperarGuia(id) {
+function listo() {
   $("#fEnvio").hidden = true; $("#resumen").hidden = true; $("#intro").hidden = true;
-  $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Recibimos tus datos!</div><p class="nota" style="margin:0" id="sEst">Estamos creando tu guía de envío…</p></div>`;
-  const t = setTimeout(() => { const el = $("#sEst"); if (el) el.textContent = "Tu guía se creará en unos minutos y te enviaremos el número por WhatsApp. Puedes cerrar esta página."; }, 20000);
-  onSnapshot(doc(db, "solicitudes", id), s => {
-    const d = s.data();
-    if (!d || d.estado !== "creada" || !d.guia) return;
-    clearTimeout(t);
-    $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Listo! Tu envío está creado</div>
-      <dl class="kv"><dt>Guía</dt><dd class="guia">${esc(d.guia)}</dd><dt>Para rastrear</dt><dd>Número de guía y los últimos 4 dígitos de tu celular</dd></dl>
-      <a class="btn" href="${esc(C.linkRastreo({ numero: d.guia, clave: d.clave }))}">Rastrear mi pedido</a></div>`;
-  }, () => {});
+  $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Listo! Tu envío está creado</div><p class="nota" style="margin:0">Gracias. Ya tenemos tus datos de entrega.</p></div>`;
 }
-// Si ya envió desde este celular con este mismo enlace, mostrar el resultado
-if (pedido && ls.get("solicitud") && ls.get("solicitudPedido") === pedido) esperarGuia(ls.get("solicitud"));
-$("#fEnvio").addEventListener("submit", () => ls.set("solicitudPedido", pedido || ""));
 </script>
 </body>
 </html>
