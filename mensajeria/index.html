@@ -295,6 +295,20 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div class="btns"><label class="btn sec chico" style="flex-direction:row">Adjuntar foto del QR<input type="file" id="cbQrArchivo" accept="image/*" hidden></label><a class="btn sec chico" id="cbQrBajar" download="QR-Bre-B-Pipe-Games.jpg" hidden>Descargar QR para enviar</a></div>
           </div>
         </div>
+        <h3>Reservas</h3>
+        <div class="item" id="rsCaja">
+          <div class="fila" style="align-items:end"><label>Producto<select id="rsProd"></select></label><label>Precio final del producto<input class="din" id="rsPrecio" inputmode="numeric" placeholder="Cuando lo sepas"></label></div>
+          <div class="cifras" id="rsCifras"></div>
+          <div class="fila"><label>Buscar<input id="rsBuscar" placeholder="Nombre o celular"></label><label>Mostrar<select id="rsFiltro"><option value="todas">Todas</option><option value="pendiente">Por cobrar</option><option value="cobrado">Cobro enviado</option><option value="pagado">Pagadas</option><option value="sinabono">Sin abono</option></select></label></div>
+          <div class="lista" id="rsLista"></div>
+          <details><summary style="cursor:pointer"><b>Importar reservas</b> <span class="nota">· pega la tabla desde Excel o Google Sheets</span></summary>
+            <div class="lista" style="margin-top:8px">
+              <label>Producto<input id="rsImpProd" placeholder="Zelda Ocarina of Time"></label>
+              <label>Tabla (FECHA · NOMBRE · RED SOCIAL · WHATSAPP · ABONO)<textarea id="rsImpTexto" rows="7" placeholder="2-oct-26&#9;NOMBRE APELLIDO&#9;WHATSAPP&#9;3001234567&#9;$100.000"></textarea></label>
+              <div class="btns"><button class="btn chico" type="button" id="rsImp">Importar</button></div>
+              <div class="nota" id="rsImpRes"></div>
+            </div></details>
+        </div>
         <h3>Cobros enviados</h3>
         <div class="lista" id="cbLista"></div>
       </section>
@@ -551,7 +565,9 @@ async function registrarCobro(d) {
   if (!d.precio) return;
   const id = Date.now().toString(36);
   const { permitidos, ...guardar } = d;
-  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { cobros: { [id]: { ...guardar, creado: Date.now(), pagado: d.saldo <= 0 ? Date.now() : 0 } } }, { merge: true }); } catch {}
+  const datos = { cobros: { [id]: { ...guardar, reserva: cbReserva?.id || null, creado: Date.now(), pagado: d.saldo <= 0 ? Date.now() : 0 } } };
+  if (cbReserva) datos.reservas = { [cbReserva.id]: { cobrado: Date.now(), saldoCobrado: d.saldo, ...(d.saldo <= 0 ? { pagado: Date.now() } : {}) } };
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), datos, { merge: true }); } catch {}
 }
 function validarCobro(d) {
   if (!d.precio) { toast("Escribe el precio final"); $("#cbPrecio").focus(); return false; }
@@ -568,8 +584,9 @@ $("#cbMasAbono").onclick = () => { agregarAbono(); $("#cbAbonos").lastElementChi
 $("#cbAbonos").addEventListener("click", e => { if (e.target.closest("[data-quitarab]")) { e.target.closest(".fila").remove(); calcular(); } });
 $("#cbWa").onclick = () => {
   const d = datosCobro(); if (!validarCobro(d)) return;
-  // Sin número: WhatsApp pide escoger el chat del cliente
-  window.open("https://wa.me/?text=" + encodeURIComponent(mensajeCobro(d)), "_blank", "noopener");
+  // Si viene de una reserva con celular, abre ese chat; si no, WhatsApp pide escoger el chat
+  const tel = cbReserva && /^\d{10}$/.test(cbReserva.tel) ? "57" + cbReserva.tel : "";
+  window.open(`https://wa.me/${tel}?text=` + encodeURIComponent(mensajeCobro(d)), "_blank", "noopener");
   registrarCobro(d);
 };
 $("#cbCopiar").onclick = () => { const d = datosCobro(); if (!validarCobro(d)) return; copiar(mensajeCobro(d), "Mensaje de cobro copiado"); registrarCobro(d); };
@@ -583,8 +600,100 @@ $("#cbGuia").onclick = () => {
   $("#nTel").focus();
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
-$("#cbLimpiar").onclick = () => { $("#fCobro").reset(); $("#cbAbonos").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+$("#cbLimpiar").onclick = () => { cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbAbonos").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+/* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
+let cbReserva = null; // reserva cargada en la calculadora {id, tel}
+function pintarDestinoWa() {
+  let el = document.getElementById("cbDestinoWa");
+  if (!el) { el = document.createElement("div"); el.id = "cbDestinoWa"; el.className = "nota"; $("#cbWa").parentElement.before(el); }
+  el.textContent = cbReserva ? (/^\d{10}$/.test(cbReserva.tel) ? `Se abrirá el chat de WhatsApp ${cbReserva.tel} (reserva de ${cbReserva.nombre}).` : `La reserva de ${cbReserva.nombre} no tiene celular: WhatsApp te pedirá escoger el chat${cbReserva.contacto ? " (contacto: " + cbReserva.contacto + ")" : ""}.`) : "";
+  el.hidden = !cbReserva;
+}
+const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
+const claveProd = t => String(t || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function estadoReserva(r) { return r.pagado ? "pagado" : r.cobrado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
+function pintarReservas() {
+  const todas = Object.entries(S.reservas || {}).map(([id, r]) => ({ id, ...r }));
+  const prods = [...new Set(todas.map(r => r.producto))].sort();
+  const sel = $("#rsProd"), actual = sel.value || prods[0] || "";
+  sel.innerHTML = prods.length ? prods.map(p => `<option${p === actual ? " selected" : ""}>${esc(p)}</option>`).join("") : `<option value="">Sin reservas: impórtalas abajo</option>`;
+  const prod = sel.value, precio = S.preciosReserva?.[claveProd(prod)] || 0;
+  if (document.activeElement !== $("#rsPrecio")) $("#rsPrecio").value = miles(precio);
+  const del = todas.filter(r => r.producto === prod);
+  const q = $("#rsBuscar").value.trim().toLowerCase(), f = $("#rsFiltro").value;
+  const lista = del.filter(r => (f === "todas" || estadoReserva(r) === f) && (!q || (r.nombre + " " + r.contacto).toLowerCase().includes(q)))
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  const abonado = del.reduce((s, r) => s + (r.abono || 0), 0);
+  $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Reservas</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + Math.max(precio - (r.abono || 0), 0), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div>`;
+  const EST = { pendiente: ["Por cobrar", "disponible"], cobrado: ["Cobro enviado", "en_camino"], pagado: ["Pagada", "entregada"], sinabono: ["Sin abono", "novedad"] };
+  $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b> <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
+      <div class="meta">${/^\d{10}$/.test(r.contacto) ? "📱 " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · Abono ${C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(Math.max(precio - (r.abono || 0), 0))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
+      <div class="btns"><button class="btn chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+    : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
+}
+$("#rsProd").onchange = pintarReservas;
+$("#rsBuscar").oninput = pintarReservas;
+$("#rsFiltro").onchange = pintarReservas;
+$("#rsPrecio").addEventListener("input", e => { e.target.value = miles(num(e.target.value)); });
+$("#rsPrecio").addEventListener("change", async () => {
+  const prod = $("#rsProd").value; if (!prod) return;
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { preciosReserva: { [claveProd(prod)]: num($("#rsPrecio").value) } }, { merge: true }); toast("Precio final guardado para " + prod); } catch (err) { toast(C.mensajeError(err)); }
+});
+$("#rsLista").addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const ref = doc(db, "usuarios", ADMIN_UID);
+  try {
+    if (b.dataset.rscobrar) {
+      const r = S.reservas[b.dataset.rscobrar]; if (!r) return;
+      $("#fCobro").reset(); $("#cbAbonos").innerHTML = "";
+      $("#cbCli").value = titulo(r.nombre);
+      $("#cbPrecio").value = miles(S.preciosReserva?.[claveProd(r.producto)] || 0);
+      agregarAbono(r.abono || "");
+      cbMetodo = "transf";
+      cbReserva = { id: b.dataset.rscobrar, tel: r.contacto, contacto: r.contacto, nombre: titulo(r.nombre) };
+      pintarDestinoWa(); calcular();
+      $("#fCobro").scrollIntoView({ behavior: "smooth" });
+      if (!num($("#cbPrecio").value)) { toast("Escribe el precio final"); $("#cbPrecio").focus(); }
+    }
+    if (b.dataset.rspagado) await updateDoc(ref, { [`reservas.${b.dataset.rspagado}.pagado`]: Date.now() });
+    if (b.dataset.rsdeshacer) await updateDoc(ref, { [`reservas.${b.dataset.rsdeshacer}.pagado`]: deleteField() });
+    if (b.dataset.rsborrar) {
+      if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para quitar"; return; }
+      await updateDoc(ref, { [`reservas.${b.dataset.rsborrar}`]: deleteField() });
+    }
+  } catch (err) { toast(C.mensajeError(err)); }
+});
+// Importar: pega la tabla (columnas separadas por tabulador) FECHA, NOMBRE, RED SOCIAL, WHATSAPP, ABONO
+$("#rsImp").onclick = async () => {
+  const prod = $("#rsImpProd").value.trim();
+  if (!prod) { toast("Escribe el nombre del producto"); $("#rsImpProd").focus(); return; }
+  const filas = $("#rsImpTexto").value.split(/\r?\n/).map(l => l.split("\t").map(x => x.trim())).filter(c => c.some(Boolean));
+  const existentes = new Set(Object.values(S.reservas || {}).filter(r => r.producto === prod).map(r => (r.nombre + "|" + r.contacto).toLowerCase()));
+  const nuevas = {}; let orden = Object.values(S.reservas || {}).filter(r => r.producto === prod).length, repetidas = 0;
+  for (const c of filas) {
+    if (/^fecha$/i.test(c[0]) || /^nombre$/i.test(c[1] || "")) continue;
+    // Si la fila empieza sin fecha, la primera celda viene vacía
+    const [fecha, nombre, red, contacto, abono] = c.length >= 2 ? c : ["", c[0]];
+    if (!nombre) continue;
+    const tel = String(contacto || "").replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
+    const r = { producto: prod, fecha: fecha || "", nombre: nombre.replace(/\s+/g, " ").trim(), red: ({ whatsapp: "WhatsApp", instagram: "Instagram", ml: "Mercado Libre", facebook: "Facebook", tiktok: "TikTok" })[String(red || "").trim().toLowerCase()] || titulo(red || ""), contacto: /^3\d{9}$/.test(tel) ? tel : (contacto && !/^n\/?a$/i.test(contacto) ? contacto : ""), abono: num(abono), orden: orden++, creado: Date.now() };
+    const k = (r.nombre + "|" + r.contacto).toLowerCase();
+    if (existentes.has(k)) { repetidas++; continue; }
+    existentes.add(k);
+    nuevas[Date.now().toString(36) + Math.random().toString(36).slice(2, 7)] = r;
+  }
+  const n = Object.keys(nuevas).length;
+  if (!n) { $("#rsImpRes").textContent = repetidas ? `Todas (${repetidas}) ya estaban importadas.` : "No se encontraron filas. Copia la tabla con sus columnas desde Excel o Google Sheets."; return; }
+  try {
+    await setDoc(doc(db, "usuarios", ADMIN_UID), { reservas: nuevas }, { merge: true });
+    $("#rsImpRes").textContent = `Importadas ${n} reservas de ${prod}${repetidas ? ` (${repetidas} repetidas omitidas)` : ""}.`;
+    $("#rsImpTexto").value = "";
+    setTimeout(() => { $("#rsProd").value = prod; pintarReservas(); }, 300);
+  } catch (err) { $("#rsImpRes").textContent = C.mensajeError(err); }
+};
+
 function pintarCobros() {
+  pintarReservas();
   calcular();
   const l = Object.entries(S.cobros || {}).map(([id, c]) => ({ id, ...c })).sort((a, b) => b.creado - a.creado).slice(0, 30);
   $("#cbLista").innerHTML = l.length ? l.map(c => `<div class="item"><div class="arriba"><span><b>${esc(c.cliente || "Cliente")}</b></span><span class="pill ${c.pagado ? "entregada" : "novedad"}">${c.pagado ? "Pagado" : "Pendiente"}</span></div>
@@ -674,7 +783,7 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */
