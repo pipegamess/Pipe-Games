@@ -90,3 +90,6 @@ textarea{min-height:64px;resize:vertical}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .item.sel{box-shadow:0 0 0 2px var(--accent)}
 body.basico .solo-maestro{display:none!important}
+/* Reservas con link de saldo ya enviado */
+.item.rs-enviado{border-color:#f5c400;background:color-mix(in srgb,#f5c400 12%,var(--surface));box-shadow:inset 4px 0 0 #f5c400}
+.btn.btn-amarillo{background:#f5c400;color:#0a0a0f}
