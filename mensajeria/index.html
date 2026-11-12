@@ -271,7 +271,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <p class="nota" style="margin:0">Mismas reglas del simulador de precios de pipegames.com.co: domicilio de $10.000 en Bogotá, Chía y Soacha, y el recargo de cada medio de pago.</p>
         <form id="fCobro" class="lista" autocomplete="off">
           <label>Cliente<input id="cbCli" placeholder="Pepito Pérez"></label>
-          <label>Precio final<input class="din" id="cbPrecio" inputmode="numeric" placeholder="250.000"></label>
+          <div class="fila"><label>Precio final por unidad<input class="din" id="cbPrecio" inputmode="numeric" placeholder="250.000"></label><label>Unidades<input id="cbUnid" type="number" min="1" step="1" value="1" inputmode="numeric"></label></div>
           <div id="cbAbonos" class="lista" style="gap:8px"></div>
           <button class="btn sec chico" type="button" id="cbMasAbono" style="align-self:flex-start">+ Agregar otro abono</button>
           <label>Envío<select id="cbCiudad"><option value="bogota">Bogotá · domicilio $10.000</option><option value="chia">Chía · domicilio $10.000</option><option value="soacha">Soacha · domicilio $10.000</option><option value="otro">Otra ciudad (escribir valor)</option></select></label>
@@ -515,7 +515,8 @@ function agregarAbono(v = "") {
   $("#cbAbonos").appendChild(d);
 }
 function datosCobro() {
-  const precio = num($("#cbPrecio").value);
+  const unitario = num($("#cbPrecio").value), unidades = Math.max(1, num($("#cbUnid").value) || 1);
+  const precio = unitario * unidades;
   const abonos = [...document.querySelectorAll("#cbAbonos .abono")].map(i => num(i.value)).filter(Boolean);
   const abonado = abonos.reduce((a, b) => a + b, 0);
   const ciudad = $("#cbCiudad").value;
@@ -527,7 +528,7 @@ function datosCobro() {
   const base = precio + envio - abonado; // saldo antes del recargo
   const m = C.METODOS_PAGO.find(x => x.id === cbMetodo);
   const total = base > 0 ? m.calc(base) : base;
-  return { cliente: $("#cbCli").value.trim(), precio, abonos, abonado, ciudad, destino, envio, base, metodo: cbMetodo, metodoTxt: m.t, recargo: base > 0 ? total - base : 0, saldo: total, permitidos };
+  return { cliente: $("#cbCli").value.trim(), unitario, unidades, precio, abonos, abonado, ciudad, destino, envio, base, metodo: cbMetodo, metodoTxt: m.t, recargo: base > 0 ? total - base : 0, saldo: total, permitidos };
 }
 function calcular() {
   const d = datosCobro();
@@ -539,7 +540,7 @@ function calcular() {
   }).join("");
   if (calcular.htmlMet !== htmlMet) { calcular.htmlMet = htmlMet; $("#cbMetodos").innerHTML = htmlMet; }
   const linea = (t, v, signo = "") => `<div style="display:flex;justify-content:space-between;gap:10px"><span>${t}</span><span>${signo}${C.cop(v)}</span></div>`;
-  $("#cbResumen").innerHTML = `${linea("Precio final", d.precio)}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
+  $("#cbResumen").innerHTML = `${linea(d.unidades > 1 ? `Precio final (${d.unidades} × ${C.cop(d.unitario)})` : "Precio final", d.precio)}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
     <div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700"><span>${d.saldo < 0 ? "Saldo a favor del cliente" : "Saldo a pagar"}</span><span style="color:${d.saldo > 0 ? "var(--accent)" : "var(--ok)"}">${C.cop(Math.abs(d.saldo))}</span></div>`;
   const a = S.ajustesCobro || {};
   const aviso = d.precio >= C.LIMITE_CREDITO ? "Desde $1.000.000 solo aplica transferencia Bre-B o tarjeta de crédito (no Addi ni Sistecrédito)."
@@ -550,7 +551,7 @@ function calcular() {
 function mensajeCobro(d) {
   // Texto simple, sin emojis ni viñetas especiales (algunos celulares los muestran como un rombo con "?")
   const v = C.copTxt;
-  const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""}, este es el saldo de tu pedido:`, "", `Precio final: ${v(d.precio)}`];
+  const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""}, este es el saldo de tu pedido:`, "", d.unidades > 1 ? `Precio final: ${d.unidades} unidades x ${v(d.unitario)} = ${v(d.precio)}` : `Precio final: ${v(d.precio)}`];
   l.push(d.ciudad === "otro" ? `Envío${d.destino ? " a " + d.destino : ""}: ${v(d.envio)}` : `Domicilio ${d.destino}: ${v(d.envio)}`);
   d.abonos.forEach((x, i) => l.push(`${i === 0 ? "Abono" : "Abono " + (i + 1)}: -${v(x)}`));
   if (d.saldo <= 0) { l.push("", d.saldo < 0 ? `Saldo a tu favor: ${v(-d.saldo)}` : "Tu pedido ya está pago."); return l.join("\n"); }
@@ -601,7 +602,7 @@ $("#cbGuia").onclick = () => {
   $("#nTel").focus();
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
-$("#cbLimpiar").onclick = () => { cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbAbonos").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+$("#cbLimpiar").onclick = () => { cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
 /* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
 let cbReserva = null; // reserva cargada en la calculadora {id, tel}
 function pintarDestinoWa() {
@@ -625,10 +626,11 @@ function pintarReservas() {
   const lista = del.filter(r => (f === "todas" || estadoReserva(r) === f) && (!q || (r.nombre + " " + r.contacto).toLowerCase().includes(q)))
     .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
   const abonado = del.reduce((s, r) => s + (r.abono || 0), 0);
-  $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Reservas</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + Math.max(precio - (r.abono || 0), 0), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div>`;
+  const uds = r => r.unidades || 1, saldoR = r => Math.max(precio * uds(r) - (r.abono || 0), 0);
+  $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Clientes</span></div><div><b>${del.reduce((s, r) => s + uds(r), 0)}</b><span>Unidades</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + saldoR(r), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div>`;
   const EST = { pendiente: ["Por cobrar", "disponible"], cobrado: ["Cobro enviado", "en_camino"], pagado: ["Pagada", "entregada"], sinabono: ["Sin abono", "novedad"] };
-  $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b> <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
-      <div class="meta">${/^\d{10}$/.test(r.contacto) ? "📱 " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · Abono ${C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(Math.max(precio - (r.abono || 0), 0))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
+  $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
+      <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
       <div class="btns"><button class="btn chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
@@ -649,7 +651,8 @@ $("#rsLista").addEventListener("click", async e => {
       $("#fCobro").reset(); $("#cbAbonos").innerHTML = "";
       $("#cbCli").value = titulo(r.nombre);
       $("#cbPrecio").value = miles(S.preciosReserva?.[claveProd(r.producto)] || 0);
-      agregarAbono(r.abono || "");
+      $("#cbUnid").value = r.unidades || 1;
+      (r.abonos?.length ? r.abonos : [r.abono || ""]).forEach(v => agregarAbono(v));
       cbMetodo = "transf";
       cbReserva = { id: b.dataset.rscobrar, tel: r.contacto, contacto: r.contacto, nombre: titulo(r.nombre) };
       pintarDestinoWa(); calcular();
@@ -669,29 +672,54 @@ $("#rsImp").onclick = async () => {
   const prod = $("#rsImpProd").value.trim();
   if (!prod) { toast("Escribe el nombre del producto"); $("#rsImpProd").focus(); return; }
   const filas = $("#rsImpTexto").value.split(/\r?\n/).map(l => l.split("\t").map(x => x.trim())).filter(c => c.some(Boolean));
-  const existentes = new Set(Object.values(S.reservas || {}).filter(r => r.producto === prod).map(r => (r.nombre + "|" + r.contacto).toLowerCase()));
-  const nuevas = {}; let orden = Object.values(S.reservas || {}).filter(r => r.producto === prod).length, repetidas = 0;
+  // 1) Agrupar las filas de la misma persona: suma unidades y abonos
+  const grupos = new Map();
   for (const c of filas) {
     if (/^fecha$/i.test(c[0]) || /^nombre$/i.test(c[1] || "")) continue;
-    // Si la fila empieza sin fecha, la primera celda viene vacía
-    const [fecha, nombre, red, contacto, abono] = c.length >= 2 ? c : ["", c[0]];
+    const [fecha, nombre, red, contacto, abono] = c.length >= 2 ? c : ["", c[0]]; // fila sin fecha: primera celda vacía
     if (!nombre) continue;
     const tel = String(contacto || "").replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
-    const r = { producto: prod, fecha: fecha || "", nombre: nombre.replace(/\s+/g, " ").trim(), red: ({ whatsapp: "WhatsApp", instagram: "Instagram", ml: "Mercado Libre", facebook: "Facebook", tiktok: "TikTok" })[String(red || "").trim().toLowerCase()] || titulo(red || ""), contacto: /^3\d{9}$/.test(tel) ? tel : (contacto && !/^n\/?a$/i.test(contacto) ? contacto : ""), abono: num(abono), orden: orden++, creado: Date.now() };
-    const k = (r.nombre + "|" + r.contacto).toLowerCase();
-    if (existentes.has(k)) { repetidas++; continue; }
-    existentes.add(k);
-    nuevas[Date.now().toString(36) + Math.random().toString(36).slice(2, 7)] = r;
+    const cont = /^3\d{9}$/.test(tel) ? tel : (contacto && !/^n\/?a$/i.test(contacto) ? contacto : "");
+    const k = normNombre(nombre);
+    const g = grupos.get(k) || { producto: prod, fecha: fecha || "", nombre: nombre.replace(/\s+/g, " ").trim(), red: redSocial(red), contacto: "", otrosContactos: [], abonos: [], unidades: 0 };
+    g.unidades++;
+    if (num(abono)) g.abonos.push(num(abono));
+    if (!g.fecha && fecha) g.fecha = fecha;
+    if (!g.red && red) g.red = redSocial(red);
+    if (cont && !g.contacto) g.contacto = cont; else if (cont && cont !== g.contacto && !g.otrosContactos.includes(cont)) g.otrosContactos.push(cont);
+    grupos.set(k, g);
   }
-  const n = Object.keys(nuevas).length;
-  if (!n) { $("#rsImpRes").textContent = repetidas ? `Todas (${repetidas}) ya estaban importadas.` : "No se encontraron filas. Copia la tabla con sus columnas desde Excel o Google Sheets."; return; }
+  if (!grupos.size) { $("#rsImpRes").textContent = "No se encontraron filas. Copia la tabla con sus columnas desde Excel o Google Sheets."; return; }
+  // 2) Cruzar con lo ya guardado de ese producto: la tabla importada manda en unidades y abonos;
+  //    se conserva el estado (cobro enviado, pagada). Repetidos guardados antes se unen en uno.
+  const guardadas = Object.entries(S.reservas || {}).filter(([, r]) => r.producto === prod);
+  const porNombre = new Map();
+  guardadas.forEach(([id, r]) => { const k = normNombre(r.nombre); porNombre.set(k, [...(porNombre.get(k) || []), [id, r]]); });
+  const cambios = {}; let nuevas = 0, actualizadas = 0, iguales = 0, orden = guardadas.length;
+  for (const [k, g] of grupos) {
+    const datos = { ...g, abono: g.abonos.reduce((a, b) => a + b, 0) };
+    const prev = porNombre.get(k);
+    if (!prev) { cambios[Date.now().toString(36) + Math.random().toString(36).slice(2, 7)] = { ...datos, orden: orden++, creado: Date.now() }; nuevas++; continue; }
+    const [id, r] = prev[0];
+    if (prev.length === 1 && (r.unidades || 1) === datos.unidades && (r.abono || 0) === datos.abono) { iguales++; continue; }
+    cambios[id] = { ...r, ...datos, contacto: datos.contacto || r.contacto || "", orden: r.orden ?? orden++, cobrado: prev.map(x => x[1].cobrado || 0).reduce((a, b) => Math.max(a, b), 0), pagado: prev.every(x => x[1].pagado) ? r.pagado : 0 };
+    prev.slice(1).forEach(([idDup]) => { cambios[idDup] = deleteField(); });
+    actualizadas++;
+  }
+  const varias = [...grupos.values()].filter(g => g.unidades > 1);
+  const resumen = `${nuevas ? `${nuevas} nuevas` : ""}${actualizadas ? `${nuevas ? ", " : ""}${actualizadas} actualizadas` : ""}${iguales ? `${nuevas || actualizadas ? ", " : ""}${iguales} sin cambios` : ""}`;
+  const agrupado = varias.length ? ` Agrupé ${varias.length} cliente${varias.length === 1 ? "" : "s"} con varias unidades: ${varias.map(g => `${titulo(g.nombre)} (${g.unidades})`).join(", ")}.` : "";
+  if (!Object.keys(cambios).length) { $("#rsImpRes").textContent = `Nada que cambiar: ${resumen}.${agrupado}`; return; }
   try {
-    await setDoc(doc(db, "usuarios", ADMIN_UID), { reservas: nuevas }, { merge: true });
-    $("#rsImpRes").textContent = `Importadas ${n} reservas de ${prod}${repetidas ? ` (${repetidas} repetidas omitidas)` : ""}.`;
+    await setDoc(doc(db, "usuarios", ADMIN_UID), { reservas: cambios }, { merge: true });
+    $("#rsImpRes").textContent = `${prod}: ${grupos.size} clientes (${resumen}).${agrupado}`;
     $("#rsImpTexto").value = "";
     setTimeout(() => { $("#rsProd").value = prod; pintarReservas(); }, 300);
   } catch (err) { $("#rsImpRes").textContent = C.mensajeError(err); }
 };
+// Mismo cliente aunque cambien tildes, mayúsculas o espacios
+const normNombre = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim();
+const redSocial = red => ({ whatsapp: "WhatsApp", instagram: "Instagram", ml: "Mercado Libre", facebook: "Facebook", tiktok: "TikTok" })[String(red || "").trim().toLowerCase()] || titulo(red || "");
 
 function pintarCobros() {
   pintarReservas();
@@ -710,7 +738,7 @@ $("#cbLista").addEventListener("click", async e => {
     if (b.dataset.cbdel) await updateDoc(ref, { [`cobros.${b.dataset.cbdel}`]: deleteField() });
     if (b.dataset.cbusar) {
       const c = S.cobros[b.dataset.cbusar]; if (!c) return;
-      $("#cbCli").value = c.cliente || ""; $("#cbPrecio").value = miles(c.precio);
+      $("#cbCli").value = c.cliente || ""; $("#cbPrecio").value = miles(c.unitario || c.precio); $("#cbUnid").value = c.unidades || 1;
       $("#cbCiudad").value = NOMBRE_CIUDAD[c.ciudad] || c.ciudad === "otro" ? c.ciudad : "bogota";
       if (c.ciudad === "otro") { $("#cbOtroCiudad").value = c.destino || ""; $("#cbOtroValor").value = miles(c.envio); }
       $("#cbAbonos").innerHTML = ""; (c.abonos?.length ? c.abonos : [""]).forEach(v => agregarAbono(v));
