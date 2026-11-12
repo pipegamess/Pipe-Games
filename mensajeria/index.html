@@ -196,7 +196,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
                 <label>Correo remitente<input id="skxRMail" type="email"></label>
                 <label>Dirección de recogida<input id="skxRDir"></label>
                 <div class="fila"><label>Barrio<input id="skxRBarrio"></label><label>Código postal<input id="skxRCp" inputmode="numeric" placeholder="110911"></label></div>
-                <div class="fila"><label>Ciudad<input id="skxRCiudad" value="Bogotá"></label><label>Departamento<input id="skxRDepto" value="Bogotá D.C."></label></div>
+                <div class="fila"><label>Ciudad<input id="skxRCiudad" value="Bogotá"></label><label>Departamento<input id="skxRDepto" value="Cundinamarca"></label></div>
                 <b style="font-size:14px">Paquete por defecto</b>
                 <div class="fila"><label>Largo (cm)<input id="skxL" inputmode="numeric" value="20"></label><label>Ancho (cm)<input id="skxA" inputmode="numeric" value="15"></label></div>
                 <div class="fila"><label>Alto (cm)<input id="skxH" inputmode="numeric" value="5"></label><label>Peso (kg)<input id="skxP" inputmode="decimal" value="0.5"></label></div>
@@ -209,6 +209,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div class="fila"><label>Complemento y referencias<input id="skxComp"></label><label>Barrio<input id="skxBarrio"></label></div>
             <div class="fila"><label>Código postal (si lo pide la transportadora)<input id="skxCp" inputmode="numeric"></label><label>Contenido<input id="skxCont"></label></div>
             <div class="fila"><label>Largo × ancho × alto (cm)<input id="skxDim" placeholder="20 x 15 x 5"></label><label>Peso (kg)<input id="skxPeso" inputmode="decimal"></label></div>
+            <label>Valor declarado del contenido (COP)<input class="din" id="skxValor" inputmode="numeric" placeholder="Ej. 280.000"></label>
             <div class="btns"><button class="btn chico" type="button" id="skxCotizar">Cotizar con Skydropx</button></div>
             <div id="skxTarifas"></div>
             <div id="skxRes"></div>
@@ -965,7 +966,7 @@ function cargarSkx() {
   $("#skxUrl").value = a.url || SKYDROPX_URL || "";
   $("#skxRNom").value = r.nombre || S.recogida?.remitente || "Pipe Games"; $("#skxRTel").value = r.telefono || ""; $("#skxRMail").value = r.correo || "";
   $("#skxRDir").value = r.direccion || S.recogida?.direccion || ""; $("#skxRBarrio").value = r.barrio || ""; $("#skxRCp").value = r.cp || "";
-  $("#skxRCiudad").value = r.ciudad || "Bogotá"; $("#skxRDepto").value = r.depto || "Bogotá D.C.";
+  $("#skxRCiudad").value = r.ciudad || "Bogotá"; $("#skxRDepto").value = r.depto || "Cundinamarca";
   $("#skxL").value = p.l || 20; $("#skxA").value = p.a || 15; $("#skxH").value = p.h || 5; $("#skxP").value = p.kg || 0.5;
   if (!a.remitente?.direccion) $("#skxAjustes").open = true;
 }
@@ -1027,6 +1028,7 @@ function skxDesdeReserva(id) {
   $("#skxNom").value = titulo(r.nombre); $("#skxTel").value = c.telefono || ""; $("#skxMail").value = c.correo || "";
   $("#skxCiudad").value = c.ciudad || ""; $("#skxDir").value = c.direccion || ""; $("#skxComp").value = c.complemento || ""; $("#skxBarrio").value = c.barrio || "";
   $("#skxCont").value = r.producto + ((r.unidades || 1) > 1 ? " x" + r.unidades : "");
+  $("#skxValor").value = miles((S.preciosReserva?.[claveProd(r.producto)] || 0) * (r.unidades || 1));
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
   setTimeout(() => $("#skx").scrollIntoView({ behavior: "smooth" }), 50);
   toast(`Datos de ${titulo(r.nombre)} listos. Revisa y toca “Cotizar con Skydropx”.`);
@@ -1036,7 +1038,7 @@ function datosSkx() {
   const m = T.envBuscar($("#skxCiudad").value)?.x;
   const dims = ($("#skxDim").value.match(/\d+(?:[.,]\d+)?/g) || []).map(x => +x.replace(",", "."));
   return {
-    m, rem,
+    m, rem, valor: num($("#skxValor").value),
     paquete: { length: dims[0] || paq.l || 20, width: dims[1] || paq.a || 15, height: dims[2] || paq.h || 5, weight: +String($("#skxPeso").value).replace(",", ".") || paq.kg || 0.5 },
     dest: { nombre: $("#skxNom").value.trim(), tel: $("#skxTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""), correo: $("#skxMail").value.trim(), dir: $("#skxDir").value.trim(), comp: $("#skxComp").value.trim(), barrio: $("#skxBarrio").value.trim(), cp: $("#skxCp").value.trim(), cont: $("#skxCont").value.trim() }
   };
@@ -1046,14 +1048,37 @@ $("#skxCotizar").onclick = async () => {
   const d = datosSkx(), b = $("#skxCotizar");
   if (!d.m) { toast("Elige el municipio de destino de la lista"); $("#skxCiudad").focus(); return; }
   if (!d.dest.nombre || !d.dest.dir || !/^\d{10}$/.test(d.dest.tel)) { toast("Completa destinatario, celular (10 dígitos) y dirección"); return; }
+  if (!d.valor) { toast("Escribe el valor declarado del contenido (lo pide la transportadora para el seguro)"); $("#skxValor").focus(); return; }
   if (!d.rem.direccion || !/^\d{10}$/.test(d.rem.telefono || "")) { $("#skxAjustes").open = true; toast("Completa y guarda los datos del remitente (dirección y celular)"); return; }
   b.disabled = true; b.textContent = "Cotizando…"; $("#skxTarifas").innerHTML = `<div class="vacio">Consultando tarifas en Skydropx…</div>`; $("#skxRes").innerHTML = "";
   try {
-    const cuerpo = { quotation: {
-      address_from: { country_code: "co", postal_code: d.rem.cp || "", area_level1: quitarTildes(d.rem.depto || "Bogotá D.C."), area_level2: quitarTildes(d.rem.ciudad || "Bogotá"), area_level3: quitarTildes(d.rem.barrio || d.rem.ciudad || "Bogotá") },
-      address_to: { country_code: "co", postal_code: d.dest.cp || "", area_level1: quitarTildes(d.m.d), area_level2: quitarTildes(d.m.c), area_level3: quitarTildes(d.dest.barrio || d.m.c) },
-      parcel: d.paquete } };
-    let q = await skx("POST", "/quotations", cuerpo);
+    // Skydropx valida ciudad y departamento contra su propia lista; se prueban las formas más comunes
+    // (o el código postal, si se escribió) hasta que acepte cada dirección.
+    const variantes = (ciudad, depto, barrio, cp) => {
+      const c = quitarTildes(ciudad), dp = quitarTildes(depto), esBog = /^bogota/i.test(c);
+      const l = esBog ? [["Cundinamarca", "Bogota"], ["Bogota D.C.", "Bogota"], ["Bogota, D.C.", "Bogota, D.C."], ["Distrito Capital", "Bogota"], ["Bogota", "Bogota"], [dp, c]] : [[dp, c], [dp, c.split(",")[0]]];
+      const vistos = new Set();
+      return l.filter(([a, b]) => { const k = a + "|" + b; if (vistos.has(k)) return false; vistos.add(k); return true; })
+        .map(([a1, a2]) => ({ country_code: "co", ...(cp ? { postal_code: cp } : {}), area_level1: a1, area_level2: a2, area_level3: quitarTildes(barrio || a2) }));
+    };
+    const vFrom = variantes(d.rem.ciudad || "Bogotá", d.rem.depto || "Cundinamarca", d.rem.barrio, d.rem.cp);
+    const vTo = variantes(d.m.c, d.m.d, d.dest.barrio, d.dest.cp);
+    let iF = Math.max(0, S.skx?.variante ?? 0), iT = 0, q = null, ultimoError = null;
+    for (let intento = 0; intento < 12; intento++) {
+      const cuerpo = { quotation: { address_from: vFrom[Math.min(iF, vFrom.length - 1)], address_to: vTo[Math.min(iT, vTo.length - 1)], parcel: d.paquete, declared_amount: d.valor } };
+      try { q = await skx("POST", "/quotations", cuerpo); break; }
+      catch (err) {
+        ultimoError = err; const msg = String(err.message || "");
+        if (!/422/.test(msg)) throw err;
+        let avanzo = false;
+        if (/address_from/.test(msg) && iF < vFrom.length - 1) { iF++; avanzo = true; }
+        if (/address_to/.test(msg) && iT < vTo.length - 1) { iT++; avanzo = true; }
+        if (!avanzo) throw err;
+      }
+    }
+    if (!q) throw ultimoError || new Error("Skydropx no aceptó las direcciones");
+    // Recordar la forma de la dirección de recogida que sí funcionó
+    if ((S.skx?.variante ?? 0) !== iF) { S.skx = { ...(S.skx || {}), variante: iF }; setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: { variante: iF } }, { merge: true }).catch(() => {}); }
     const id = hallar(q, "id");
     for (let i = 0; i < 12 && id && !(q.is_completed || hallar(q, "is_completed")); i++) { await esperar(1500); q = await skx("GET", "/quotations/" + id); }
     const rates = (q.rates || hallar(q, "rates") || []).filter(x => x && x.id && x.success !== false && (x.total || x.amount) && !/no_coverage|not_applicable|error/i.test(x.status || ""));
