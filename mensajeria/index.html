@@ -1134,7 +1134,7 @@ $("#skxTarifas").addEventListener("click", async e => {
   const b = e.target.closest("#skxCrear"); b.disabled = true; b.textContent = "Creando guía…";
   try {
     const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: ref || "N/A" });
-    const base = { rate_id: rateId, printing_format: "standard",
+    const base = { rate_id: rateId, printing_format: "standard", declared_amount: d.valor,
       address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio),
       address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · ")) };
     // Colombia pide tipo y contenido de cada paquete. El valor exacto del tipo no está documentado:
