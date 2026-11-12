@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112x">
+<link rel="stylesheet" href="estilos.css?v=20261112y">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -404,9 +404,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112x";
-import * as C from "./comun.js?v=20261112x";
-import * as T from "./tarifas-envio.js?v=20261112x";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112y";
+import * as C from "./comun.js?v=20261112y";
+import * as T from "./tarifas-envio.js?v=20261112y";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -544,7 +544,7 @@ $("#fgCotizar").onclick = async () => {
   try {
     const { rates } = await cotizarSkydropx({ m, rem, valor: t.v, paquete: { length: t.l, width: t.a, height: t.h, weight: t.kg }, dest: { barrio: "" } });
     rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount));
-    $("#fgTarifas").innerHTML = rates.length ? `<span class="nota">Toca una tarifa para usarla como costo del envío (se redondea a los mil de arriba).</span><div class="cb-metodos">${rates.map(x => `<button type="button" class="cb-m" data-fgval="${+x.total || +x.amount}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>`
+    $("#fgTarifas").innerHTML = rates.length ? `<span class="nota">Toca una tarifa: al cliente se le cobra la tarifa + $2.000, redondeado a los mil de arriba.</span><div class="cb-metodos">${rates.map(x => `<button type="button" class="cb-m" data-fgval="${+x.total || +x.amount}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}<small>cliente: ${C.cop(Math.ceil(((+x.total || +x.amount) + 2000) / 1000) * 1000)}</small></span></button>`).join("")}</div>`
       : `<div class="aviso">Ninguna transportadora dio precio para ${esc(T.envEtiqueta(m))} con esas medidas.</div>`;
   } catch (err) { $("#fgTarifas").innerHTML = `<div class="aviso">${esc(err.message || err)}</div>`; }
   b.disabled = false; b.textContent = "Cotizar con Skydropx";
@@ -552,7 +552,8 @@ $("#fgCotizar").onclick = async () => {
 $("#fgTarifas").addEventListener("click", e => {
   const b = e.target.closest("[data-fgval]"); if (!b) return;
   $("#fgTarifas").querySelectorAll("[data-fgval]").forEach(x => x.classList.toggle("on", x === b));
-  $("#fgEnvio").value = miles(Math.ceil(+b.dataset.fgval / 1000) * 1000);
+  // Al cliente: tarifa de Skydropx + $2.000, redondeado a los mil de arriba (37.910 → 39.910 → 40.000)
+  $("#fgEnvio").value = miles(Math.ceil((+b.dataset.fgval + 2000) / 1000) * 1000);
 });
 $("#fgEnvio").addEventListener("input", e => { e.target.value = e.target.value ? miles(num(e.target.value)) : ""; });
 $("#fgCopiar").onclick = async () => {
@@ -1679,7 +1680,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112x";
+const VERSION_PANEL = "20261112y";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
