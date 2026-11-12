@@ -65,13 +65,14 @@ function envioDeCiudad(txt) {
   }
   return { local:false, tipo:'otro', ciudad:et, valor:0, escrito:true, titulo:'Envío a ' + et };
 }
-/* Consolas, parlantes e iPads: no se muestra costo de envío; se confirma por WhatsApp */
+/* Consolas, parlantes e iPads: fuera de Bogotá, Chía y Soacha no se muestra costo de envío; se confirma por WhatsApp.
+   En Bogotá, Chía y Soacha aplica el domicilio normal ($10.000) para todo el catálogo. */
 const ENVIO_OCULTO_RX = /\b(CONSOLA|PARLANTE|IPAD)\b/i;
 function envOcultoItems(items) { return (items || []).some(i => ENVIO_OCULTO_RX.test(i && i.name || '')); }
 function simItemsActuales() { return !simItem ? [] : (simItem.tipo === 'cart' ? cart : [simItem]); }
 function envioPedido(txt, items) {
   const e = envioDeCiudad(txt);
-  if (envOcultoItems(items) && (e.tipo === 'local' || e.tipo === 'nacional' || e.tipo === 'otro'))
+  if (envOcultoItems(items) && (e.tipo === 'nacional' || e.tipo === 'otro'))
     return Object.assign({}, e, { local:false, tipo:'oculto', valor:0, escrito:true, titulo:'Envío a ' + e.ciudad });
   return e;
 }
