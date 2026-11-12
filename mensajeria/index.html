@@ -12,6 +12,17 @@
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .quien{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.campana{position:relative}
+.campana>button{position:relative;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--panel,var(--bg));color:var(--ink);cursor:pointer;display:grid;place-items:center;padding:0}
+.campana>button svg{width:20px;height:20px}
+.campana .cuenta{position:absolute;top:-4px;right:-4px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--bad);color:#fff;font:700 11px/19px var(--f-body,system-ui);text-align:center}
+.campana .lista-noti{position:absolute;right:0;top:46px;z-index:1500;width:min(370px,calc(100vw - 32px));max-height:min(70vh,520px);overflow:auto;background:var(--panel,var(--bg));border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18)}
+.lista-noti .cab-noti{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:inherit}
+.lista-noti .noti{display:flex;gap:10px;width:100%;text-align:left;padding:10px 12px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);cursor:pointer;font:inherit}
+.lista-noti .noti:hover{background:var(--chip)}
+.lista-noti .noti.nueva{background:color-mix(in srgb,var(--route) 9%,transparent)}
+.lista-noti .noti .ic{font-size:18px;line-height:1.2}
+.lista-noti .noti small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .rejilla{display:grid;grid-template-columns:1fr;gap:14px}
 @media (min-width:960px){.rejilla{grid-template-columns:1.2fr 1fr;align-items:start}.col-mapa{position:sticky;top:12px}}
 #mapa{height:min(50vh,520px);min-height:300px}
@@ -126,7 +137,12 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <div class="envoltura" id="vPanel" hidden>
   <header class="barra">
     <h1>Mensajería <span class="marca">Prueba</span> · Despacho</h1>
-    <div class="quien"><span id="quien"></span><button class="btn sec chico" id="salir">Salir</button></div>
+    <div class="quien">
+      <div class="campana" id="campana">
+        <button type="button" id="bCampana" aria-label="Notificaciones" title="Notificaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="cuenta" id="cuentaNoti" hidden></span></button>
+        <div class="lista-noti" id="listaNoti" hidden></div>
+      </div>
+      <span id="quien"></span><button class="btn sec chico" id="salir">Salir</button></div>
   </header>
   <div class="rejilla">
     <div class="col-mapa">
@@ -264,6 +280,72 @@ const { esc } = C;
 const S = { guias: {}, ubic: {}, mens: {}, inv: [], entregas: [], tab: "guias", filtro: "activas", busca: "", pin: null, abierta: null, recogida: null, editRec: false, recPin: null };
 let subs = [];
 
+/* ---------- NOTIFICACIONES (campana): entregas y novedades que reportan los mensajeros ---------- */
+const TIPOS_NOTI = { entregada: { ic: "✅", txt: "entregada" }, novedad: { ic: "⚠️", txt: "con novedad" } };
+let notiYaVistas = null; // claves de avisos ya conocidos (para avisar solo de los nuevos)
+function listaNotis() {
+  const l = [];
+  Object.values(S.guias).forEach(g => (g.eventos || []).forEach(e => {
+    if (TIPOS_NOTI[e.estado] && e.por !== "despacho") l.push({ g, e, k: g.numero + "|" + e.estado + "|" + e.t });
+  }));
+  return l.sort((a, b) => b.e.t - a.e.t).slice(0, 40);
+}
+function pintarNotis() {
+  const l = listaNotis(), visto = S.notiVisto || 0;
+  const nuevas = l.filter(x => x.e.t > visto).length;
+  $("#cuentaNoti").hidden = !nuevas; $("#cuentaNoti").textContent = nuevas > 9 ? "9+" : nuevas;
+  document.title = (nuevas ? `(${nuevas}) ` : "") + document.title.replace(/^\(\d+\+?\) /, "");
+  const el = $("#listaNoti");
+  if (el.hidden) return;
+  el.innerHTML = `<div class="cab-noti"><b>Notificaciones</b>${nuevas ? `<button class="btn sec chico" id="notiLeidas">Marcar todas como leídas</button>` : ""}</div>`
+    + (l.length ? l.map(({ g, e }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
+      : `<div class="vacio" style="margin:12px">Aquí aparecerán las entregas y novedades que marquen los mensajeros.</div>`);
+}
+async function marcarNotisLeidas() {
+  S.notiVisto = Date.now(); pintarNotis();
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { notiVisto: S.notiVisto }, { merge: true }); } catch {}
+}
+function sonido() {
+  try {
+    const ctx = sonido.ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+    [880, 1320].forEach((f, i) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      const t0 = ctx.currentTime + i * 0.16; g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14); o.start(t0); o.stop(t0 + 0.15); });
+  } catch {}
+}
+function revisarNotis() {
+  const l = listaNotis();
+  if (notiYaVistas) {
+    const nuevas = l.filter(x => !notiYaVistas.has(x.k) && Date.now() - x.e.t < 30 * 60e3);
+    nuevas.slice(0, 3).forEach(({ g, e }) => {
+      const t = `${TIPOS_NOTI[e.estado].ic} ${g.numero} ${TIPOS_NOTI[e.estado].txt}${e.por ? " por " + C.primerNombre(e.por) : ""}`;
+      toast(t);
+      if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+        try { const n = new Notification("Mensajería · " + (e.estado === "entregada" ? "Pedido entregado" : "Novedad"), { body: `${g.numero} · ${g.cliente || ""}`, tag: g.numero + e.estado }); n.onclick = () => { focus(); abrirDetalle(g.numero); n.close(); }; } catch {}
+      }
+    });
+    if (nuevas.length) sonido();
+  }
+  notiYaVistas = new Set(l.map(x => x.k));
+  pintarNotis();
+}
+$("#bCampana").onclick = () => {
+  const el = $("#listaNoti"); el.hidden = !el.hidden; pintarNotis();
+  // Pedir permiso de avisos del navegador la primera vez (para avisar con la pestaña en segundo plano)
+  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+  if (!el.hidden) sonido.ctx?.resume?.();
+};
+$("#listaNoti").addEventListener("click", e => {
+  if (e.target.closest("#notiLeidas")) return marcarNotisLeidas();
+  const b = e.target.closest("[data-noti]"); if (!b) return;
+  $("#listaNoti").hidden = true;
+  if (S.guias[b.dataset.noti]) abrirDetalle(b.dataset.noti);
+});
+document.addEventListener("click", e => {
+  if (e.target.isConnected && !e.target.closest("#campana")) $("#listaNoti").hidden = true;
+  // El navegador solo deja sonar después de un clic en la página
+  try { sonido.ctx ||= new (window.AudioContext || window.webkitAudioContext)(); sonido.ctx.resume(); } catch {}
+});
+
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
 async function copiar(texto, ok = "Copiado") { try { await navigator.clipboard.writeText(texto); toast(ok); } catch { prompt("Copia este texto:", texto); } }
 
@@ -315,14 +397,14 @@ onAuthStateChanged(auth, async u => {
 function escuchar() {
   const err = e => toast(C.mensajeError(e));
   subs.push(onSnapshot(query(collection(db, "guias"), orderBy("creado", "desc"), limit(500)), s => {
-    S.guias = {}; s.forEach(d => S.guias[d.id] = { numero: d.id, ...d.data() }); pintar(); migrarClaves();
+    S.guias = {}; s.forEach(d => S.guias[d.id] = { numero: d.id, ...d.data() }); pintar(); migrarClaves(); revisarNotis();
   }, err));
   subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubic = {}; s.forEach(d => S.ubic[d.id] = d.data()); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); pintar(); }, err));
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */
