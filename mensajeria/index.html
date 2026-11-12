@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112z">
+<link rel="stylesheet" href="estilos.css?v=20261113a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -404,9 +404,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112z";
-import * as C from "./comun.js?v=20261112z";
-import * as T from "./tarifas-envio.js?v=20261112z";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113a";
+import * as C from "./comun.js?v=20261113a";
+import * as T from "./tarifas-envio.js?v=20261113a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -843,6 +843,7 @@ $("#cbCli").addEventListener("change", () => {
 const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
 const claveProd = t => String(t || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 function estadoReserva(r) { return r.pagado ? "pagado" : r.confirmacion ? "confirmado" : r.cobrado || r.linkEnviado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
+let rsEditando = null;
 function pintarReservas() {
   const todas = Object.entries(S.reservas || {}).map(([id, r]) => ({ id, ...r }));
   const prods = [...new Set(todas.map(r => r.producto))].sort();
@@ -861,7 +862,9 @@ function pintarReservas() {
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
       <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)} · ${esc(r.confirmacion.correo)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
-      <div class="btns"><button class="btn chico" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+      ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular<input id="rsEdTel" inputmode="numeric" maxlength="16" value="${esc(r.contacto || "")}"></label></div>
+      <div class="btns"><button class="btn chico" data-rsedguardar="${r.id}">Guardar</button><button class="btn sec chico" data-rsedcancel="1">Cancelar</button></div>` : ""}
+      <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar nombre</button><button class="btn chico" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
 $("#rsProd").onchange = pintarReservas;
@@ -875,6 +878,15 @@ $("#rsPrecio").addEventListener("change", async () => {
 $("#rsLista").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const ref = doc(db, "usuarios", ADMIN_UID);
+  if (b.dataset.rsedit) { rsEditando = b.dataset.rsedit; pintarReservas(); $("#rsEdNom")?.focus(); return; }
+  if (b.dataset.rsedcancel) { rsEditando = null; pintarReservas(); return; }
+  if (b.dataset.rsedguardar) {
+    const id = b.dataset.rsedguardar, nombre = $("#rsEdNom").value.trim().replace(/\s+/g, " "), tel = $("#rsEdTel").value.replace(/\D/g, "").replace(/^57(?=\d{10}$)/, "");
+    if (nombre.length < 2) { toast("Escribe el nombre"); return; }
+    try { await updateDoc(ref, { [`reservas.${id}.nombre`]: nombre, [`reservas.${id}.contacto`]: tel || $("#rsEdTel").value.trim() }); rsEditando = null; toast("Reserva actualizada"); }
+    catch (err) { toast(C.mensajeError(err)); }
+    return;
+  }
   try {
     if (b.dataset.rscobrar) cargarReserva(b.dataset.rscobrar);
     if (b.dataset.rslink) await enviarLinkSaldo(b.dataset.rslink);
@@ -1017,7 +1029,7 @@ async function enviarLinkSaldo(id) {
   b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
   try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
   const link = URL_SALDO + "?c=" + token;
-  const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, ya está disponible tu reserva de ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
+  const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, la espera terminó. Queremos informarte que ya está disponible ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
   const tel = /^\d{10}$/.test(r.contacto) ? r.contacto : "";
   const url = tel ? `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
   if (ventana) ventana.location.href = url; else window.open(url, "_blank");
@@ -1680,7 +1692,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112z";
+const VERSION_PANEL = "20261113a";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
