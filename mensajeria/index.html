@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261111f">
+<link rel="stylesheet" href="estilos.css?v=20261112a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -186,6 +186,37 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, dirección, complemento y barrio, y marca su casa en el mapa. Al enviarlo se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo) y te llega a la campana.</span>
           <div class="btns"><button class="btn chico" type="button" id="fcGen">Copiar mensaje con el link</button><a class="btn sec chico" id="fcVer" target="_blank" rel="noopener">Ver formulario</a></div>
         </div>
+        <details class="item" id="skx">
+          <summary style="cursor:pointer"><b>Envío nacional con Skydropx</b> <span class="nota">· clientes fuera de Bogotá, Chía y Soacha</span></summary>
+          <div class="lista" style="margin-top:10px">
+            <details class="item" id="skxAjustes"><summary style="cursor:pointer"><b>Conexión y datos del remitente</b> <span class="nota" id="skxEstado"></span></summary>
+              <div class="lista" style="margin-top:8px">
+                <label>Dirección del intermediario (Cloudflare Worker)<input id="skxUrl" placeholder="https://skydropx-pipegames.tu-usuario.workers.dev"></label>
+                <div class="fila"><label>Remitente<input id="skxRNom" placeholder="Pipe Games"></label><label>Celular remitente<input id="skxRTel" inputmode="numeric"></label></div>
+                <label>Correo remitente<input id="skxRMail" type="email"></label>
+                <label>Dirección de recogida<input id="skxRDir"></label>
+                <div class="fila"><label>Barrio<input id="skxRBarrio"></label><label>Código postal<input id="skxRCp" inputmode="numeric" placeholder="110911"></label></div>
+                <div class="fila"><label>Ciudad<input id="skxRCiudad" value="Bogotá"></label><label>Departamento<input id="skxRDepto" value="Bogotá D.C."></label></div>
+                <b style="font-size:14px">Paquete por defecto</b>
+                <div class="fila"><label>Largo (cm)<input id="skxL" inputmode="numeric" value="20"></label><label>Ancho (cm)<input id="skxA" inputmode="numeric" value="15"></label></div>
+                <div class="fila"><label>Alto (cm)<input id="skxH" inputmode="numeric" value="5"></label><label>Peso (kg)<input id="skxP" inputmode="decimal" value="0.5"></label></div>
+                <div class="btns"><button class="btn chico" type="button" id="skxGuardar">Guardar</button><button class="btn sec chico" type="button" id="skxProbar">Probar conexión</button></div>
+              </div></details>
+            <div class="fila"><label>Destinatario<input id="skxNom"></label><label>Celular<input id="skxTel" inputmode="numeric"></label></div>
+            <label>Correo (opcional)<input id="skxMail" type="email"></label>
+            <div class="sug-caja"><label>Municipio de destino<input id="skxCiudad" autocomplete="off" placeholder="Ej. Medellín"></label><div class="sugerencias" id="skxCiudadSug" hidden></div></div>
+            <label>Dirección<input id="skxDir"></label>
+            <div class="fila"><label>Complemento y referencias<input id="skxComp"></label><label>Barrio<input id="skxBarrio"></label></div>
+            <div class="fila"><label>Código postal (si lo pide la transportadora)<input id="skxCp" inputmode="numeric"></label><label>Contenido<input id="skxCont"></label></div>
+            <div class="fila"><label>Largo × ancho × alto (cm)<input id="skxDim" placeholder="20 x 15 x 5"></label><label>Peso (kg)<input id="skxPeso" inputmode="decimal"></label></div>
+            <div class="btns"><button class="btn chico" type="button" id="skxCotizar">Cotizar con Skydropx</button></div>
+            <div id="skxTarifas"></div>
+            <div id="skxRes"></div>
+            <details><summary class="nota" style="cursor:pointer">Ver respuesta técnica de Skydropx</summary><pre id="skxRaw" style="white-space:pre-wrap;font-size:11px;max-height:260px;overflow:auto"></pre></details>
+            <h3 style="margin:6px 0 0">Guías nacionales creadas</h3>
+            <div class="lista" id="skxLista"></div>
+          </div>
+        </details>
         <div class="item ml-caja" id="mlCaja">
           <b>Etiquetas de Mercado Libre y Falabella</b>
           <span class="nota">Arrastra aquí los PDF de etiquetas que descargas de Mercado Libre (Flex) o de Falabella (Despacho directo), o toca el botón. Las guías se crean solas y el mensajero las recibe escaneando el código de esa misma etiqueta.</span>
@@ -333,8 +364,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111f";
-import * as C from "./comun.js?v=20261111f";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261112a";
+import * as C from "./comun.js?v=20261112a";
+import * as T from "./tarifas-envio.js?v=20261112a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -691,7 +723,7 @@ function pintarReservas() {
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
       <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)} · ${esc(r.confirmacion.correo)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
-      <div class="btns"><button class="btn chico" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>` : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+      <div class="btns"><button class="btn chico" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>` : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
 $("#rsProd").onchange = pintarReservas;
@@ -709,6 +741,7 @@ $("#rsLista").addEventListener("click", async e => {
     if (b.dataset.rscobrar) cargarReserva(b.dataset.rscobrar);
     if (b.dataset.rslink) await enviarLinkSaldo(b.dataset.rslink);
     if (b.dataset.rsguia) guiaDesdeReserva(b.dataset.rsguia);
+    if (b.dataset.rsskx) skxDesdeReserva(b.dataset.rsskx);
     if (b.dataset.rspagado) await updateDoc(ref, { [`reservas.${b.dataset.rspagado}.pagado`]: Date.now() });
     if (b.dataset.rsdeshacer) await updateDoc(ref, { [`reservas.${b.dataset.rsdeshacer}.pagado`]: deleteField() });
     if (b.dataset.rsborrar) {
@@ -921,6 +954,170 @@ $("#cbLista").addEventListener("click", async e => {
 agregarAbono();
 calcular();
 
+/* ---------- SKYDROPX: guías nacionales a través del intermediario (Cloudflare Worker) ---------- */
+let skxCargado = false, skxReserva = null, skxCot = null;
+function cargarSkx() {
+  const a = S.skx || {};
+  $("#skxEstado").textContent = a.url ? "· conectado a " + a.url.replace(/^https?:\/\//, "") : "· falta configurar";
+  pintarSkxLista();
+  if (skxCargado) return; skxCargado = true;
+  const r = a.remitente || {}, p = a.paquete || {};
+  $("#skxUrl").value = a.url || "";
+  $("#skxRNom").value = r.nombre || S.recogida?.remitente || "Pipe Games"; $("#skxRTel").value = r.telefono || ""; $("#skxRMail").value = r.correo || "";
+  $("#skxRDir").value = r.direccion || S.recogida?.direccion || ""; $("#skxRBarrio").value = r.barrio || ""; $("#skxRCp").value = r.cp || "";
+  $("#skxRCiudad").value = r.ciudad || "Bogotá"; $("#skxRDepto").value = r.depto || "Bogotá D.C.";
+  $("#skxL").value = p.l || 20; $("#skxA").value = p.a || 15; $("#skxH").value = p.h || 5; $("#skxP").value = p.kg || 0.5;
+  if (!a.url) $("#skxAjustes").open = true;
+}
+$("#skxGuardar").onclick = async () => {
+  const datos = { url: $("#skxUrl").value.trim().replace(/\/+$/, ""),
+    remitente: { nombre: $("#skxRNom").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() },
+    paquete: { l: +$("#skxL").value || 20, a: +$("#skxA").value || 15, h: +$("#skxH").value || 5, kg: +String($("#skxP").value).replace(",", ".") || 0.5 } };
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: datos }, { merge: true }); S.skx = datos; cargarSkx(); toast("Datos de Skydropx guardados"); } catch (e) { toast(C.mensajeError(e)); }
+};
+async function skx(metodo, ruta, cuerpo) {
+  const url = (S.skx?.url || $("#skxUrl").value.trim()).replace(/\/+$/, "");
+  if (!url) throw new Error("Falta la dirección del intermediario (Conexión y datos del remitente)");
+  const token = await auth.currentUser.getIdToken();
+  const r = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo, ruta, cuerpo }) });
+  const j = await r.json().catch(() => ({ error: "Respuesta no válida del intermediario" }));
+  $("#skxRaw").textContent = `${metodo} ${ruta}\n${cuerpo ? JSON.stringify(cuerpo, null, 1) + "\n" : ""}→ ${JSON.stringify(j, null, 1)}`.slice(0, 20000);
+  if (j.error) throw new Error(j.error);
+  if (j.estado >= 400) throw new Error("Skydropx respondió " + j.estado + ": " + resumenError(j.datos));
+  return j.datos;
+}
+const resumenError = d => { const e = d?.errors || d?.error || d?.message || d; return (typeof e === "string" ? e : JSON.stringify(e)).slice(0, 300); };
+// Busca un campo en cualquier nivel de la respuesta (las respuestas de Skydropx vienen anidadas)
+function hallar(o, clave, prof = 0) {
+  if (!o || typeof o !== "object" || prof > 8) return undefined;
+  if (o[clave] != null && o[clave] !== "") return o[clave];
+  for (const v of Object.values(o)) { const x = hallar(v, clave, prof + 1); if (x != null && x !== "") return x; }
+  return undefined;
+}
+const esperar = ms => new Promise(ok => setTimeout(ok, ms));
+$("#skxProbar").onclick = async () => {
+  const url = $("#skxUrl").value.trim().replace(/\/+$/, "");
+  try {
+    const salud = await (await fetch(url + "/salud")).json();
+    if (!salud.credenciales) { toast("El intermediario responde, pero faltan el Client ID o el Client Secret"); return; }
+    await skx("GET", "/carriers");
+    toast("Conexión con Skydropx correcta (" + (salud.base.includes("sb-") ? "modo pruebas" : "modo real") + ")");
+  } catch (e) { toast("No se pudo conectar: " + (e.message || e)); }
+};
+// Municipio de destino con la lista del catálogo
+$("#skxCiudad").addEventListener("input", () => {
+  const box = $("#skxCiudadSug"); let n = T.envNorm($("#skxCiudad").value.split(" - ")[0]); n = T.ENVIO_ALIAS[n] || n;
+  if (n.length < 2) { box.hidden = true; return; }
+  const res = T.ENVIO_MUNI.filter(m => m.k.startsWith(n) || m.k.split(" ").some(w => w.startsWith(n))).sort((a, b) => (a.k === n ? 0 : 1) - (b.k === n ? 0 : 1) || a.k.localeCompare(b.k)).slice(0, 7);
+  box.innerHTML = res.map(m => `<button type="button" data-skxk="${esc(m.key)}"><span class="t1">${esc(m.c)}</span><span class="t2">${esc(m.d)}</span></button>`).join("");
+  box.hidden = !res.length;
+});
+$("#skxCiudadSug").addEventListener("pointerdown", e => e.preventDefault());
+$("#skxCiudadSug").addEventListener("click", e => { const b = e.target.closest("[data-skxk]"); if (!b) return; const m = T.ENVIO_MUNI.find(x => x.key === b.dataset.skxk); $("#skxCiudad").value = T.envEtiqueta(m); $("#skxCiudadSug").hidden = true; });
+document.addEventListener("click", e => { if (!e.target.closest("#skxCiudad, #skxCiudadSug")) $("#skxCiudadSug").hidden = true; });
+function skxDesdeReserva(id) {
+  const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
+  skxReserva = id; skxCot = null;
+  irA("nueva"); $("#skx").open = true;
+  $("#skxNom").value = titulo(r.nombre); $("#skxTel").value = c.telefono || ""; $("#skxMail").value = c.correo || "";
+  $("#skxCiudad").value = c.ciudad || ""; $("#skxDir").value = c.direccion || ""; $("#skxComp").value = c.complemento || ""; $("#skxBarrio").value = c.barrio || "";
+  $("#skxCont").value = r.producto + ((r.unidades || 1) > 1 ? " x" + r.unidades : "");
+  $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
+  setTimeout(() => $("#skx").scrollIntoView({ behavior: "smooth" }), 50);
+  toast(`Datos de ${titulo(r.nombre)} listos. Revisa y toca “Cotizar con Skydropx”.`);
+}
+function datosSkx() {
+  const a = S.skx || {}, rem = a.remitente || {}, paq = a.paquete || {};
+  const m = T.envBuscar($("#skxCiudad").value)?.x;
+  const dims = ($("#skxDim").value.match(/\d+(?:[.,]\d+)?/g) || []).map(x => +x.replace(",", "."));
+  return {
+    m, rem,
+    paquete: { length: dims[0] || paq.l || 20, width: dims[1] || paq.a || 15, height: dims[2] || paq.h || 5, weight: +String($("#skxPeso").value).replace(",", ".") || paq.kg || 0.5 },
+    dest: { nombre: $("#skxNom").value.trim(), tel: $("#skxTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""), correo: $("#skxMail").value.trim(), dir: $("#skxDir").value.trim(), comp: $("#skxComp").value.trim(), barrio: $("#skxBarrio").value.trim(), cp: $("#skxCp").value.trim(), cont: $("#skxCont").value.trim() }
+  };
+}
+const quitarTildes = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "");
+$("#skxCotizar").onclick = async () => {
+  const d = datosSkx(), b = $("#skxCotizar");
+  if (!d.m) { toast("Elige el municipio de destino de la lista"); $("#skxCiudad").focus(); return; }
+  if (!d.dest.nombre || !d.dest.dir || !/^\d{10}$/.test(d.dest.tel)) { toast("Completa destinatario, celular (10 dígitos) y dirección"); return; }
+  if (!d.rem.direccion || !/^\d{10}$/.test(d.rem.telefono || "")) { $("#skxAjustes").open = true; toast("Completa y guarda los datos del remitente (dirección y celular)"); return; }
+  b.disabled = true; b.textContent = "Cotizando…"; $("#skxTarifas").innerHTML = `<div class="vacio">Consultando tarifas en Skydropx…</div>`; $("#skxRes").innerHTML = "";
+  try {
+    const cuerpo = { quotation: {
+      address_from: { country_code: "co", postal_code: d.rem.cp || "", area_level1: quitarTildes(d.rem.depto || "Bogotá D.C."), area_level2: quitarTildes(d.rem.ciudad || "Bogotá"), area_level3: quitarTildes(d.rem.barrio || d.rem.ciudad || "Bogotá") },
+      address_to: { country_code: "co", postal_code: d.dest.cp || "", area_level1: quitarTildes(d.m.d), area_level2: quitarTildes(d.m.c), area_level3: quitarTildes(d.dest.barrio || d.m.c) },
+      parcel: d.paquete } };
+    let q = await skx("POST", "/quotations", cuerpo);
+    const id = hallar(q, "id");
+    for (let i = 0; i < 12 && id && !(q.is_completed || hallar(q, "is_completed")); i++) { await esperar(1500); q = await skx("GET", "/quotations/" + id); }
+    const rates = (q.rates || hallar(q, "rates") || []).filter(x => x && x.id && x.success !== false && (x.total || x.amount) && !/no_coverage|not_applicable|error/i.test(x.status || ""));
+    skxCot = { id, rates, d };
+    $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b><div class="cb-metodos">${rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount)).map((x, i) => `<button type="button" class="cb-m${i === 0 ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + " días" : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
+      <div class="btns"><button class="btn" type="button" id="skxCrear">Crear guía en Skydropx</button></div>`
+      : `<div class="aviso">Skydropx no devolvió tarifas para ${esc(T.envEtiqueta(d.m))}. Revisa el municipio, agrega el código postal o mira la respuesta técnica abajo.</div>`;
+  } catch (e) { $("#skxTarifas").innerHTML = `<div class="aviso">${esc(e.message || e)}</div>`; }
+  b.disabled = false; b.textContent = "Cotizar con Skydropx";
+};
+$("#skxTarifas").addEventListener("click", async e => {
+  const op = e.target.closest("[data-rate]");
+  if (op) { $("#skxTarifas").querySelectorAll("[data-rate]").forEach(x => x.classList.toggle("on", x === op)); return; }
+  if (!e.target.closest("#skxCrear") || !skxCot) return;
+  const rateId = $("#skxTarifas .cb-m.on")?.dataset.rate; if (!rateId) return;
+  const rate = skxCot.rates.find(x => String(x.id) === rateId), d = skxCot.d;
+  const b = e.target.closest("#skxCrear"); b.disabled = true; b.textContent = "Creando guía…";
+  try {
+    const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: ref || "N/A" });
+    const cuerpo = { shipment: { rate_id: rateId, printing_format: "standard",
+      address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio),
+      address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · ")) } };
+    let s = await skx("POST", "/shipments", cuerpo);
+    const id = hallar(s, "id");
+    let guia = hallar(s, "tracking_number"), etiqueta = hallar(s, "label_url");
+    for (let i = 0; i < 15 && id && !(guia && etiqueta); i++) { await esperar(2000); s = await skx("GET", "/shipments/" + id); guia = hallar(s, "tracking_number"); etiqueta = hallar(s, "label_url"); if (/fail|error|cancel/i.test(hallar(s, "workflow_status") || "")) break; }
+    const reg = { cliente: d.dest.nombre, telefono: d.dest.tel, ciudad: T.envEtiqueta(d.m), direccion: d.dest.dir, transportadora: rate?.provider_display_name || rate?.provider_name || "", servicio: rate?.provider_service_name || "", costo: +(rate?.total || rate?.amount) || 0, envioId: id || "", guia: guia || "", etiqueta: etiqueta || "", estado: hallar(s, "workflow_status") || "", reserva: skxReserva || null, creado: Date.now() };
+    const clave = (id || Date.now().toString(36)).toString().replace(/[^A-Za-z0-9_-]/g, "");
+    const cambios = { guiasSkydropx: { [clave]: reg } };
+    if (skxReserva) cambios.reservas = { [skxReserva]: { skydropx: { guia: reg.guia, transportadora: reg.transportadora, etiqueta: reg.etiqueta, envioId: reg.envioId } } };
+    await setDoc(doc(db, "usuarios", ADMIN_UID), cambios, { merge: true });
+    $("#skxTarifas").innerHTML = "";
+    $("#skxRes").innerHTML = guia ? `<div class="item"><b>Guía creada en Skydropx</b><div>${esc(reg.transportadora)} · Guía <span class="guia">${esc(guia)}</span> · ${C.cop(reg.costo)}</div>
+      <div class="btns">${etiqueta ? `<a class="btn chico" href="${esc(etiqueta)}" target="_blank" rel="noopener">Abrir etiqueta (PDF)</a>` : ""}<button class="btn sec chico" type="button" data-skxwa="${clave}">Enviar guía al cliente por WhatsApp</button></div></div>`
+      : `<div class="aviso">Skydropx recibió el envío pero aún no entrega el número de guía${id ? " (envío " + esc(id) + ")" : ""}. Aparecerá en “Guías nacionales creadas”; toca “Actualizar” en unos minutos.</div>`;
+    skxReserva = null; skxCot = null;
+  } catch (err) { toast("No se pudo crear la guía: " + (err.message || err)); b.disabled = false; b.textContent = "Crear guía en Skydropx"; }
+});
+function pintarSkxLista() {
+  const l = Object.entries(S.skxGuias || {}).map(([k, g]) => ({ k, ...g })).sort((a, b) => b.creado - a.creado).slice(0, 30);
+  $("#skxLista").innerHTML = l.length ? l.map(g => `<div class="item"><div class="arriba"><span><b>${esc(g.cliente)}</b> · ${esc(g.ciudad)}</span><span class="pill ${g.guia ? "entregada" : "novedad"}">${g.guia ? esc(g.transportadora) : "Sin número aún"}</span></div>
+      <div class="meta">${g.guia ? "Guía " + esc(g.guia) + " · " : ""}${C.cop(g.costo)} · ${C.fecha(g.creado)}</div>
+      <div class="btns">${g.etiqueta ? `<a class="btn chico" href="${esc(g.etiqueta)}" target="_blank" rel="noopener">Etiqueta (PDF)</a>` : ""}${g.guia ? `<button class="btn sec chico" type="button" data-skxwa="${g.k}">Enviar guía al cliente</button>` : ""}${g.envioId ? `<button class="btn sec chico" type="button" data-skxact="${g.k}">Actualizar</button>` : ""}</div></div>`).join("")
+    : `<div class="vacio">Aquí quedan las guías que crees con Skydropx.</div>`;
+}
+document.addEventListener("click", async e => {
+  const wa = e.target.closest("[data-skxwa]");
+  if (wa) {
+    const g = S.skxGuias?.[wa.dataset.skxwa]; if (!g) return;
+    const texto = `Hola ${C.primerNombre(g.cliente)}, tu pedido ya fue despachado con ${g.transportadora}.\nNúmero de guía: ${g.guia}\nCon ese número puedes rastrearlo en la página de ${g.transportadora}.`;
+    window.open(/^\d{10}$/.test(g.telefono) ? `https://api.whatsapp.com/send?phone=57${g.telefono}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+    return;
+  }
+  const act = e.target.closest("[data-skxact]");
+  if (act) {
+    const g = S.skxGuias?.[act.dataset.skxact]; if (!g?.envioId) return;
+    act.disabled = true;
+    try {
+      const s = await skx("GET", "/shipments/" + g.envioId);
+      const cambio = { guia: hallar(s, "tracking_number") || g.guia, etiqueta: hallar(s, "label_url") || g.etiqueta, estado: hallar(s, "workflow_status") || g.estado };
+      const datos = { guiasSkydropx: { [act.dataset.skxact]: cambio } };
+      if (g.reserva) datos.reservas = { [g.reserva]: { skydropx: { guia: cambio.guia, transportadora: g.transportadora, etiqueta: cambio.etiqueta, envioId: g.envioId } } };
+      await setDoc(doc(db, "usuarios", ADMIN_UID), datos, { merge: true });
+      toast(cambio.guia ? "Guía " + cambio.guia : "Skydropx aún no asigna número de guía");
+    } catch (err) { toast(err.message || String(err)); }
+    act.disabled = false;
+  }
+});
+
 function toast(t) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => el.hidden = true, 2800); }
 async function copiar(texto, ok = "Copiado") { try { await navigator.clipboard.writeText(texto); toast(ok); } catch { prompt("Copia este texto:", texto); } }
 
@@ -986,7 +1183,7 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; cargarSkx(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 /* ---------- mapa ---------- */
