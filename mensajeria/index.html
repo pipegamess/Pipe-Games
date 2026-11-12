@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113y">
+<link rel="stylesheet" href="estilos.css?v=20261113z">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -225,7 +225,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
                 <div class="fila"><label>Nombre del remitente<input id="skxRNom" placeholder="Pipe Games"></label><label>Empresa del remitente<input id="skxREmp" placeholder="Igual que en Skydropx"></label></div>
                 <label>Celular remitente<input id="skxRTel" inputmode="numeric"></label>
                 <label>Correo remitente<input id="skxRMail" type="email"></label>
-                <label>Dirección de recogida<input id="skxRDir"></label>
+                <label>Calle y número (dirección de recogida)<input id="skxRDir"></label>
+                <div class="fila"><label>Detalles de la dirección<input id="skxRDet" placeholder="Torre, apartamento…"></label><label>Referencia<input id="skxRRef" maxlength="30" placeholder="Conjunto, edificio…"></label></div>
                 <div class="fila"><label>Barrio<input id="skxRBarrio"></label><label>Código postal<input id="skxRCp" inputmode="numeric" placeholder="110911"></label></div>
                 <div class="fila"><label>Ciudad<input id="skxRCiudad" value="Bogotá"></label><label>Departamento<input id="skxRDepto" value="Cundinamarca"></label></div>
                 <b style="font-size:14px">Tipos de producto (medidas del paquete)</b>
@@ -415,10 +416,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113y";
-import * as C from "./comun.js?v=20261113y";
-import * as T from "./tarifas-envio.js?v=20261113y";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261113y";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113z";
+import * as C from "./comun.js?v=20261113z";
+import * as T from "./tarifas-envio.js?v=20261113z";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261113z";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1261,7 +1262,7 @@ function cargarSkx() {
   const r = a.remitente || {};
   $("#skxUrl").value = a.url || SKYDROPX_URL || "";
   $("#skxRNom").value = r.nombre || S.recogida?.remitente || "Pipe Games"; $("#skxREmp").value = r.empresa || ""; $("#skxRTel").value = r.telefono || "3118836995"; $("#skxRMail").value = r.correo || "";
-  $("#skxRDir").value = r.direccion || S.recogida?.direccion || ""; $("#skxRBarrio").value = r.barrio || ""; $("#skxRCp").value = r.cp || "";
+  $("#skxRDir").value = r.direccion || S.recogida?.direccion || ""; $("#skxRDet").value = r.detalles || ""; $("#skxRRef").value = r.referencia || ""; $("#skxRBarrio").value = r.barrio || ""; $("#skxRCp").value = r.cp || "";
   $("#skxRCiudad").value = r.ciudad || "Bogotá"; $("#skxRDepto").value = r.depto || "Cundinamarca";
   pintarTiposEditor(); pintarTiposSelect();
   $("#skxFormato").value = a.formatoEtiqueta || "thermal";
@@ -1296,7 +1297,7 @@ $("#skxTipo").onchange = mostrarMedidas;
 let skxUnidades = 1; // de la reserva; en envíos manuales, 1
 $("#skxGuardar").onclick = async () => {
   const datos = { url: $("#skxUrl").value.trim().replace(/\/+$/, ""),
-    remitente: { nombre: $("#skxRNom").value.trim(), empresa: $("#skxREmp").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() },
+    remitente: { nombre: $("#skxRNom").value.trim(), empresa: $("#skxREmp").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), detalles: $("#skxRDet").value.trim(), referencia: $("#skxRRef").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() },
     tipos: leerTiposEditor().length ? leerTiposEditor() : TIPOS_BASE, tipoDefecto: +$("#skxTipo").value || 0, formatoEtiqueta: $("#skxFormato").value || "thermal", variante: S.skx?.variante ?? 0 };
   try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: datos }, { merge: true }); S.skx = datos; cargarSkx(); pintarTiposEditor(); pintarTiposSelect(); $("#skxAjustes").open = false; toast("Datos de Skydropx guardados: quedan fijos para todas las guías"); } catch (e) { toast(C.mensajeError(e)); }
 };
@@ -1446,7 +1447,7 @@ async function postOrdenSkx(x, id) {
   const nota = `Transportadora elegida por el cliente: ${transp || "sin elegir"}${x.envioCobrado ? ` · Envío cobrado al cliente: ${C.cop(x.envioCobrado)}` : ""}`;
   const dir = (p) => ({
     // "Detalles de la dirección" en Skydropx = further_information (complemento completo); la referencia corta queda con el barrio
-    address: p.dir, street1: p.dir, internal_number: "", reference: (p.detalles ? String(p.barrio || "").trim().slice(0, 30) : cortaRef(p.ref)) || "N/A", sector: p.barrio || p.ciudad,
+    address: p.dir, street1: p.dir, internal_number: "", reference: (p.referenciaExacta ? p.referenciaExacta.slice(0, 30) : p.detalles ? String(p.barrio || "").trim().slice(0, 30) : cortaRef(p.ref)) || "N/A", sector: p.barrio || p.ciudad,
     ...(p.detalles ? { further_information: p.detalles.slice(0, 100) } : {}),
     city: p.ciudad, state: p.depto, postal_code: p.cp || "", zip: p.cp || "", country: "CO", country_code: "co",
     area_level1: p.exacto ? p.depto : quitarTildes(p.depto), area_level2: p.exacto ? p.ciudad : quitarTildes(p.ciudad), area_level3: p.exacto ? (p.barrio || p.ciudad) : quitarTildes(p.barrio || p.ciudad),
@@ -1457,7 +1458,7 @@ async function postOrdenSkx(x, id) {
     notes: nota, comments: nota,
     parcels: [{ weight: t.kg, length: t.l, width: t.a, height: t.h, quantity: 1, dimension_unit: "CM", mass_unit: "KG", package_type: S.skx?.tipoPaquete || "package", consignment_note: contenido, package_content: contenido, declared_value: t.v || 50000, declared_amount: t.v || 50000 }],
     products: [{ name: contenido, sku: "PG", price: String(t.v || 0), quantity: 1 }],
-    shipper_address: dir({ exacto: true, nombre: rem.nombre || "Pipe Games", empresa: rem.empresa || rem.nombre || "Pipe Games", tel: rem.telefono, correo: rem.correo, dir: rem.direccion, ref: rem.barrio, barrio: rem.barrio, ciudad: rem.ciudad || "Bogotá", depto: rem.depto || "Cundinamarca", cp: rem.cp }),
+    shipper_address: dir({ exacto: true, referenciaExacta: rem.referencia, detalles: rem.detalles || "", nombre: rem.nombre || "Pipe Games", empresa: rem.empresa || rem.nombre || "Pipe Games", tel: rem.telefono, correo: rem.correo, dir: rem.direccion, ref: rem.barrio, barrio: rem.barrio, ciudad: rem.ciudad || "Bogotá", depto: rem.depto || "Cundinamarca", cp: rem.cp }),
     recipient_address: dir({ nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo, dir: x.direccion, ref: [x.complemento, x.barrio ? "Barrio " + x.barrio : ""].filter(Boolean).join(" · "), detalles: x.complemento || "", barrio: x.barrio, ciudad: m?.c || (x.municipio || "").split(" - ")[0], depto: m?.d || (x.municipio || "").split(" - ")[1] || "" })
   } };
   // Transportadora elegida: en "shipping_preferences" y como etiqueta (la etiqueta sí se ve en Skydropx).
@@ -1558,7 +1559,7 @@ function skxDesdeReserva(id) {
 function datosSkx() {
   const a = S.skx || {};
   // Remitente: lo guardado; si aún no se ha guardado, lo que está escrito en el formulario
-  const rem = a.remitente?.direccion ? a.remitente : { nombre: $("#skxRNom").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() };
+  const rem = a.remitente?.direccion ? a.remitente : { nombre: $("#skxRNom").value.trim(), empresa: $("#skxREmp").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), detalles: $("#skxRDet").value.trim(), referencia: $("#skxRRef").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() };
   const m = T.envBuscar($("#skxCiudad").value)?.x;
   const t = tiposSkx()[+$("#skxTipo").value || 0] || TIPOS_BASE[0];
   return {
@@ -1652,7 +1653,8 @@ $("#skxTarifas").addEventListener("click", async e => {
       reference: (detalles ? String(barrio || "").trim().slice(0, 30) : corta(ref)) || "N/A", ...(detalles ? { further_information: detalles.slice(0, 100) } : {}) });
     if (!(d.valor > 0)) throw new Error("El valor declarado quedó en $0. Revisa el valor del tipo de producto en “Conexión y datos del remitente”.");
     const base = { rate_id: rateId, printing_format: S.skx?.formatoEtiqueta || "thermal", declared_amount: d.valor,
-      address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio, d.rem.empresa || d.rem.nombre || "Pipe Games"),
+      address_from: { ...dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio, d.rem.empresa || d.rem.nombre || "Pipe Games"),
+        ...(d.rem.referencia ? { reference: d.rem.referencia.slice(0, 30) } : {}), ...(d.rem.detalles ? { further_information: d.rem.detalles } : {}) },
       address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · "), "", d.dest.comp || "", d.dest.barrio || "") };
     // Colombia pide tipo y contenido de cada paquete. El valor exacto del tipo no está documentado:
     // se prueba en orden y se recuerda el que Skydropx acepte.
@@ -1874,7 +1876,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113y";
+const VERSION_PANEL = "20261113z";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
