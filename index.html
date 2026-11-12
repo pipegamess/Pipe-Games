@@ -1145,6 +1145,20 @@
   .btn-sim-cart:hover { background:rgba(245,196,0,0.18); }
   .cart-sim-note { font-size:0.72rem; color:var(--muted); margin:-0.3rem 0 0.6rem; text-align:center; }
   .cart-sim-note b { color:var(--acc); }
+  .env-chips { display:flex; gap:6px; margin:6px 0 6px; flex-wrap:wrap; }
+  .env-chip { flex:1; min-width:100px; display:flex; flex-direction:column; align-items:center; gap:1px; padding:0.4rem 0.5rem; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-family:'Barlow',sans-serif; font-size:0.75rem; cursor:pointer; }
+  .env-chip b { font-family:'Rajdhani',sans-serif; font-size:0.95rem; color:#fff !important; }
+  .env-chip.on { border-color:var(--acc); background:rgba(245,196,0,0.12); box-shadow:0 0 0 1px var(--acc); }
+  .env-chip.on b { color:var(--acc) !important; }
+  .env-chip.off { opacity:0.45; cursor:not-allowed; }
+  .env-chip.off b { font-size:0.75rem; font-family:'Barlow',sans-serif; color:var(--muted) !important; }
+  .city-wrap { position:relative; }
+  .city-sug { position:absolute; left:0; right:0; top:calc(100% - 4px); z-index:5; display:flex; flex-direction:column; background:#15151f; border:1px solid rgba(245,196,0,0.35); border-radius:8px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+  .city-sug:empty { display:none; }
+  .city-sug button { text-align:left; padding:0.55rem 0.7rem; background:transparent; border:none; border-bottom:1px solid rgba(255,255,255,0.06); color:var(--muted); font-family:'Barlow',sans-serif; font-size:0.85rem; cursor:pointer; }
+  .city-sug button b { color:var(--text); }
+  .city-sug button:hover, .city-sug button:focus { background:rgba(245,196,0,0.1); }
+  #simEnvio:empty { display:none; }
   #simModal { position:fixed; inset:0; z-index:9500; background:rgba(0,0,0,0.75); display:none; align-items:center; justify-content:center; padding:16px; }
   #simModal.open { display:flex; }
   .sim-box { background:var(--surface); border:1px solid rgba(245,196,0,0.3); border-radius:14px; width:100%; max-width:440px; max-height:92vh; overflow-y:auto; padding:1.1rem 1.1rem 1rem; position:relative; box-shadow:0 10px 40px rgba(0,0,0,0.6); }
@@ -1423,7 +1437,11 @@
     <div id="simChosen" style="display:none"></div>
     <div id="simStep2" style="display:none">
       <div class="sim-label">2. ¿A qué ciudad lo enviamos?</div>
-      <input type="text" class="sim-city" id="simCiudad" maxlength="40" placeholder="Ej: Bogotá, Chía, Soacha, Medellín..." oninput="simCiudadTxt=this.value;simRender()" autocomplete="address-level2">
+      <div class="city-wrap">
+        <input type="text" class="sim-city" id="simCiudad" maxlength="60" placeholder="Ej: Bogotá, Medellín, Cali..." autocomplete="off" oninput="simCiudadTxt=this.value;envSugerir('simCiudad');simRender()" onblur="envCompletar('simCiudad')" onkeydown="if(event.key==='Enter'){envCompletar('simCiudad');this.blur()}">
+        <div class="city-sug" id="simCiudadSug"></div>
+      </div>
+      <div id="simEnvio"></div>
       <div class="sim-label">3. ¿Cómo quieres pagar?</div>
       <div class="sim-methods" id="simMethods"></div>
       <div id="simLimit"></div>
@@ -1465,7 +1483,10 @@
   <div class="name-modal-box">
     <h3>¿Cuál es tu nombre? 👋</h3>
     <p>Para personalizar tu pedido en WhatsApp</p>
-    <input type="text" id="clientCity" placeholder="Tu ciudad..." maxlength="40" oninput="envioPreviewModal()" onkeydown="if(event.key==='Enter')document.getElementById('clientName').focus()">
+    <div class="city-wrap">
+      <input type="text" id="clientCity" placeholder="Tu ciudad (ej: Medellín)..." maxlength="60" autocomplete="off" oninput="envSugerir('clientCity');envioPreviewModal()" onblur="envCompletar('clientCity')" onkeydown="if(event.key==='Enter'){envCompletar('clientCity');document.getElementById('clientName').focus()}">
+      <div class="city-sug" id="clientCitySug"></div>
+    </div>
     <div class="envio-info" id="envioInfo"></div>
     <input type="text" id="clientName" placeholder="Tu nombre..." maxlength="40" onkeydown="if(event.key==='Enter')enviarPedidoWA()">
     <div class="name-modal-btns">
@@ -5074,15 +5095,89 @@ function closeCart() {
   document.getElementById("cartOverlay").classList.remove("open");
 }
 
-/* ══ ENVÍO LOCAL (Bogotá, Chía, Soacha: +$10.000) ══ */
+/* ══ ENVÍOS ══
+   - Domicilio local (Bogotá, Chía, Soacha): $10.000
+   - Ciudades principales: tarifa por transportadora (Envía / Interrapidísimo); el cliente elige.
+   - Otros municipios: se confirma por WhatsApp. */
 const ENVIO_LOCAL_VALOR = 10000;
-function envioDeCiudad(txt) {
-  const n = String(txt || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ');
-  if (/\bbogota\b/.test(n)) return { local:true, ciudad:'Bogotá', valor:ENVIO_LOCAL_VALOR };
-  if (/\bchia\b/.test(n))   return { local:true, ciudad:'Chía', valor:ENVIO_LOCAL_VALOR };
-  if (/\bsoacha\b/.test(n)) return { local:true, ciudad:'Soacha', valor:ENVIO_LOCAL_VALOR };
-  return { local:false, ciudad:String(txt || '').trim(), valor:0, escrito:n.trim().length >= 3 };
+const ENVIO_CIUDADES = [
+  // [ciudad, departamento, Envía, Interrapidísimo]  (null = no disponible) — local:true = domicilio $10.000
+  ['Bogotá D.C.','Cundinamarca',16000,18000,true], ['Chía','Cundinamarca',null,null,true], ['Soacha','Cundinamarca',null,null,true],
+  ['Medellín','Antioquia',16000,18000], ['Cali','Valle del Cauca',16000,18000], ['Barranquilla','Atlántico',16000,18000],
+  ['Cartagena','Bolívar',16000,18000], ['Cúcuta','Norte de Santander',16000,18000], ['Bucaramanga','Santander',16000,18000],
+  ['Villavicencio','Meta',13000,13000], ['Ibagué','Tolima',13000,13000], ['Santa Marta','Magdalena',16000,18000],
+  ['Valledupar','Cesar',16000,18000], ['Montería','Córdoba',16000,18000], ['Pereira','Risaralda',16000,18000],
+  ['Manizales','Caldas',16000,18000], ['Pasto','Nariño',16000,18000], ['Neiva','Huila',16000,18000],
+  ['Armenia','Quindío',16000,18000], ['Popayán','Cauca',16000,18000], ['Sincelejo','Sucre',16000,18000],
+  ['Riohacha','La Guajira',16000,18000], ['Tunja','Boyacá',13000,13000], ['Florencia','Caquetá',13000,13000],
+  ['Yopal','Casanare',13000,13000], ['Quibdó','Chocó',null,22000], ['Arauca','Arauca',13000,18000],
+  ['San Andrés','San Andrés y Providencia',52000,44000], ['Mocoa','Putumayo',null,18000], ['Leticia','Amazonas',null,18000],
+  ['San José del Guaviare','Guaviare',null,22000], ['Puerto Carreño','Vichada',null,44000], ['Inírida','Guainía',null,44000],
+  ['Mitú','Vaupés',null,44000]
+].map(r => ({ c:r[0], d:r[1], envia:r[2], inter:r[3], local:!!r[4] }));
+const ENVIO_TRANSP = [{ id:'envia', n:'Envía' }, { id:'inter', n:'Interrapidísimo' }];
+let envioTransp = {}; // transportadora elegida por ciudad: { 'Medellín': 'inter' }
+
+function envNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim(); }
+const ENVIO_IDX = ENVIO_CIUDADES.map(x => ({ x, k:envNorm(x.c.replace(' D.C.', '')) })).sort((a, b) => b.k.length - a.k.length);
+function envBuscarCiudad(txt) {
+  const n = envNorm(String(txt || '').split(' - ')[0]);
+  if (!n) return null;
+  const hit = ENVIO_IDX.find(e => n === e.k || n.startsWith(e.k + ' ') || (e.k === 'bogota' && /\bbogota\b/.test(n)));
+  return hit ? hit.x : null;
 }
+function envHaySug(inputId) { const b = document.getElementById(inputId + 'Sug'); return !!(b && b.children.length); }
+function envEtiqueta(x) { return x.c + ' - ' + x.d; }
+function envOpciones(x) { return ENVIO_TRANSP.map(t => ({ id:t.id, n:t.n, v:x[t.id] })); }
+
+/* Devuelve el envío para lo que escribió el cliente */
+function envioDeCiudad(txt) {
+  const x = envBuscarCiudad(txt);
+  const escrito = envNorm(txt).length >= 3;
+  if (!x) return { local:false, tipo:escrito ? 'otro' : 'vacio', ciudad:String(txt || '').trim(), valor:0, escrito, titulo:'Envío a ' + String(txt || '').trim() };
+  if (x.local) return { local:true, tipo:'local', ciudad:envEtiqueta(x), valor:ENVIO_LOCAL_VALOR, escrito:true, titulo:'Domicilio en ' + x.c.replace(' D.C.', '') };
+  const ops = envOpciones(x).filter(o => o.v);
+  let sel = ops.find(o => o.id === envioTransp[x.c]);
+  if (!sel) sel = ops.slice().sort((a, b) => a.v - b.v)[0];
+  return { local:true, tipo:'nacional', ciudad:envEtiqueta(x), valor:sel.v, escrito:true, transp:sel.id,
+           titulo:'Envío a ' + envEtiqueta(x) + ' por ' + sel.n, opciones:envOpciones(x), clave:x.c };
+}
+function envElegirTransp(clave, id, origen) {
+  envioTransp[clave] = id;
+  if (origen === 'sim') simRender(); else envioPreviewModal();
+}
+/* Botones para escoger transportadora */
+function envChipsHTML(env, origen) {
+  if (env.tipo !== 'nacional') return '';
+  return `<div class="env-chips">` + env.opciones.map(o => o.v
+    ? `<button type="button" class="env-chip${o.id === env.transp ? ' on' : ''}" onclick="envElegirTransp('${env.clave}','${o.id}','${origen}')">${o.n}<b>${numToPrice(o.v)}</b></button>`
+    : `<span class="env-chip off">${o.n}<b>No disponible</b></span>`).join('') + `</div>`;
+}
+
+/* ── Sugerencias de ciudad con su departamento ── */
+function envSugerir(inputId) {
+  const inp = document.getElementById(inputId), box = document.getElementById(inputId + 'Sug');
+  if (!inp || !box) return;
+  const n = envNorm(inp.value.split(' - ')[0]);
+  if (n.length < 2 || envBuscarCiudad(inp.value) && inp.value.includes(' - ')) { box.innerHTML = ''; return; }
+  const res = ENVIO_CIUDADES.filter(x => { const k = envNorm(x.c); return k.startsWith(n) || k.split(' ').some(w => w.startsWith(n)); }).slice(0, 6);
+  box.innerHTML = res.map(x => `<button type="button" onpointerdown="event.preventDefault()" onclick="envUsarSug('${inputId}','${x.c}')">📍 <b>${x.c}</b> - ${x.d}</button>`).join('');
+}
+function envUsarSug(inputId, ciudad) {
+  const x = ENVIO_CIUDADES.find(e => e.c === ciudad);
+  const inp = document.getElementById(inputId);
+  inp.value = envEtiqueta(x);
+  document.getElementById(inputId + 'Sug').innerHTML = '';
+  inp.dispatchEvent(new Event('input'));
+}
+/* Al salir del campo: si escribió una ciudad conocida, se completa con el departamento */
+function envCompletar(inputId) {
+  const inp = document.getElementById(inputId);
+  setTimeout(() => { const b = document.getElementById(inputId + 'Sug'); if (b) b.innerHTML = ''; }, 150);
+  const x = envBuscarCiudad(inp.value);
+  if (x && inp.value !== envEtiqueta(x)) { inp.value = envEtiqueta(x); inp.dispatchEvent(new Event('input')); }
+}
+
 /* Vista previa del envío en la ventana de nombre/ciudad */
 function envioPreviewModal() {
   const el = document.getElementById('envioInfo');
@@ -5101,10 +5196,11 @@ function envioPreviewModal() {
   if (env.local) {
     const m = metodo ? simMetodosPermitidos(base).find(x => x.id === metodo) : null;
     const tot = m ? m.calc(base + env.valor) : base + env.valor;
-    el.innerHTML = `<span class="ok">🚚 Envío a ${env.ciudad}: <b>+${numToPrice(env.valor)}</b>` +
-      (base > 0 ? `<br>Total a pagar${m && m.id !== 'transf' ? ' (' + m.t.split(' · ')[0] + ')' : ''}: <b>${numToPrice(tot)}</b>` : '') + `</span>`;
-  } else if (env.escrito) {
-    el.innerHTML = `<span class="otro">🚚 El valor del envío a tu ciudad te lo confirmamos por WhatsApp.</span>`;
+    el.innerHTML = `<span class="ok">${env.tipo === 'local' ? '🛵 Domicilio en ' + env.ciudad.split(' - ')[0].replace(' D.C.', '') : '🚚 Envío a ' + env.ciudad}: <b>+${numToPrice(env.valor)}</b>` +
+      (env.tipo === 'nacional' ? envChipsHTML(env, 'modal') : '<br>') +
+      (base > 0 ? `Total a pagar${m && m.id !== 'transf' ? ' (' + m.t.split(' · ')[0] + ')' : ''}: <b>${numToPrice(tot)}</b>` : '') + `</span>`;
+  } else if (env.escrito && !envHaySug('clientCity')) {
+    el.innerHTML = `<span class="otro">🚚 Para este municipio, el valor del envío te lo confirmamos por WhatsApp.</span>`;
   } else {
     el.innerHTML = '';
   }
@@ -5114,7 +5210,7 @@ function envioLineasMsg(ciudad, base, metodo) {
   const env = envioDeCiudad(ciudad);
   let txt = '';
   if (env.local) {
-    txt += `\n🚚 *Envío a ${env.ciudad}:* ${numToPrice(env.valor)}`;
+    txt += `\n🚚 *${env.titulo}:* ${numToPrice(env.valor)}`;
     if (base > 0) txt += `\n💰 *Total con envío: ${numToPrice(base + env.valor)}*`;
   } else if (env.escrito) {
     txt += `\n🚚 *Envío a ${env.ciudad}:* por confirmar`;
@@ -5249,6 +5345,7 @@ function simRender() {
   if (!permitidos.some(m => m.id === simMetodo)) simMetodo = 'transf';
   const env = envioDeCiudad(simCiudadTxt), envio = env.local ? env.valor : 0, bEnv = base + envio;
   const ci = document.getElementById('simCiudad'); if (ci && ci.value !== simCiudadTxt) ci.value = simCiudadTxt;
+  document.getElementById('simEnvio').innerHTML = envChipsHTML(env, 'sim');
   document.getElementById('simMethods').innerHTML = permitidos.map(m => {
     const tot = m.calc(bEnv), rec = tot - bEnv;
     return `<button class="sim-m${m.id === simMetodo ? ' on' : ''}" onclick="simElegirMetodo('${m.id}')">
@@ -5262,8 +5359,8 @@ function simRender() {
     : '';
   const m = simMetodoById(simMetodo), tot = m.calc(bEnv), rec = tot - bEnv;
   const filaEnvio = env.local
-    ? `<div class="sim-row"><span>Envío a ${env.ciudad}</span><b>${numToPrice(envio)}</b></div>`
-    : (env.escrito ? `<div class="sim-row"><span>Envío a ${simEsc(env.ciudad)}</span><b>Se confirma por WhatsApp</b></div>`
+    ? `<div class="sim-row"><span>${env.tipo === 'local' ? env.titulo : 'Envío (' + ENVIO_TRANSP.find(t => t.id === env.transp).n + ')'}</span><b>${numToPrice(envio)}</b></div>`
+    : (env.escrito && !envHaySug('simCiudad') ? `<div class="sim-row"><span>Envío a ${simEsc(env.ciudad)}</span><b>Se confirma por WhatsApp</b></div>`
                    : `<div class="sim-row"><span>Envío</span><b>Escribe tu ciudad</b></div>`);
   document.getElementById('simSummary').innerHTML = `
     <div class="sim-row"><span>Precio de los artículos</span><b>${numToPrice(base)}</b></div>
@@ -5334,7 +5431,7 @@ function simNotaCarrito() {
   if (!simPagoCarrito || !cart.length) { el.innerHTML = ''; return; }
   const m = simMetodoById(simPagoCarrito);
   const env = envioDeCiudad(simCiudadTxt);
-  el.innerHTML = `Pago con <b>${m.t}</b>${env.local ? ' + envío a ' + env.ciudad : ''}: <b>${numToPrice(m.calc(base + (env.local ? env.valor : 0)))}</b>`;
+  el.innerHTML = `Pago con <b>${m.t}</b>${env.local ? ' + ' + (env.tipo === 'local' ? 'domicilio' : 'envío') : ''}: <b>${numToPrice(m.calc(base + (env.local ? env.valor : 0)))}</b>`;
 }
 
 // ── FILTRO DE PRECIO ─────────────────────────────────────
