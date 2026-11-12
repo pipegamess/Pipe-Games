@@ -8,12 +8,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113q">
+<link rel="stylesheet" href="estilos.css?v=20261113r">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261113q";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261113r";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261113q">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261113r">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -69,6 +69,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Marca tu casa en el mapa</b><button class="btn sec chico" type="button" id="sGps">Usar mi ubicación</button></div>
         <div id="mapa" class="mapa"></div>
         <div class="estado-pin" id="sPin">Escribe la dirección o toca “Usar mi ubicación”, y revisa que el punto quede en tu casa.</div>
+        <label style="flex-direction:row;align-items:flex-start;gap:8px;font-weight:500;color:var(--ink);cursor:pointer"><input type="checkbox" id="sSinUbic" style="width:auto;margin-top:3px"> No puedo activar la ubicación o no logro ubicar mi dirección en el mapa</label>
       </div>
     </section>
     <section class="panel">
@@ -93,9 +94,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113q";
-import * as C from "./comun.js?v=20261113q";
-import * as T from "./tarifas-envio.js?v=20261113q";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113r";
+import * as C from "./comun.js?v=20261113r";
+import * as T from "./tarifas-envio.js?v=20261113r";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -265,14 +266,15 @@ $("#fSaldo").onsubmit = async e => {
   const tel = $("#sTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
   if ($("#sDir").value.trim().length < 4) return err("Escribe la dirección de entrega.", "#sDir");
   if (!/^\d{10}$/.test(tel)) return err("Escribe un celular de 10 dígitos.", "#sTel");
-  if (claveLocal(env) && !pin) return err("Marca tu casa en el mapa: toca “Usar mi ubicación” o toca el mapa.");
+  const sinUbic = claveLocal(env) && !pin && $("#sSinUbic").checked;
+  if (claveLocal(env) && !pin && !sinUbic) return err("Marca tu casa en el mapa: toca “Usar mi ubicación” o toca el mapa.");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test($("#sCorreo").value.trim())) return err("Escribe tu correo electrónico.", "#sCorreo");
   if (c.m.credito && !/^\d{5,13}$/.test($("#sCedula").value.replace(/\D/g, ""))) return err("Escribe tu cédula para tramitar el crédito.", "#sCedula");
   const respuesta = {
     ciudad: env.ciudad, tipoEnvio: env.tipo, ciudadLocal: claveLocal(env) || "", transportadora: env.tipo === "nacional" ? (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || "") : "",
     envio: c.envio, envioPorConfirmar: env.tipo === "otro", metodo: c.m.id, metodoTxt: c.m.t, recargo: c.recargo, total: c.total, saldo: Math.max(saldoBase(), 0),
     direccion: $("#sDir").value.trim(), complemento: $("#sComp").value.trim(), barrio: $("#sBarrio").value.trim(), telefono: tel,
-    lat: pin?.lat ?? null, lng: pin?.lng ?? null,
+    lat: pin?.lat ?? (sinUbic ? C.CIUDADES[claveLocal(env)].centro.lat : null), lng: pin?.lng ?? (sinUbic ? C.CIUDADES[claveLocal(env)].centro.lng : null), sinUbicacion: !!sinUbic,
     cedula: c.m.credito ? $("#sCedula").value.replace(/\D/g, "") : "", correo: $("#sCorreo").value.trim().toLowerCase()
   };
   const b = $("#sBtn"); b.disabled = true; b.textContent = "Enviando…";

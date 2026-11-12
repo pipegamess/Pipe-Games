@@ -7,8 +7,8 @@
 <meta name="description" content="Escribe tus datos de entrega para que te enviemos tu pedido.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113q">
-<link rel="stylesheet" href="tema-catalogo.css?v=20261113q">
+<link rel="stylesheet" href="estilos.css?v=20261113r">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261113r">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 #mapa{height:min(42vh,360px);min-height:240px}
@@ -55,6 +55,7 @@
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Tu ubicación en el mapa</b><button class="btn sec chico" type="button" id="eGps">📍 Usar mi ubicación</button></div>
       <div id="mapa" class="mapa"></div>
       <div class="estado-pin" id="ePin">Escribe la dirección o toca “Usar mi ubicación”. Luego revisa que el punto quede en tu casa; puedes moverlo o tocar el mapa.</div>
+      <label style="flex-direction:row;align-items:flex-start;gap:8px;font-weight:500;color:var(--ink);cursor:pointer"><input type="checkbox" id="eSinUbic" style="width:auto;margin-top:3px"> No puedo activar la ubicación o no logro ubicar mi dirección en el mapa</label>
     </div>
     <div class="error" id="eErr"></div>
     <button class="btn btn-turno" type="submit" id="eBtn">Enviar mis datos</button>
@@ -63,9 +64,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113q";
-import * as C from "./comun.js?v=20261113q";
-import * as T from "./tarifas-envio.js?v=20261113q";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113r";
+import * as C from "./comun.js?v=20261113r";
+import * as T from "./tarifas-envio.js?v=20261113r";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, setDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -75,7 +76,7 @@ const { esc } = C;
 const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
 // Si el navegador entregó una copia vieja del formulario, cargar la publicada
-const VERSION_FORM = "20261113q";
+const VERSION_FORM = "20261113r";
 fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()).then(j => {
   if (String(j.v || "") > VERSION_FORM) { const u = new URL(location.href); if (u.searchParams.get("v") !== j.v) { u.searchParams.set("v", j.v); location.replace(u.toString()); } }
 }).catch(() => {});
@@ -263,7 +264,10 @@ $("#fEnvio").onsubmit = async e => {
   if (datos.direccion.length < 4) return error("Escribe la dirección.", "#eDir");
   if (datos.complemento.length < 1) return error("Escribe el complemento de la dirección (torre, apartamento o casa).", "#eComp");
   if (datos.barrio.length < 2) return error("Escribe el barrio.", "#eBarrio");
-  if (!nac && !pin) return error("Marca tu ubicación en el mapa: toca “Usar mi ubicación” o toca el mapa en tu casa.");
+  // Sin ubicación: se envía el centro de la ciudad y despacho la verifica antes de despachar
+  const sinUbic = !nac && !pin && $("#eSinUbic").checked;
+  if (sinUbic) { const cc = C.CIUDADES[datos.ciudad].centro; datos.lat = cc.lat; datos.lng = cc.lng; datos.sinUbicacion = true; }
+  if (!nac && !pin && !sinUbic) return error("Marca tu ubicación en el mapa: toca “Usar mi ubicación” o toca el mapa en tu casa.");
   const b = $("#eBtn"); b.disabled = true; b.textContent = "Enviando…";
   try {
     const id = C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo();
