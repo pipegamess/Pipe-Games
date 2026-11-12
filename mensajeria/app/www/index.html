@@ -881,7 +881,7 @@ function pintarEntregar(n) {
   const recibe = () => document.querySelector('input[name="recibe"]:checked')?.value;
   document.querySelectorAll('input[name="recibe"]').forEach(i => i.onchange = () => {
     $("#lRecNom").hidden = recibe() === "cliente";
-    $("#tRecNom").textContent = recibe() === "porteria" ? "Nombre del portero o vigilante" : "Nombre y parentesco (ej. Ana, hermana)";
+    $("#tRecNom").textContent = recibe() === "porteria" ? "Nombre o apellido del portero o vigilante (obligatorio)" : "Nombre y parentesco (ej. Ana, hermana)";
   });
   $("#eVal").oninput = revisar;
   const pintarFotos = () => {
@@ -918,6 +918,13 @@ function pintarEntregar(n) {
     if (medio() === "nequi" && !comp) { $("#eErr").textContent = "Toma o elige la foto del comprobante de Nequi."; return; }
     const recNom = $("#eRecNom").value.trim();
     if (recibe() !== "cliente" && !recNom) { $("#eErr").textContent = "Escribe el nombre de quien recibe."; return; }
+    // Portería: nombre o apellido real (no vale "portero", "vigilante", "portería" ni letras sueltas)
+    if (recibe() === "porteria") {
+      const limpio = recNom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-zñ ]/g, " ").replace(/\b(el|la|don|dona|senor|senora|sr|sra)\b/g, " ").trim();
+      if (limpio.replace(/\s/g, "").length < 3 || /^(porter[oa]s?|porteria|vigilantes?|celador(a|es)?|seguridad|recepcion(ista)?|guarda|na|n a|x+)$/.test(limpio)) {
+        $("#eErr").textContent = "Escribe el nombre o apellido del portero o vigilante que recibió (ej. Carlos o Pérez)."; $("#eRecNom").focus(); return;
+      }
+    }
     const v = valor(), mot = $("#eMot").value.trim();
     if (g.valor && v !== g.valor && !mot) { $("#eErr").textContent = "Escribe por qué el valor recibido es diferente."; return; }
     $("#bEnt").disabled = true; $("#bEnt").textContent = "Guardando…";
