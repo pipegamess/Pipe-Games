@@ -69,6 +69,14 @@ body.escaneando>*:not(#capaEscaner){visibility:hidden!important}
 .lista-recogidos input{width:22px;height:22px;flex:none}
 .rapidas button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 11px;font-size:13px}
 .senal{position:fixed;left:0;right:0;top:0;z-index:2500;background:var(--warn);color:#1b1b1b;font-size:13px;font-weight:600;text-align:center;padding:calc(6px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 6px max(16px,env(safe-area-inset-left,0px))}
+.permisos{display:flex;flex-direction:column;gap:2px}
+.permiso{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
+.permiso:last-child{border-bottom:0}
+.permiso .ic{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:15px;background:var(--chip);color:var(--muted)}
+.permiso.ok .ic{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.permiso.falta .ic{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+.permiso small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.paso-actual{padding:12px;border-radius:10px;background:color-mix(in srgb,var(--warn) 22%,transparent);font-weight:600;font-size:15px}
 </style>
 </head>
 <body>
@@ -125,6 +133,7 @@ const BG = nativo && registrar ? registrar("BackgroundGeolocation") : null;
 const Http = nativo && registrar ? registrar("CapacitorHttp") : null;
 const Notif = nativo && registrar ? registrar("LocalNotifications") : null;
 const Escaner = nativo && registrar ? registrar("BarcodeScanner") : null;
+const Perm = nativo && registrar ? registrar("Permisos") : null;
 
 /* ---------- estado ---------- */
 const S = { u: null, perfil: null, disp: [], mios: [], entregas: [], pos: null, turno: false, watcher: null };
@@ -177,6 +186,8 @@ A.onAuthStateChanged(auth, async user => {
   if (!location.hash || ["#ingreso", "#registro"].includes(location.hash)) location.hash = "#inicio";
   if (ls.get("turno") === "1") iniciarTurno(true);
   ruta();
+  // Recién instalada o con permisos pendientes: mostrar la pantalla de permisos
+  if (await revisarPermisos()) { if (faltantes().some(p => p.clave)) location.hash = "#permisos"; else ruta(true); }
 });
 function escuchar() {
   const uid = S.u.uid;
@@ -232,6 +243,11 @@ async function enviarUbicacion(lat, lng, precision, forzar = false) {
 async function iniciarTurno(silencioso = false) {
   if (S.turno) return;
   if (!nativo) { toast("La ubicación en segundo plano solo funciona en la app instalada."); return; }
+  if (!silencioso && Perm) {
+    await revisarPermisos();
+    const f = faltantes().filter(p => p.clave);
+    if (f.length) { location.hash = "#permisos"; toast("Antes de iniciar turno activa: " + f.map(p => p.t).join(", ")); await activarTodo(); }
+  }
   try { await Notif?.requestPermissions(); } catch {}
   try {
     S.watcher = await BG.addWatcher({
@@ -292,6 +308,91 @@ async function tomar(numero) {
   return guardar(g, { estado: "recogida", eventos: [...eventosAntes, C.evento("recogida", "", S.perfil.nombre)] });
 }
 
+/* ---------- permisos del celular (un solo toque) ---------- */
+// Lo que necesita la ubicación para no cortarse. "clave": sin eso no se debe trabajar.
+const PERMISOS = [
+  { k: "gps", t: "GPS encendido", d: "La ubicación del celular debe estar activada.", clave: true },
+  { k: "precisa", t: "Ubicación precisa", d: "Para que despacho y el cliente te vean en el sitio exacto.", clave: true },
+  { k: "fondo", t: "Ubicación todo el tiempo", d: "Para seguir enviando tu ubicación con la pantalla apagada.", clave: true },
+  { k: "bateria", t: "Batería sin restricciones", d: "Para que el celular no cierre la app mientras estás en turno.", clave: true },
+  { k: "notificaciones", t: "Notificaciones", d: "Muestra el aviso “en turno” que mantiene viva la app." },
+  { k: "camara", t: "Cámara", d: "Para escanear guías y tomar fotos de entrega." },
+  { k: "inicioAuto", t: "Inicio automático", d: "En algunas marcas (Tecno, Infinix, Xiaomi, Oppo, Vivo, Huawei) hay que activarlo a mano." }
+];
+S.permisos = null;
+const permisoOk = (k, e = S.permisos) => !e ? true : k === "inicioAuto" ? (!e.inicioAuto || ls.get("inicioAutoOk") === "1") : !!e[k];
+const faltantes = (e = S.permisos) => e ? PERMISOS.filter(p => !permisoOk(p.k, e)) : [];
+async function revisarPermisos() {
+  if (!Perm) return null;
+  try { S.permisos = await Perm.estado(); } catch { S.permisos = null; }
+  return S.permisos;
+}
+// Espera a que la persona vuelva a la app desde una pantalla de ajustes
+const alVolver = (ms = 180000) => new Promise(ok => {
+  const f = () => { if (!document.hidden) { document.removeEventListener("visibilitychange", f); clearTimeout(t); setTimeout(ok, 500); } };
+  const t = setTimeout(() => { document.removeEventListener("visibilitychange", f); ok(); }, ms);
+  document.addEventListener("visibilitychange", f);
+});
+const esperar = ms => new Promise(ok => setTimeout(ok, ms));
+let activando = false;
+async function activarTodo() {
+  if (!Perm || activando) return;
+  activando = true;
+  const paso = async (texto, pausa = 0) => { const el = document.getElementById("pasoActual"); if (el) { el.hidden = false; el.textContent = texto; } if (pausa) await esperar(pausa); };
+  try {
+    let e = await revisarPermisos();
+    if (!e.gps) { await paso("Activa la ubicación (GPS) y vuelve a la app.", 1500); if ((await Perm.abrirGps()).abierto) await alVolver(); }
+    e = await revisarPermisos();
+    if (!e.precisa) {
+      await paso("Toca “Mientras la app está en uso” y deja activada “Precisa”.");
+      const r = await Perm.pedir({ permiso: "ubicacion" });
+      if (!r.concedido || !(await revisarPermisos()).precisa) { await paso("Entra a Permisos > Ubicación, elige “Permitir todo el tiempo” y activa “Usar ubicación precisa”. Luego vuelve.", 2200); if ((await Perm.abrirAjustes()).abierto) await alVolver(); }
+    }
+    e = await revisarPermisos();
+    if (!e.notificaciones) { await paso("Toca “Permitir” para las notificaciones."); await Perm.pedir({ permiso: "notificaciones" }); }
+    if (!e.camara) { await paso("Toca “Permitir” para la cámara."); await Perm.pedir({ permiso: "camara" }); }
+    e = await revisarPermisos();
+    if (e.ubicacion && !e.fondo) {
+      await paso("En la siguiente pantalla elige “Permitir todo el tiempo” y vuelve a la app.", 2200);
+      const r = await Perm.pedir({ permiso: "fondo" });
+      if (!r.concedido) { await paso("Entra a Permisos > Ubicación y elige “Permitir todo el tiempo”. Luego vuelve.", 2000); if ((await Perm.abrirAjustes()).abierto) await alVolver(); }
+    }
+    e = await revisarPermisos();
+    if (!e.bateria) { await paso("Toca “Permitir” para que la app funcione sin restricciones de batería.", 1800); if ((await Perm.pedirBateria()).abierto) await alVolver(); }
+    e = await revisarPermisos();
+    if (e.inicioAuto && ls.get("inicioAutoOk") !== "1") {
+      await paso("Busca “Mensajería Prueba” en la lista y actívala. Luego vuelve a la app.", 2200);
+      if ((await Perm.abrirInicioAuto()).abierto) { await alVolver(); ls.set("inicioAutoOk", "1"); }
+    }
+    await revisarPermisos();
+    const f = faltantes();
+    toast(f.length ? `Falta: ${f.map(p => p.t).join(", ")}` : "Listo: todos los permisos están activos");
+  } catch (err) { toast("No se pudo completar: " + (err.message || err)); }
+  activando = false;
+  if (location.hash === "#permisos") pintarPermisos(); else ruta(true);
+}
+async function pintarPermisos() {
+  if (!Perm) { pantalla(`<h1>Permisos</h1><div class="vacio">Esta pantalla solo funciona en la app instalada.</div>`); return; }
+  if (!S.permisos) await revisarPermisos();
+  const e = S.permisos || {}, f = faltantes();
+  pantalla(`<h1>Permisos del celular</h1>
+    <p class="nota" style="margin:0">Para que despacho y los clientes vean tu ubicación sin cortes, el celular necesita estos permisos. Toca el botón y sigue lo que indique cada pantalla.</p>
+    <button class="btn ${f.length ? "ok" : "sec"} btn-turno" id="bActivar">${f.length ? `Activar todos los permisos (${f.length} pendiente${f.length === 1 ? "" : "s"})` : "Todo listo · revisar otra vez"}</button>
+    <div class="paso-actual" id="pasoActual" hidden></div>
+    <div class="panel permisos">${PERMISOS.filter(p => p.k !== "inicioAuto" || e.inicioAuto).map(p => { const ok = permisoOk(p.k); return `<div class="permiso ${ok ? "ok" : "falta"}"><span class="ic">${ok ? "✓" : "!"}</span><div><b>${p.t}</b><small>${p.k === "inicioAuto" && ok ? "Revisado. Si la ubicación se sigue cortando, revísalo otra vez." : p.d}</small></div></div>`; }).join("")}</div>
+    <div class="btns"><button class="btn sec chico" id="bAjApp">Abrir ajustes de la app</button>${e.inicioAuto ? `<button class="btn sec chico" id="bInicioAuto">Abrir inicio automático</button>` : ""}</div>
+    <p class="nota">Celular: ${esc(e.marca || "")} ${esc(e.modelo || "")} · Android ${esc(String(e.android || ""))}</p>`);
+  $("#bActivar").onclick = () => f.length ? activarTodo() : (S.permisos = null, pintarPermisos());
+  $("#bAjApp").onclick = async () => { await Perm.abrirAjustes(); await alVolver(); await revisarPermisos(); pintarPermisos(); };
+  $("#bInicioAuto") && ($("#bInicioAuto").onclick = async () => { if ((await Perm.abrirInicioAuto()).abierto) { await alVolver(); ls.set("inicioAutoOk", "1"); } pintarPermisos(); });
+}
+// Al volver a la app, actualizar el estado de los permisos
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden || activando || !S.perfil?.activo) return;
+  await revisarPermisos();
+  if (location.hash === "#permisos") pintarPermisos(); else if (location.hash === "#inicio" || !location.hash) pintarInicio();
+});
+
 /* ---------- rutas ---------- */
 addEventListener("hashchange", () => ruta());
 let ultimaRuta = "";
@@ -310,6 +411,7 @@ function ruta(soloDatos = false) {
   else if (r === "disponibles") pintarDisponibles();
   else if (r === "mios") pintarMios();
   else if (r === "perfil") pintarPerfil();
+  else if (r === "permisos") pintarPermisos();
   else if (r === "g") pintarGuia(decodeURIComponent(n));
   else if (r === "entregar") pintarEntregar(decodeURIComponent(n));
   else if (r === "novedad") pintarNovedad(decodeURIComponent(n));
@@ -404,12 +506,14 @@ function pintarInicio() {
     </div>
     <div class="cifras"><div><b>${act.length}</b><span>Pedidos en curso</span></div><div><b>${entregadasHoy}</b><span>Entregados hoy</span></div></div>
     <div class="panel"><h3>Dinero en mano</h3><div class="saldo">${C.cop(saldo())}</div><p class="nota" style="margin:0">Efectivo cobrado que aún no le has entregado a despacho.</p></div>
-    ${ls.get("bateriaOk") === "1" ? "" : `<div class="aviso"><b>Antes de tu primer turno</b><span>Para que tu ubicación no se corte con el celular bloqueado, desactiva el ahorro de batería para esta app: Ajustes > Batería (o Aplicaciones) > Mensajería Prueba > Batería > <b>Sin restricciones</b>. En Xiaomi activa también <b>Inicio automático</b>.</span><div class="btns"><button class="btn sec chico" id="bAjustes2">Abrir ajustes de la app</button><button class="btn sec chico" id="bBatOk">Ya lo hice</button></div></div>`}`);
+    ${Perm ? (faltantes().length ? `<div class="aviso"><b>Faltan ${faltantes().length} permiso${faltantes().length === 1 ? "" : "s"} para tu ubicación</b><span>${esc(faltantes().map(p => p.t).join(" · "))}</span><div class="btns"><button class="btn ok chico" id="bPermTodo">Activar todos los permisos</button><button class="btn sec chico" id="bPermVer">Ver detalle</button></div></div>` : "") : ls.get("bateriaOk") === "1" ? "" : `<div class="aviso"><b>Antes de tu primer turno</b><span>Para que tu ubicación no se corte con el celular bloqueado, desactiva el ahorro de batería para esta app: Ajustes > Batería (o Aplicaciones) > Mensajería Prueba > Batería > <b>Sin restricciones</b>. En Xiaomi activa también <b>Inicio automático</b>.</span><div class="btns"><button class="btn sec chico" id="bAjustes2">Abrir ajustes de la app</button><button class="btn sec chico" id="bBatOk">Ya lo hice</button></div></div>`}`);
   $("#bTurno").onclick = () => S.turno ? terminarTurno() : iniciarTurno();
   const aj = () => BG?.openSettings();
   $("#bAjustes") && ($("#bAjustes").onclick = aj);
   $("#bAjustes2") && ($("#bAjustes2").onclick = aj);
   $("#bBatOk") && ($("#bBatOk").onclick = () => { ls.set("bateriaOk", "1"); pintarInicio(); });
+  $("#bPermTodo") && ($("#bPermTodo").onclick = () => { location.hash = "#permisos"; setTimeout(activarTodo, 100); });
+  $("#bPermVer") && ($("#bPermVer").onclick = () => location.hash = "#permisos");
 }
 
 /* ---------- listas ---------- */
@@ -837,9 +941,10 @@ function pintarPerfil() {
       <div class="fila"><label>Celular<input id="pTel" value="${esc(p.telefono)}"></label><label>Placa<input id="pPla" value="${esc(p.placa)}"></label></div>
       <button class="btn" type="submit">Guardar cambios</button>
     </form>
-    <div class="panel"><h3>Ubicación y batería</h3><p class="nota" style="margin:0">Si tu ubicación se corta con la pantalla apagada, quita el ahorro de batería para esta app y dale permiso de ubicación “todo el tiempo”.</p><button class="btn sec" id="pAj">Abrir ajustes de la app</button></div>
+    <div class="panel"><h3>Ubicación y batería</h3><p class="nota" style="margin:0">Si tu ubicación se corta con la pantalla apagada, quita el ahorro de batería para esta app y dale permiso de ubicación “todo el tiempo”.</p><div class="btns">${Perm ? `<button class="btn" id="pPerm">Revisar permisos del celular</button>` : ""}<button class="btn sec" id="pAj">Abrir ajustes de la app</button></div></div>
     <div class="panel"><dl class="kv"><dt>Correo</dt><dd>${esc(p.email)}</dd><dt>Cédula</dt><dd>${esc(p.cedula)}</dd></dl><button class="btn peligro" id="pSalir">Cerrar sesión</button></div>`);
   $("#pAj").onclick = () => BG?.openSettings();
+  $("#pPerm") && ($("#pPerm").onclick = () => location.hash = "#permisos");
   $("#pSalir").onclick = async () => { await terminarTurno(); A.signOut(auth); };
   $("#fPer").onsubmit = async e => {
     e.preventDefault();

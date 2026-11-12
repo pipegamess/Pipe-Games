@@ -40,11 +40,42 @@ if (!mf.includes("android.permission.ACCESS_BACKGROUND_LOCATION")) {
   mf = mf.replace("<application", `<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <application`);
 }
+// Pedir "batería sin restricciones" desde la app
+if (!mf.includes("android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS")) {
+  mf = mf.replace("<application", `<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <application`);
+}
+// Poder detectar las pantallas de "inicio automático" de cada marca (Android 11+)
+if (!mf.includes("<queries>")) {
+  const pkgs = ["com.miui.securitycenter", "com.transsion.phonemaster", "com.coloros.safecenter", "com.oppo.safe", "com.vivo.permissionmanager", "com.iqoo.secure", "com.huawei.systemmanager", "com.hihonor.systemmanager", "com.asus.mobilemanager", "com.letv.android.letvsafe"];
+  mf = mf.replace("<application", `<queries>
+${pkgs.map(p => `        <package android:name="${p}" />`).join("\n")}
+    </queries>
+    <application`);
+}
 if (!mf.includes("com.google.mlkit.vision.DEPENDENCIES")) {
   mf = mf.replace("</application>", `    <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
     </application>`);
 }
 fs.writeFileSync(manifest, mf);
+
+// Plugin propio "Permisos" (app/nativo/Permisos.java), registrado en MainActivity.
+const javaDir = path.join(__dirname, "..", "android", "app", "src", "main", "java", "co", "mensajeriaprueba", "mensajero");
+fs.mkdirSync(javaDir, { recursive: true });
+fs.copyFileSync(path.join(__dirname, "..", "nativo", "Permisos.java"), path.join(javaDir, "Permisos.java"));
+fs.writeFileSync(path.join(javaDir, "MainActivity.java"), `package co.mensajeriaprueba.mensajero;
+
+import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(Permisos.class);
+        super.onCreate(savedInstanceState);
+    }
+}
+`);
 
 // Versión visible de la app = número de compilación de GitHub.
 const gradle = path.join(__dirname, "..", "android", "app", "build.gradle");
