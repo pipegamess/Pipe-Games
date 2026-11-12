@@ -1134,10 +1134,29 @@ $("#skxTarifas").addEventListener("click", async e => {
   const b = e.target.closest("#skxCrear"); b.disabled = true; b.textContent = "Creando guía…";
   try {
     const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: ref || "N/A" });
-    const cuerpo = { shipment: { rate_id: rateId, printing_format: "standard",
+    const base = { rate_id: rateId, printing_format: "standard",
       address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio),
-      address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · ")) } };
-    let s = await skx("POST", "/shipments", cuerpo);
+      address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · ")) };
+    // Colombia pide tipo y contenido de cada paquete. El valor exacto del tipo no está documentado:
+    // se prueba en orden y se recuerda el que Skydropx acepte.
+    const contenido = (/juego/i.test(d.tipo) ? "Videojuego" : d.tipo || "Videojuegos y accesorios").slice(0, 60);
+    const TIPOS_PAQ = ["package", "box", "caja", "paquete", "envelope", "sobre"];
+    let iTipo = Math.max(0, TIPOS_PAQ.indexOf(S.skx?.tipoPaquete || "package"));
+    let s = null, errUlt = null, arriba = false;
+    for (let intento = 0; intento < TIPOS_PAQ.length + 2; intento++) {
+      const tp = TIPOS_PAQ[iTipo % TIPOS_PAQ.length];
+      const pkg = { package_number: "1", package_type: tp, package_content: contenido, consignment_note: contenido, declared_value: d.valor, length: d.paquete.length, width: d.paquete.width, height: d.paquete.height, weight: d.paquete.weight };
+      try { s = await skx("POST", "/shipments", { shipment: { ...base, ...(arriba ? { package_type: tp, package_content: contenido } : {}), packages: [pkg] } }); if ((S.skx?.tipoPaquete || "package") !== tp) { S.skx = { ...(S.skx || {}), tipoPaquete: tp }; setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: { tipoPaquete: tp } }, { merge: true }).catch(() => {}); } break; }
+      catch (err) {
+        errUlt = err; const msg = String(err.message || "");
+        // Si el problema sigue siendo el tipo de paquete (valor no válido), probar el siguiente
+        if (/422/.test(msg) && /package_type/.test(msg) && !/requerido|required/i.test(msg)) { iTipo++; continue; }
+        // Si dice que falta aunque va en el paquete, enviarlo también a nivel del envío
+        if (/422/.test(msg) && /package_(type|content)/.test(msg) && /requerido|required/i.test(msg) && !arriba) { arriba = true; continue; }
+        throw err;
+      }
+    }
+    if (!s) throw errUlt || new Error("Skydropx no aceptó el paquete");
     const id = hallar(s, "id");
     let guia = hallar(s, "tracking_number"), etiqueta = hallar(s, "label_url");
     for (let i = 0; i < 15 && id && !(guia && etiqueta); i++) { await esperar(2000); s = await skx("GET", "/shipments/" + id); guia = hallar(s, "tracking_number"); etiqueta = hallar(s, "label_url"); if (/fail|error|cancel/i.test(hallar(s, "workflow_status") || "")) break; }
