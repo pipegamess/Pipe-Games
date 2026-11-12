@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113t">
+<link rel="stylesheet" href="estilos.css?v=20261113u">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -344,6 +344,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <label>Cliente<input id="cbCli" placeholder="Escribe o elige un cliente" list="cbClientes" autocomplete="off"></label>
           <datalist id="cbClientes"></datalist>
           <div class="fila"><label>Precio final por unidad<input class="din" id="cbPrecio" inputmode="numeric" placeholder="250.000"></label><label>Unidades<input id="cbUnid" type="number" min="1" step="1" value="1" inputmode="numeric"></label></div>
+          <div class="lista" style="gap:8px"><b style="font-size:14px">Artículos adicionales</b>
+            <div id="cbArts" class="lista" style="gap:8px"></div>
+            <button class="btn sec chico" type="button" id="cbMasArt" style="align-self:flex-start">+ Agregar artículo del catálogo</button>
+            <datalist id="cbCatalogo"></datalist></div>
           <div id="cbAbonos" class="lista" style="gap:8px"></div>
           <button class="btn sec chico" type="button" id="cbMasAbono" style="align-self:flex-start">+ Agregar otro abono</button>
           <label>Envío<select id="cbCiudad"><option value="bogota">Bogotá · domicilio $10.000</option><option value="chia">Chía · domicilio $10.000</option><option value="soacha">Soacha · domicilio $10.000</option><option value="otro">Otra ciudad (escribir valor)</option></select></label>
@@ -406,9 +410,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113t";
-import * as C from "./comun.js?v=20261113t";
-import * as T from "./tarifas-envio.js?v=20261113t";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113u";
+import * as C from "./comun.js?v=20261113u";
+import * as T from "./tarifas-envio.js?v=20261113u";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261113u";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -711,7 +716,10 @@ function agregarAbono(v = "") {
 }
 function datosCobro() {
   const unitario = num($("#cbPrecio").value), unidades = Math.max(1, num($("#cbUnid").value) || 1);
-  const precio = unitario * unidades;
+  // Artículos adicionales (juegos u otros productos del catálogo que se suman al pedido)
+  const extras = [...document.querySelectorAll("#cbArts .art")].map(f => ({ n: f.querySelector(".artN").value.trim(), q: Math.max(1, num(f.querySelector(".artQ").value) || 1), v: num(f.querySelector(".artV").value) })).filter(x => x.n && x.v);
+  const precioExtras = extras.reduce((a, x) => a + x.q * x.v, 0);
+  const precio = unitario * unidades + precioExtras;
   const abonos = [...document.querySelectorAll("#cbAbonos .abono")].map(i => num(i.value)).filter(Boolean);
   const abonado = abonos.reduce((a, b) => a + b, 0);
   const ciudad = $("#cbCiudad").value;
@@ -723,7 +731,7 @@ function datosCobro() {
   const base = precio + envio - abonado; // saldo antes del recargo
   const m = C.METODOS_PAGO.find(x => x.id === cbMetodo);
   const total = base > 0 ? m.calc(base) : base;
-  return { cliente: $("#cbCli").value.trim(), unitario, unidades, precio, abonos, abonado, ciudad, destino, envio, base, metodo: cbMetodo, metodoTxt: m.t, recargo: base > 0 ? total - base : 0, saldo: total, permitidos };
+  return { cliente: $("#cbCli").value.trim(), unitario, unidades, extras, precioExtras, precio, abonos, abonado, ciudad, destino, envio, base, metodo: cbMetodo, metodoTxt: m.t, recargo: base > 0 ? total - base : 0, saldo: total, permitidos };
 }
 function calcular() {
   const d = datosCobro();
@@ -735,7 +743,7 @@ function calcular() {
   }).join("");
   if (calcular.htmlMet !== htmlMet) { calcular.htmlMet = htmlMet; $("#cbMetodos").innerHTML = htmlMet; }
   const linea = (t, v, signo = "") => `<div style="display:flex;justify-content:space-between;gap:10px"><span>${t}</span><span>${signo}${C.cop(v)}</span></div>`;
-  $("#cbResumen").innerHTML = `${linea(d.unidades > 1 ? `Precio final (${d.unidades} × ${C.cop(d.unitario)})` : "Precio final", d.precio)}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
+  $("#cbResumen").innerHTML = `${linea(d.unidades > 1 ? `Precio final (${d.unidades} × ${C.cop(d.unitario)})` : "Precio final", d.unitario * d.unidades)}${d.extras.map(x => linea(esc(x.n) + (x.q > 1 ? ` (${x.q} × ${C.cop(x.v)})` : ""), x.q * x.v)).join("")}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
     <div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700"><span>${d.saldo < 0 ? "Saldo a favor del cliente" : "Saldo a pagar"}</span><span style="color:${d.saldo > 0 ? "var(--accent)" : "var(--ok)"}">${C.cop(Math.abs(d.saldo))}</span></div>`;
   const a = S.ajustesCobro || {};
   const aviso = d.precio >= C.LIMITE_CREDITO ? "Desde $1.000.000 solo aplica transferencia Bre-B o tarjeta de crédito (no Addi ni Sistecrédito)."
@@ -746,7 +754,10 @@ function calcular() {
 function mensajeCobro(d) {
   // Texto simple, sin emojis ni viñetas especiales (algunos celulares los muestran como un rombo con "?")
   const v = C.copTxt;
-  const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""}, este es el saldo de tu pedido:`, "", d.unidades > 1 ? `Precio final: ${d.unidades} unidades x ${v(d.unitario)} = ${v(d.precio)}` : `Precio final: ${v(d.precio)}`];
+  const base = d.unitario * d.unidades;
+  const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""}, este es el saldo de tu pedido:`, ""];
+  if (base) l.push(d.unidades > 1 ? `Precio final: ${d.unidades} unidades x ${v(d.unitario)} = ${v(base)}` : `Precio final: ${v(base)}`);
+  d.extras.forEach(x => l.push(`${x.n}${x.q > 1 ? ` (${x.q} x ${v(x.v)})` : ""}: ${v(x.q * x.v)}`));
   l.push(d.ciudad === "otro" ? `Envío${d.destino ? " a " + d.destino : ""}: ${v(d.envio)}` : `Domicilio ${d.destino}: ${v(d.envio)}`);
   d.abonos.forEach((x, i) => l.push(`${i === 0 ? "Abono" : "Abono " + (i + 1)}: -${v(x)}`));
   if (d.saldo <= 0) { l.push("", d.saldo < 0 ? `Saldo a tu favor: ${v(-d.saldo)}` : "Tu pedido ya está pago."); return l.join("\n"); }
@@ -777,6 +788,23 @@ $("#fCobro").addEventListener("input", e => {
 });
 $("#fCobro").addEventListener("change", calcular);
 $("#cbMetodos").addEventListener("click", e => { const b = e.target.closest("[data-met]"); if (!b) return; cbMetodo = b.dataset.met; calcular(); });
+// Lista de productos del catálogo para elegir artículos
+$("#cbCatalogo").innerHTML = PRODUCTOS.map(p => `<option value="${esc(p.n)} · ${esc(p.p)}">${C.cop(p.v)}${p.a ? "" : " · agotado"}</option>`).join("");
+function agregarArticulo() {
+  const f = document.createElement("div");
+  f.className = "fila art"; f.style.cssText = "grid-template-columns:minmax(0,3fr) 70px minmax(0,1.3fr) auto;gap:6px;align-items:end";
+  f.innerHTML = `<label>Artículo<input class="artN" list="cbCatalogo" placeholder="Busca en el catálogo" autocomplete="off"></label><label>Cant.<input class="artQ" type="number" min="1" step="1" value="1" inputmode="numeric"></label><label>Precio<input class="din artV" inputmode="numeric"></label><button class="btn sec chico" type="button" data-quitarart title="Quitar">✕</button>`;
+  $("#cbArts").appendChild(f); f.querySelector(".artN").focus();
+}
+$("#cbMasArt").onclick = agregarArticulo;
+$("#cbArts").addEventListener("click", e => { if (e.target.closest("[data-quitarart]")) { e.target.closest(".art").remove(); calcular(); } });
+$("#cbArts").addEventListener("input", e => {
+  if (!e.target.classList.contains("artN")) return;
+  // Al elegir un producto del catálogo, se pone su precio
+  const val = e.target.value.trim().toLowerCase();
+  const p = PRODUCTOS.find(x => `${x.n} · ${x.p}`.toLowerCase() === val);
+  if (p) { e.target.value = p.n + " · " + p.p; e.target.closest(".art").querySelector(".artV").value = miles(p.v); calcular(); }
+});
 $("#cbMasAbono").onclick = () => { agregarAbono(); $("#cbAbonos").lastElementChild.querySelector("input").focus(); };
 $("#cbAbonos").addEventListener("click", e => { if (e.target.closest("[data-quitarab]")) { e.target.closest(".fila").remove(); calcular(); } });
 $("#cbWa").onclick = () => {
@@ -799,7 +827,7 @@ $("#cbGuia").onclick = () => {
   $("#nTel").focus();
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
-$("#cbLimpiar").onclick = () => { cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+$("#cbLimpiar").onclick = () => { cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
 /* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
 let cbReserva = null; // reserva cargada en la calculadora {id, tel}
 // Busca el celular del cliente: primero la reserva cargada con "Cobrar"; si no, por nombre
@@ -1137,7 +1165,7 @@ function guiaDesdeReserva(id) {
 
 function cargarReserva(id) {
   const r = S.reservas?.[id]; if (!r) return;
-  $("#fCobro").reset(); $("#cbAbonos").innerHTML = "";
+  $("#fCobro").reset(); $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = "";
   $("#cbCli").value = titulo(r.nombre);
   $("#cbPrecio").value = miles(S.preciosReserva?.[claveProd(r.producto)] || 0);
   $("#cbUnid").value = r.unidades || 1;
@@ -1802,7 +1830,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113t";
+const VERSION_PANEL = "20261113u";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
