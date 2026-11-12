@@ -38,6 +38,9 @@
 .llave{font-family:var(--f-mono);font-size:26px;font-weight:600;letter-spacing:.04em}
 .listo{font-family:var(--f-display);font-size:28px;font-weight:700;line-height:1.1}
 .pie{font-size:12px;color:var(--muted);text-align:center}
+.qr{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.qr img{width:min(260px,100%);height:auto;border-radius:6px}
+.qr .nota{text-align:center;margin:0}
 </style>
 </head>
 <body>
@@ -65,6 +68,7 @@
       <p class="paso" id="tPago">3. ¿Cómo quieres pagar?</p>
       <div class="opciones" id="sMetodos"></div>
       <div class="aviso" id="sLimite" hidden>Para compras desde $1.000.000 solo recibimos transferencia por Llave Bre-B o tarjeta de crédito.</div>
+      <div id="sLlave" hidden></div>
       <div class="lista" id="sCredito" hidden>
         <p class="nota" style="margin:0">Para tramitar tu crédito necesitamos estos datos:</p>
         <div class="fila"><label>Número de cédula<input id="sCedula" inputmode="numeric" maxlength="13"></label><label>Correo electrónico<input id="sCorreo" type="email" maxlength="80"></label></div>
@@ -193,6 +197,10 @@ function pintar() {
   if (htmlMet !== ultimoMet) { ultimoMet = htmlMet; $("#sMetodos").innerHTML = htmlMet; }
   $("#sLimite").hidden = precioTotal() < C.LIMITE_CREDITO;
   $("#sCredito").hidden = !c.m.credito;
+  // Pago con llave: mostrar la llave y el QR para escanear o guardar
+  const conLlave = c.m.id === "transf";
+  if (conLlave && !$("#sLlave").dataset.listo) { $("#sLlave").innerHTML = bloqueLlave(); $("#sLlave").dataset.listo = "1"; }
+  $("#sLlave").hidden = !conLlave;
   // Total
   const filaEnv = env.local ? `<div class="linea"><span>${esc(env.tipo === "local" ? env.titulo : "Envío por " + (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || ""))}</span><span>${C.cop(c.envio)}</span></div>`
     : env.tipo === "otro" ? `<div class="linea"><span>Envío a ${esc(env.ciudad)}</span><span>Se confirma por WhatsApp</span></div>` : `<div class="linea"><span>Envío</span><span>Elige tu ciudad</span></div>`;
@@ -269,7 +277,7 @@ function confirmado(r) {
   $("#fSaldo").hidden = true; $("#resumen").innerHTML = "";
   $("#intro").textContent = S ? `Gracias, ${C.primerNombre(titulo(S.nombre))}.` : "Gracias.";
   const total = r.total || 0;
-  const pasos = r.metodo === "transf" ? `<p style="margin:0">Transfiere <b>${C.cop(total)}</b>${r.envioPorConfirmar ? " (más el envío que te confirmaremos)" : ""} a la llave Bre-B:</p><div class="llave">${LLAVE}</div><p class="nota" style="margin:0">A nombre de ${TITULAR}. Luego envíanos el comprobante por WhatsApp.</p><button class="btn sec chico" type="button" id="cpLlave" style="align-self:flex-start">Copiar llave</button>`
+  const pasos = r.metodo === "transf" ? `<p style="margin:0">Transfiere <b>${C.cop(total)}</b>${r.envioPorConfirmar ? " (más el envío que te confirmaremos)" : ""} a la llave Bre-B:</p>${bloqueLlave()}<p class="nota" style="margin:0">Luego envíanos el comprobante por WhatsApp.</p>`
     : r.metodo === "tarjeta" ? `<p style="margin:0">Te enviaremos por WhatsApp el link de pago con tarjeta por <b>${C.cop(total)}</b>.</p>`
     : `<p style="margin:0">Te contactaremos por WhatsApp para tramitar tu crédito con ${r.metodo === "addi" ? "Addi" : "Sistecrédito"} por <b>${C.cop(total)}</b>.</p>`;
   const texto = `Hola, confirmo mi pedido de ${S?.producto || "mi reserva"}${S?.unidades > 1 ? " (" + S.unidades + " unidades)" : ""}.\nEnvío a: ${r.ciudad || ""}\nPago: ${r.metodoTxt || ""}\nTotal: ${C.copTxt(total)}${r.metodo === "transf" ? "\nAdjunto el comprobante." : ""}`;
@@ -279,7 +287,35 @@ function confirmado(r) {
     <div class="total"><span>Total a pagar</span><span>${C.cop(total)}</span></div>
     ${pasos}
     <a class="btn" href="https://wa.me/${WA_TIENDA}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">${r.metodo === "transf" ? "Enviar comprobante por WhatsApp" : "Escribirnos por WhatsApp"}</a></div>`;
-  $("#cpLlave") && ($("#cpLlave").onclick = async () => { try { await navigator.clipboard.writeText(LLAVE); $("#cpLlave").textContent = "Llave copiada"; } catch { prompt("Copia la llave:", LLAVE); } });
+}
+// Llave + QR (si despacho ya lo adjuntó), con botones para copiar la llave y guardar el QR en la galería
+function bloqueLlave() {
+  const qr = S?.qr || "";
+  return `<div class="qr"><div class="llave">${LLAVE}</div><div class="nota">A nombre de ${TITULAR}</div>
+    ${qr ? `<img src="${qr}" alt="Código QR Bre-B de ${TITULAR}"><div class="nota">Guárdalo en tu galería y ábrelo desde la app de tu banco (opción pagar con QR).</div>` : ""}
+    <div class="btns" style="justify-content:center"><button class="btn sec chico" type="button" data-copiar-llave>Copiar llave</button>${qr ? `<button class="btn chico" type="button" data-bajar-qr>Descargar QR</button>` : ""}</div></div>`;
+}
+document.addEventListener("click", async e => {
+  const cp = e.target.closest("[data-copiar-llave]");
+  if (cp) { try { await navigator.clipboard.writeText(LLAVE); cp.textContent = "Llave copiada"; } catch { prompt("Copia la llave:", LLAVE); } return; }
+  if (e.target.closest("[data-bajar-qr]")) bajarQr(e.target.closest("[data-bajar-qr]"));
+});
+async function bajarQr(boton) {
+  const qr = S?.qr; if (!qr) return;
+  const nombre = "QR-Bre-B-Pipe-Games.jpg";
+  try {
+    const blob = await (await fetch(qr)).blob();
+    const archivo = new File([blob], nombre, { type: blob.type || "image/jpeg" });
+    // En celulares, compartir permite "Guardar imagen" directo en la galería
+    if (navigator.canShare?.({ files: [archivo] })) { await navigator.share({ files: [archivo], title: "QR Bre-B Pipe Games" }); return; }
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    boton.textContent = "QR descargado";
+  } catch (err) {
+    if (err?.name === "AbortError") return; // canceló el menú de compartir
+    const a = document.createElement("a"); a.href = qr; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+  }
 }
 /* ---------- cargar el saldo (al final, cuando todo está definido) ---------- */
 try {
