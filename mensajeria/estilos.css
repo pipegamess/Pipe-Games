@@ -89,3 +89,4 @@ textarea{min-height:64px;resize:vertical}
 @media (prefers-color-scheme: dark){.leaflet-tile-pane{filter:brightness(.72) invert(1) contrast(.9) hue-rotate(200deg) saturate(.35) brightness(.9)}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .item.sel{box-shadow:0 0 0 2px var(--accent)}
+body.basico .solo-maestro{display:none!important}

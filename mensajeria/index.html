@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112p">
+<link rel="stylesheet" href="estilos.css?v=20261112q">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -146,7 +146,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <!-- Panel -->
 <div class="envoltura" id="vPanel" hidden>
   <header class="barra">
-    <h1>Mensajería <span class="marca">Prueba</span> · Despacho</h1>
+    <h1 id="tituloPanel">Mensajería <span class="marca">Prueba</span> · Despacho</h1>
     <div class="quien">
       <div class="campana" id="campana">
         <button type="button" id="bCampana" aria-label="Notificaciones" title="Notificaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="cuenta" id="cuentaNoti" hidden></span></button>
@@ -165,7 +165,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <button role="tab" data-tab="nueva" aria-selected="false">Nueva guía</button>
         <button role="tab" data-tab="mensajeros" aria-selected="false">Mensajeros</button>
         <button role="tab" data-tab="recaudo" aria-selected="false">Recaudo</button>
-        <button role="tab" data-tab="cobros" aria-selected="false">Cobros</button>
+        <button role="tab" data-tab="cobros" aria-selected="false" class="solo-maestro">Cobros</button>
       </nav>
 
       <!-- GUÍAS -->
@@ -182,12 +182,12 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <section class="panel" id="t-nueva" hidden>
         <div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2>Nueva guía</h2>
           <label class="formato" for="fmtImp">Formato de impresión <select id="fmtImp"><option value="etiqueta">Etiqueta 10 × 15 cm</option><option value="carta">Hoja carta</option></select></label></div>
-        <div class="item" id="formCli">
+        <div class="item solo-maestro" id="formCli">
           <b>Formulario para que el cliente llene sus datos</b>
           <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, ciudad, dirección, complemento y barrio. En <b>Bogotá, Chía y Soacha</b> marca su casa en el mapa y se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo). En <b>otras ciudades</b> elige Envía o Interrapidísimo y la orden queda en <b>Skydropx → Preparar órdenes</b>, sin crear guía, para que la revises. Todo te llega a la campana.</span>
           <div class="btns"><button class="btn chico" type="button" id="fcGen">Copiar mensaje con el link</button><a class="btn sec chico" id="fcVer" target="_blank" rel="noopener">Ver formulario</a></div>
         </div>
-        <details class="item" id="skx">
+        <details class="item solo-maestro" id="skx">
           <summary style="cursor:pointer"><b>Envío nacional con Skydropx</b> <span class="nota">· clientes fuera de Bogotá, Chía y Soacha</span></summary>
           <div class="lista" style="margin-top:10px">
             <div class="item" id="skxPrepCaja"><b>Órdenes pendientes <span class="pill" id="skxPrepN">0</span></b>
@@ -225,7 +225,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div class="lista" id="skxLista"></div>
           </div>
         </details>
-        <div class="item ml-caja" id="mlCaja">
+        <div class="item ml-caja solo-maestro" id="mlCaja">
           <b>Etiquetas de Mercado Libre y Falabella</b>
           <span class="nota">Arrastra aquí los PDF de etiquetas que descargas de Mercado Libre (Flex) o de Falabella (Despacho directo), o toca el botón. Las guías se crean solas y el mensajero las recibe escaneando el código de esa misma etiqueta.</span>
           <label class="btn sec chico" style="align-self:flex-start;flex-direction:row">Cargar etiquetas (PDF)<input type="file" id="mlPdf" accept="application/pdf" multiple hidden></label>
@@ -280,8 +280,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <div class="btns"><button class="btn chico" id="genInv">Generar invitación</button></div>
         <div id="invNueva"></div>
         <div class="lista" id="listaInv"></div>
+        <div class="solo-maestro lista" id="secAcceso">
         <h3>Contraseña de acceso al panel</h3>
-        <p class="nota">Antes de iniciar sesión, el panel pide el número de documento (NIT o cédula) de una empresa registrada aquí. Solo se guarda una huella cifrada, nunca el número.</p>
+        <p class="nota">Antes de iniciar sesión, el panel pide el número de documento (NIT o cédula) de una empresa registrada aquí. Solo se guarda una huella cifrada, nunca el número. Pipe Games entra al <b>panel maestro</b> (todas las funciones). Las demás empresas entran al <b>panel básico</b>: guías, mensajeros y recaudo en Bogotá, Soacha y Chía; sin Skydropx, cobros, reservas, formulario de clientes ni marketplaces.</p>
         <form id="fAccesoNuevo" class="lista">
           <label>Empresa<input id="acEmpresa" placeholder="Pipe Games" required></label>
           <label>Número de documento<input id="acDoc" type="password" inputmode="numeric" autocomplete="off" required></label>
@@ -289,6 +290,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div class="error" id="acError"></div>
         </form>
         <div class="lista" id="listaAcceso"></div>
+        </div>
       </section>
 
       <!-- RECAUDO -->
@@ -372,9 +374,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112p";
-import * as C from "./comun.js?v=20261112p";
-import * as T from "./tarifas-envio.js?v=20261112p";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112q";
+import * as C from "./comun.js?v=20261112q";
+import * as T from "./tarifas-envio.js?v=20261112q";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -398,8 +400,8 @@ function listaNotis() {
   Object.values(S.guias).forEach(g => (g.eventos || []).forEach(e => {
     if (TIPOS_NOTI[e.estado] && e.por !== "despacho" && (e.estado !== "disponible" || e.por === "Formulario web")) l.push({ g, e, k: g.numero + "|" + e.estado + "|" + e.t });
   }));
-  Object.entries(S.reservas || {}).forEach(([id, r]) => { if (r.confirmacion?.t) l.push({ g: { numero: r.producto, cliente: titulo(r.nombre) + " · total " + C.cop(r.confirmacion.total) }, e: { estado: "confirmo", t: r.confirmacion.t }, k: "res|" + id + "|" + r.confirmacion.t, res: id }); });
-  (S.prepSol || []).forEach(x => l.push({ g: { numero: x.municipio || "Otra ciudad", cliente: titulo(x.nombre) + (x.transportadora ? " · " + nombreTransp(x.transportadora) : "") }, e: { estado: "preparar", t: x.creado }, k: "sol|" + x.id, sol: x.id }));
+  if (esMaestro()) Object.entries(S.reservas || {}).forEach(([id, r]) => { if (r.confirmacion?.t) l.push({ g: { numero: r.producto, cliente: titulo(r.nombre) + " · total " + C.cop(r.confirmacion.total) }, e: { estado: "confirmo", t: r.confirmacion.t }, k: "res|" + id + "|" + r.confirmacion.t, res: id }); });
+  if (esMaestro()) (S.prepSol || []).forEach(x => l.push({ g: { numero: x.municipio || "Otra ciudad", cliente: titulo(x.nombre) + (x.transportadora ? " · " + nombreTransp(x.transportadora) : "") }, e: { estado: "preparar", t: x.creado }, k: "sol|" + x.id, sol: x.id }));
   return l.sort((a, b) => b.e.t - a.e.t).slice(0, 40);
 }
 function pintarNotis() {
@@ -1442,16 +1444,25 @@ $("#fLogin").onsubmit = async e => {
   try { await signInWithEmailAndPassword(auth, $("#lCorreo").value.trim(), $("#lClave").value); }
   catch (err) { $("#lError").textContent = C.mensajeError(err); }
 };
-$("#salir").onclick = () => signOut(auth);
+$("#salir").onclick = () => { try { sessionStorage.removeItem("acceso"); sessionStorage.removeItem("modo"); sessionStorage.removeItem("empresa"); } catch {} signOut(auth); };
 
 // Primer candado: antes del inicio de sesión se pide el número de documento de la empresa.
 // Queda abierto solo mientras esta pestaña siga abierta.
 const ss = { get: k => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch {} } };
 let intentosAcceso = 0;
+// Panel maestro (Pipe Games, todas las funciones) o básico (otras empresas: solo guías en Bogotá, Soacha y Chía)
+const esMaestro = () => ss.get("modo") !== "basico";
+function aplicarModo() {
+  const m = esMaestro();
+  document.body.classList.toggle("basico", !m);
+  $("#tituloPanel").innerHTML = m ? `Pipe <span class="marca">Games</span> · Panel maestro` : `${esc(ss.get("empresa") || "Mensajería")} · <span class="marca">Despacho</span>`;
+  if (!m && S.tab === "cobros") irA("guias");
+}
 async function mostrarIngreso() {
   $("#vPanel").hidden = true;
   let activo = false;
   if (ss.get("acceso") !== "ok") { try { activo = (await getDoc(doc(db, "acceso", "_activo"))).exists(); } catch {} }
+  if (!activo && ss.get("acceso") !== "ok") ss.set("modo", "maestro"); // sin contraseña de empresas: es el dueño
   $("#vAcceso").hidden = !activo; $("#vLogin").hidden = activo;
   if (activo) $("#aClave").focus();
 }
@@ -1461,8 +1472,9 @@ $("#fAcceso").onsubmit = async e => {
   if (intentosAcceso >= 5) { $("#aError").textContent = "Demasiados intentos. Cierra la página y vuelve a intentarlo más tarde."; return; }
   const b = e.submitter || $("#fAcceso button"); b.disabled = true;
   try {
-    const ok = v.length >= 5 && (await getDoc(doc(db, "acceso", await C.huellaAcceso(v)))).exists();
-    if (ok) { ss.set("acceso", "ok"); $("#aClave").value = ""; $("#vAcceso").hidden = true; $("#vLogin").hidden = false; $("#lCorreo").focus(); }
+    const sn = v.length >= 5 ? await getDoc(doc(db, "acceso", await C.huellaAcceso(v))) : null, ok = !!sn?.exists();
+    if (ok) { const da = sn.data() || {}; ss.set("acceso", "ok"); ss.set("empresa", da.empresa || ""); ss.set("modo", (da.maestro ?? /pipe\s*games/i.test(da.empresa || "")) ? "maestro" : "basico"); $("#aClave").value = "";
+      if (auth.currentUser?.uid === ADMIN_UID) entrarPanel(auth.currentUser); else { $("#vAcceso").hidden = true; $("#vLogin").hidden = false; $("#lCorreo").focus(); } }
     else { intentosAcceso++; $("#aError").textContent = "Contraseña incorrecta."; }
   } catch { $("#aError").textContent = "No se pudo comprobar. Revisa tu conexión."; }
   b.disabled = false;
@@ -1475,11 +1487,21 @@ onAuthStateChanged(auth, async u => {
     $("#lError").textContent = "Esta cuenta no es de despacho. Los mensajeros usan la app de Android.";
     await signOut(auth); return;
   }
+  // Con contraseña de empresas activa, se pide también con la sesión ya iniciada (define maestro o básico)
+  if (ss.get("acceso") !== "ok") {
+    let activo = false; try { activo = (await getDoc(doc(db, "acceso", "_activo"))).exists(); } catch {}
+    if (activo) { $("#vPanel").hidden = true; $("#vLogin").hidden = true; $("#vAcceso").hidden = false; $("#aClave").focus(); return; }
+    ss.set("modo", "maestro");
+  }
+  entrarPanel(u);
+});
+function entrarPanel(u) {
   $("#vLogin").hidden = true; $("#vAcceso").hidden = true; $("#vPanel").hidden = false;
   $("#quien").textContent = u.email;
+  aplicarModo();
   iniciarMapa();
   escuchar();
-});
+}
 
 function escuchar() {
   const err = e => toast(C.mensajeError(e));
@@ -1491,27 +1513,28 @@ function escuchar() {
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
   subs.push(onSnapshot(query(collection(db, "saldos"), where("estado", "==", "confirmado")), s => {
     S.saldosPend = s.docs.map(d => ({ id: d.id, ...d.data() }));
-    procesarSaldos(S.saldosPend);
+    if (esMaestro()) procesarSaldos(S.saldosPend);
   }, () => {}));
   subs.push(onSnapshot(query(collection(db, "solicitudes"), where("estado", "in", ["nueva", "preparar"])), s => {
     const todas = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.creado - b.creado);
     S.solicitudes = todas.filter(x => x.estado === "nueva");
     S.prepSol = todas.filter(x => x.estado === "preparar");
     pintarPrep(); notiYaVistas ? revisarNotis() : pintarNotis();
-    S.prepSol.filter(x => !x.errorSkydropx && !x.ordenSkydropx && !x.guiaErronea).forEach(x => enviarOrdenSkx(x.id, true));
-    procesarSolicitudes(S.solicitudes);
+    if (esMaestro()) S.prepSol.filter(x => !x.errorSkydropx && !x.ordenSkydropx && !x.guiaErronea).forEach(x => enviarOrdenSkx(x.id, true));
+    if (esMaestro()) procesarSolicitudes(S.solicitudes);
   }, () => {}));
   // Reparación: solicitudes de otra ciudad que un panel con versión vieja convirtió en guía local
   subs.push(onSnapshot(query(collection(db, "solicitudes"), where("ciudad", "==", "nacional")), s => {
+    if (!esMaestro()) return;
     s.docs.filter(d => d.data().estado === "creada" && d.data().ciudad === "nacional").forEach(d => updateDoc(doc(db, "solicitudes", d.id), { estado: "preparar", guiaErronea: d.data().guia || "", recibido: Date.now() }).catch(e => console.warn("reparar", d.id, e)));
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112p";
+const VERSION_PANEL = "20261112q";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2479,7 +2502,8 @@ function pintarAcceso() {
   const el = $("#listaAcceso"); if (!el) return;
   if (S.acceso === null) { el.innerHTML = `<div class="vacio">Para usar esta opción, publica las reglas nuevas en Firebase.</div>`; return; }
   const l = S.acceso || [];
-  el.innerHTML = l.length ? l.map(a => `<div class="item"><div class="arriba"><span>${esc(a.empresa)}</span><button class="btn sec chico" data-delacc="${a.id}">Quitar</button></div></div>`).join("")
+  const maestroDe = a => a.maestro ?? /pipe\s*games/i.test(a.empresa || "");
+  el.innerHTML = l.length ? l.map(a => `<div class="item"><div class="arriba"><span>${esc(a.empresa)} <span class="pill ${maestroDe(a) ? "entregada" : ""}">${maestroDe(a) ? "Panel maestro" : "Panel básico"}</span></span><span class="btns"><button class="btn sec chico" data-modoacc="${a.id}|${maestroDe(a) ? 0 : 1}">${maestroDe(a) ? "Pasar a básico" : "Hacer maestro"}</button><button class="btn sec chico" data-delacc="${a.id}">Quitar</button></span></div></div>`).join("")
     : `<div class="vacio">Sin empresas: el panel muestra el inicio de sesión directamente.</div>`;
 }
 $("#fAccesoNuevo").onsubmit = async e => {
@@ -2488,13 +2512,15 @@ $("#fAccesoNuevo").onsubmit = async e => {
   if (d.length < 5) { $("#acError").textContent = "Escribe el número de documento completo, solo números."; return; }
   try {
     const b = writeBatch(db);
-    b.set(doc(db, "acceso", await C.huellaAcceso(d)), { empresa: emp, creado: Date.now() });
+    b.set(doc(db, "acceso", await C.huellaAcceso(d)), { empresa: emp, maestro: /pipe\s*games/i.test(emp), creado: Date.now() });
     b.set(doc(db, "acceso", "_activo"), { activo: true });
     await b.commit();
     $("#acDoc").value = ""; $("#acEmpresa").value = ""; toast("Empresa agregada. El panel ya pide la contraseña.");
   } catch (err) { $("#acError").textContent = C.mensajeError(err); }
 };
 $("#listaAcceso").addEventListener("click", async e => {
+  const mo = e.target.closest("[data-modoacc]");
+  if (mo) { const [id, v] = mo.dataset.modoacc.split("|"); try { await updateDoc(doc(db, "acceso", id), { maestro: v === "1" }); toast(v === "1" ? "Esa empresa entra ahora al panel maestro" : "Esa empresa entra ahora al panel básico"); } catch (err) { toast(C.mensajeError(err)); } return; }
   const b = e.target.closest("[data-delacc]"); if (!b) return;
   try {
     const bt = writeBatch(db);
