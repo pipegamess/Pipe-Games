@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261111d">
+<link rel="stylesheet" href="estilos.css?v=20261111e">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -326,8 +326,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111d";
-import * as C from "./comun.js?v=20261111d";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111e";
+import * as C from "./comun.js?v=20261111e";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -410,7 +410,7 @@ document.addEventListener("click", e => {
 
 /* ---------- FORMULARIO DEL CLIENTE (envio.html) ---------- */
 const URL_ENVIO = C.URL_ENVIO;
-const msgFormulario = link => `Hola 👋 Para enviarte tu pedido, escribe tus datos de entrega aquí (menos de un minuto): ${link}`;
+const msgFormulario = link => `Hola, para enviarte tu pedido escribe tus datos de entrega aquí: ${link}`;
 $("#fcGen").onclick = () => copiar(msgFormulario(URL_ENVIO), "Mensaje copiado: pégalo en el chat del cliente");
 $("#fcVer").href = URL_ENVIO;
 
@@ -548,17 +548,18 @@ function calcular() {
   $("#cbGuia").textContent = d.metodo === "contraentrega" && d.saldo > 0 ? `Crear guía contra entrega por ${C.cop(d.saldo)}` : "Crear guía con estos datos";
 }
 function mensajeCobro(d) {
-  const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""} 👋 Este es el resumen de tu pedido:`, `• Precio final: ${C.cop(d.precio)}`];
-  l.push(d.ciudad === "otro" ? `• Envío${d.destino ? " a " + d.destino : ""}: ${C.cop(d.envio)}` : `• Domicilio en ${d.destino}: ${C.cop(d.envio)}`);
-  d.abonos.forEach((v, i) => l.push(`• ${i === 0 ? "Reserva/abono" : "Abono " + (i + 1)}: −${C.cop(v)}`));
-  if (d.saldo <= 0) { l.push("", d.saldo < 0 ? `Tienes un saldo a favor de ${C.cop(-d.saldo)}.` : "Tu pedido está totalmente pago ✅", "¡Gracias por tu compra!"); return l.join("\n"); }
-  if (d.recargo) l.push(`• Recargo ${d.metodoTxt.split(" · ")[0]}: ${C.cop(d.recargo)}`);
-  l.push("", `*Saldo a pagar: ${C.cop(d.saldo)}*`, `💳 Medio de pago: ${d.metodoTxt}`, "");
-  if (d.metodo === "transf") l.push(`Transfiere a la llave Bre-B: *${LLAVE_BREB}* a nombre de ${TITULAR_BREB}.`, "Envíanos el comprobante por aquí y despachamos tu pedido.");
-  if (d.metodo === "tarjeta") l.push("En un momento te enviamos el link de pago con tarjeta de crédito.");
-  if (d.metodo === "addi" || d.metodo === "siste") l.push(`Para tramitar tu crédito con ${d.metodo === "addi" ? "Addi" : "Sistecrédito"} envíanos tu número de cédula y tu correo electrónico.`);
-  if (d.metodo === "contraentrega") l.push("Lo pagas al recibir tu pedido, en efectivo o Nequi.");
-  l.push("¡Gracias por tu compra!");
+  // Texto simple, sin emojis ni viñetas especiales (algunos celulares los muestran como un rombo con "?")
+  const v = C.copTxt;
+  const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""}, este es el saldo de tu pedido:`, "", `Precio final: ${v(d.precio)}`];
+  l.push(d.ciudad === "otro" ? `Envío${d.destino ? " a " + d.destino : ""}: ${v(d.envio)}` : `Domicilio ${d.destino}: ${v(d.envio)}`);
+  d.abonos.forEach((x, i) => l.push(`${i === 0 ? "Abono" : "Abono " + (i + 1)}: -${v(x)}`));
+  if (d.saldo <= 0) { l.push("", d.saldo < 0 ? `Saldo a tu favor: ${v(-d.saldo)}` : "Tu pedido ya está pago."); return l.join("\n"); }
+  if (d.recargo) l.push(`Recargo ${d.metodoTxt.split(" · ")[0].toLowerCase()}: ${v(d.recargo)}`);
+  l.push(`*Saldo a pagar: ${v(d.saldo)}*`, "");
+  if (d.metodo === "transf") l.push(`Pago por transferencia Bre-B a la llave ${LLAVE_BREB} a nombre de ${TITULAR_BREB}.`, "Envíanos el comprobante por este medio.");
+  if (d.metodo === "tarjeta") l.push("Pago con tarjeta de crédito: te enviamos el link de pago.");
+  if (d.metodo === "addi" || d.metodo === "siste") l.push(`Pago a cuotas con ${d.metodo === "addi" ? "Addi" : "Sistecrédito"}: envíanos tu número de cédula y tu correo.`);
+  if (d.metodo === "contraentrega") l.push("Pago contra entrega, en efectivo o Nequi.");
   return l.join("\n");
 }
 async function registrarCobro(d) {

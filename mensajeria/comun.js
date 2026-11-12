@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111d";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111e";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -288,9 +288,11 @@ export function linkWhatsApp(tel, texto) {
 }
 export function primerNombre(n) { return String(n || "").trim().split(/\s+/)[0] || ""; }
 
+// Valor para mensajes de WhatsApp: solo caracteres simples (sin espacios especiales ni emojis)
+export const copTxt = v => "$" + Math.round(v || 0).toLocaleString("es-CO");
 export function mensajeEnCamino(g, linkFn = linkRastreo) {
   let t = `Hola ${primerNombre(g.cliente)}, tu pedido ${g.numero} de ${g.remitente || "la tienda"} va en camino con ${primerNombre(g.mensajeroNombre) || "nuestro mensajero"}. Síguelo aquí: ${linkFn(g)}`;
-  if (g.valor > 0) t += `. Valor a pagar: ${cop(g.valor)}.`;
+  if (g.valor > 0) t += `. Valor a pagar: ${copTxt(g.valor)}.`;
   else t += ".";
   return t;
 }
