@@ -1134,6 +1134,7 @@ $("#skxTarifas").addEventListener("click", async e => {
   const b = e.target.closest("#skxCrear"); b.disabled = true; b.textContent = "Creando guía…";
   try {
     const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: ref || "N/A" });
+    if (!(d.valor > 0)) throw new Error("El valor declarado quedó en $0. Revisa el valor del tipo de producto en “Conexión y datos del remitente”.");
     const base = { rate_id: rateId, printing_format: "standard", declared_amount: d.valor,
       address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio),
       address_to: dirDe(d.dest.nombre, d.dest.tel, d.dest.correo, d.dest.dir, [d.dest.comp, d.dest.barrio ? "Barrio " + d.dest.barrio : ""].filter(Boolean).join(" · ")) };
@@ -1145,7 +1146,7 @@ $("#skxTarifas").addEventListener("click", async e => {
     let s = null, errUlt = null, arriba = false;
     for (let intento = 0; intento < TIPOS_PAQ.length + 2; intento++) {
       const tp = TIPOS_PAQ[iTipo % TIPOS_PAQ.length];
-      const pkg = { package_number: "1", package_type: tp, package_content: contenido, consignment_note: contenido, declared_value: d.valor, length: d.paquete.length, width: d.paquete.width, height: d.paquete.height, weight: d.paquete.weight };
+      const pkg = { package_number: "1", package_type: tp, package_content: contenido, consignment_note: contenido, declared_value: d.valor, declared_amount: d.valor, length: d.paquete.length, width: d.paquete.width, height: d.paquete.height, weight: d.paquete.weight };
       try { s = await skx("POST", "/shipments", { shipment: { ...base, ...(arriba ? { package_type: tp, package_content: contenido } : {}), packages: [pkg] } }); if ((S.skx?.tipoPaquete || "package") !== tp) { S.skx = { ...(S.skx || {}), tipoPaquete: tp }; setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: { tipoPaquete: tp } }, { merge: true }).catch(() => {}); } break; }
       catch (err) {
         errUlt = err; const msg = String(err.message || "");
