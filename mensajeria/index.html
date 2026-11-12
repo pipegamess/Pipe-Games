@@ -1115,11 +1115,13 @@ $("#skxCotizar").onclick = async () => {
     if ((S.skx?.variante ?? 0) !== iF) { S.skx = { ...(S.skx || {}), variante: iF }; setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: { variante: iF } }, { merge: true }).catch(() => {}); }
     const id = hallar(q, "id");
     for (let i = 0; i < 12 && id && !(q.is_completed || hallar(q, "is_completed")); i++) { await esperar(1500); q = await skx("GET", "/quotations/" + id); }
-    const rates = (q.rates || hallar(q, "rates") || []).filter(x => x && x.id && x.success !== false && (x.total || x.amount) && !/no_coverage|not_applicable|error/i.test(x.status || ""));
+    // Una tarifa sirve si trae precio (Skydropx Colombia marca "success: false" aun con "price_found_internal")
+    const todas = q.rates || hallar(q, "rates") || [];
+    const rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || ""));
     skxCot = { id, rates, d };
-    $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b><div class="cb-metodos">${rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount)).map((x, i) => `<button type="button" class="cb-m${i === 0 ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + " días" : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
+    $("#skxTarifas").innerHTML = rates.length ? `<b style="font-size:14px">Elige la transportadora</b><div class="cb-metodos">${rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount)).map((x, i) => `<button type="button" class="cb-m${i === 0 ? " on" : ""}" data-rate="${esc(x.id)}"><span class="rad"></span><span class="info"><b>${esc(x.provider_display_name || x.provider_name || "")}</b><small>${esc(x.provider_service_name || x.service_level_name || "")}${x.days ? " · " + x.days + (x.days == 1 ? " día" : " días") : ""}</small></span><span class="v">${C.cop(+x.total || +x.amount)}</span></button>`).join("")}</div>
       <div class="btns"><button class="btn" type="button" id="skxCrear">Crear guía en Skydropx</button></div>`
-      : `<div class="aviso">Skydropx no devolvió tarifas para ${esc(T.envEtiqueta(d.m))}. Revisa el municipio, agrega el código postal o mira la respuesta técnica abajo.</div>`;
+      : `<div class="aviso">Ninguna transportadora dio precio para ${esc(T.envEtiqueta(d.m))}${todas.length ? ` (Skydropx consultó ${todas.length} servicios y todos respondieron “no aplica”)` : ""}. Revisa el municipio o mira la respuesta técnica abajo.</div>`;
   } catch (e) { $("#skxTarifas").innerHTML = `<div class="aviso">${esc(e.message || e)}</div>`; }
   b.disabled = false; b.textContent = "Cotizar con Skydropx";
 };
