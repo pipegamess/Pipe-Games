@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112a">
+<link rel="stylesheet" href="estilos.css?v=20261112b">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -364,9 +364,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261112a";
-import * as C from "./comun.js?v=20261112a";
-import * as T from "./tarifas-envio.js?v=20261112a";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112b";
+import * as C from "./comun.js?v=20261112b";
+import * as T from "./tarifas-envio.js?v=20261112b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -958,16 +958,16 @@ calcular();
 let skxCargado = false, skxReserva = null, skxCot = null;
 function cargarSkx() {
   const a = S.skx || {};
-  $("#skxEstado").textContent = a.url ? "· conectado a " + a.url.replace(/^https?:\/\//, "") : "· falta configurar";
+  $("#skxEstado").textContent = (a.url || SKYDROPX_URL) ? "· " + (a.url || SKYDROPX_URL).replace(/^https?:\/\//, "") + (a.remitente?.direccion ? "" : " · faltan datos del remitente") : "· falta configurar";
   pintarSkxLista();
   if (skxCargado) return; skxCargado = true;
   const r = a.remitente || {}, p = a.paquete || {};
-  $("#skxUrl").value = a.url || "";
+  $("#skxUrl").value = a.url || SKYDROPX_URL || "";
   $("#skxRNom").value = r.nombre || S.recogida?.remitente || "Pipe Games"; $("#skxRTel").value = r.telefono || ""; $("#skxRMail").value = r.correo || "";
   $("#skxRDir").value = r.direccion || S.recogida?.direccion || ""; $("#skxRBarrio").value = r.barrio || ""; $("#skxRCp").value = r.cp || "";
   $("#skxRCiudad").value = r.ciudad || "Bogotá"; $("#skxRDepto").value = r.depto || "Bogotá D.C.";
   $("#skxL").value = p.l || 20; $("#skxA").value = p.a || 15; $("#skxH").value = p.h || 5; $("#skxP").value = p.kg || 0.5;
-  if (!a.url) $("#skxAjustes").open = true;
+  if (!a.remitente?.direccion) $("#skxAjustes").open = true;
 }
 $("#skxGuardar").onclick = async () => {
   const datos = { url: $("#skxUrl").value.trim().replace(/\/+$/, ""),
@@ -976,7 +976,7 @@ $("#skxGuardar").onclick = async () => {
   try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: datos }, { merge: true }); S.skx = datos; cargarSkx(); toast("Datos de Skydropx guardados"); } catch (e) { toast(C.mensajeError(e)); }
 };
 async function skx(metodo, ruta, cuerpo) {
-  const url = (S.skx?.url || $("#skxUrl").value.trim()).replace(/\/+$/, "");
+  const url = (S.skx?.url || $("#skxUrl").value.trim() || SKYDROPX_URL).replace(/\/+$/, "");
   if (!url) throw new Error("Falta la dirección del intermediario (Conexión y datos del remitente)");
   const token = await auth.currentUser.getIdToken();
   const r = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo, ruta, cuerpo }) });

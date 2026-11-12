@@ -22,3 +22,6 @@ export const TOMTOM_KEY = "goxwKHuXB9HkWJOOg2SieNvEGHsiAk1m";
 export const NOMBRE_SERVICIO = "Mensajería Prueba";
 
 export const FIREBASE_VERSION = "12.19.0";
+
+// Intermediario de Skydropx (Cloudflare Worker). Las claves de Skydropx viven allá, no aquí.
+export const SKYDROPX_URL = "https://skydropx-pipegames.pipe-games22.workers.dev";
