@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261112j">
+<link rel="stylesheet" href="estilos.css?v=20261112k">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -219,6 +219,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div id="skxTarifas"></div>
             <div id="skxRes"></div>
             <details><summary class="nota" style="cursor:pointer">Ver respuesta técnica de Skydropx</summary><pre id="skxRaw" style="white-space:pre-wrap;font-size:11px;max-height:260px;overflow:auto"></pre></details>
+            <h3 style="margin:6px 0 0">Órdenes enviadas a Skydropx</h3>
+            <div class="lista" id="skxOrdenes"></div>
             <h3 style="margin:6px 0 0">Guías nacionales creadas</h3>
             <div class="lista" id="skxLista"></div>
           </div>
@@ -370,9 +372,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112j";
-import * as C from "./comun.js?v=20261112j";
-import * as T from "./tarifas-envio.js?v=20261112j";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261112k";
+import * as C from "./comun.js?v=20261112k";
+import * as T from "./tarifas-envio.js?v=20261112k";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1171,6 +1173,8 @@ async function enviarOrdenSkx(id, auto = false) {
     const r = await skx("POST", "/orders", cuerpo);
     const oid = String(hallar(r, "id") || "");
     await updateDoc(ref, { ordenSkydropx: oid || "creada", estado: "skydropx", enviando: null, errorSkydropx: null, enviadoSkydropx: Date.now() });
+    // Registro de órdenes enviadas (con la respuesta de Skydropx, para revisar sus campos)
+    await setDoc(doc(db, "usuarios", ADMIN_UID), { ordenesSkydropx: { [id]: { cliente: titulo(x.nombre), ciudad: x.municipio || "", transportadora: transp, orden: oid, t: Date.now(), resp: JSON.stringify(r).slice(0, 8000) } } }, { merge: true }).catch(() => {});
     toast(`Orden de ${C.primerNombre(titulo(x.nombre))} (${(x.municipio || "").split(" - ")[0]}) enviada a Skydropx → Órdenes`); sonido();
   } catch (e) {
     await updateDoc(ref, { enviando: null, errorSkydropx: String(e.message || e).slice(0, 400) }).catch(() => {});
@@ -1367,6 +1371,21 @@ $("#skxTarifas").addEventListener("click", async e => {
     skxCot = null; limpiarOrden();
   } catch (err) { toast("No se pudo crear la guía: " + (err.message || err)); b.disabled = false; b.textContent = "Crear guía en Skydropx"; }
 });
+function pintarSkxOrdenes() {
+  const l = Object.entries(S.skxOrdenes || {}).map(([k, o]) => ({ k, ...o })).sort((a, b) => b.t - a.t).slice(0, 20);
+  $("#skxOrdenes").innerHTML = l.length ? l.map(o => `<div class="item"><div class="arriba"><span><b>${esc(o.cliente)}</b> · ${esc(o.ciudad)}</span><span class="pill">${esc(o.transportadora || "Sin transportadora")}</span></div>
+      <div class="meta">Orden ${esc(o.orden || "")} · ${C.fecha(o.t)}</div>
+      <div class="btns"><button class="btn sec chico" type="button" data-ordver="${esc(o.k)}">Ver respuesta técnica</button>${o.orden ? `<button class="btn sec chico" type="button" data-ordget="${esc(o.k)}">Consultar en Skydropx</button>` : ""}</div></div>`).join("")
+    : `<div class="vacio">Aquí quedan las órdenes que se envían a Skydropx.</div>`;
+}
+document.addEventListener("click", async e => {
+  const v = e.target.closest("[data-ordver]"), g = e.target.closest("[data-ordget]");
+  if (!v && !g) return;
+  const o = S.skxOrdenes?.[(v || g).dataset[v ? "ordver" : "ordget"]]; if (!o) return;
+  if (v) $("#skxRaw").textContent = "POST /orders →\n" + (() => { try { return JSON.stringify(JSON.parse(o.resp), null, 1); } catch { return o.resp || ""; } })();
+  else { g.disabled = true; try { await skx("GET", "/orders/" + o.orden); } catch (err) { toast(err.message || String(err)); } g.disabled = false; }
+  const det = $("#skxRaw").closest("details"); det.open = true; setTimeout(() => det.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+});
 function pintarSkxLista() {
   const l = Object.entries(S.skxGuias || {}).map(([k, g]) => ({ k, ...g })).sort((a, b) => b.creado - a.creado).slice(0, 30);
   $("#skxLista").innerHTML = l.length ? l.map(g => `<div class="item"><div class="arriba"><span><b>${esc(g.cliente)}</b> · ${esc(g.ciudad)}</span><span class="pill ${g.guia ? "entregada" : "novedad"}">${g.guia ? esc(g.transportadora) : "Sin número aún"}</span></div>
@@ -1472,11 +1491,11 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; cargarSkx(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa(); }, err));
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa(); }, err));
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261112j";
+const VERSION_PANEL = "20261112k";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
