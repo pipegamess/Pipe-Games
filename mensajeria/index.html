@@ -306,8 +306,14 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div class="lista" style="margin-top:8px">
               <label>Producto<input id="rsImpProd" placeholder="Zelda Ocarina of Time"></label>
               <label>Tabla (FECHA · NOMBRE · RED SOCIAL · WHATSAPP · ABONO)<textarea id="rsImpTexto" rows="7" placeholder="2-oct-26&#9;NOMBRE APELLIDO&#9;WHATSAPP&#9;3001234567&#9;$100.000"></textarea></label>
+              <div id="rsVista"></div>
               <div class="btns"><button class="btn chico" type="button" id="rsImp">Importar</button></div>
               <div class="nota" id="rsImpRes"></div>
+            </div></details>
+          <details><summary style="cursor:pointer"><b>Borrar reservas de este producto</b></summary>
+            <div class="lista" style="margin-top:8px">
+              <p class="nota" style="margin:0">Sirve para corregir una importación que quedó mal y volver a importar. No se puede deshacer.</p>
+              <div class="btns"><button class="btn peligro chico" type="button" id="rsBorrarTodo">Borrar todas las reservas del producto elegido</button></div>
             </div></details>
         </div>
         <h3>Cobros enviados</h3>
@@ -701,12 +707,10 @@ $("#rsLista").addEventListener("click", async e => {
 $("#rsImp").onclick = async () => {
   const prod = $("#rsImpProd").value.trim();
   if (!prod) { toast("Escribe el nombre del producto"); $("#rsImpProd").focus(); return; }
-  const filas = $("#rsImpTexto").value.split(/\r?\n/).map(l => l.split("\t").map(x => x.trim())).filter(c => c.some(Boolean));
+  const filas = leerFilasReservas($("#rsImpTexto").value);
   // 1) Agrupar las filas de la misma persona: suma unidades y abonos
   const grupos = new Map();
-  for (const c of filas) {
-    if (/^fecha$/i.test(c[0]) || /^nombre$/i.test(c[1] || "")) continue;
-    const [fecha, nombre, red, contacto, abono] = c.length >= 2 ? c : ["", c[0]]; // fila sin fecha: primera celda vacía
+  for (const { fecha, nombre, red, contacto, abono } of filas) {
     if (!nombre) continue;
     const tel = String(contacto || "").replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
     const cont = /^3\d{9}$/.test(tel) ? tel : (contacto && !/^n\/?a$/i.test(contacto) ? contacto : "");
@@ -747,6 +751,66 @@ $("#rsImp").onclick = async () => {
     setTimeout(() => { $("#rsProd").value = prod; pintarReservas(); }, 300);
   } catch (err) { $("#rsImpRes").textContent = C.mensajeError(err); }
 };
+// Lee la tabla pegada. Con tabuladores (Excel, Google Sheets) usa las columnas; si las columnas
+// llegaron como espacios (copiada de WhatsApp, un PDF o un chat), las reconoce por su forma:
+// fecha al inicio, red social (palabra conocida), celular o usuario, y abono con $ al final.
+const REDES = ["mercado libre", "instagram", "whatsapp", "facebook", "tiktok", "ml", "ig", "fb", "wa"];
+function leerFilasReservas(texto) {
+  const filas = [];
+  for (const linea of String(texto || "").split(/\r?\n/)) {
+    if (!linea.trim()) continue;
+    let c;
+    if (linea.includes("\t")) {
+      c = linea.split("\t").map(x => x.trim());
+      // Si falta la fecha, la primera celda viene vacía
+      if (c.length === 1) c = ["", c[0]];
+      const [fecha, nombre, red, contacto, abono] = c;
+      if (/^fecha$/i.test(fecha) || /^nombre$/i.test(nombre || "")) continue;
+      if (nombre) filas.push({ fecha: fecha || "", nombre, red: red || "", contacto: contacto || "", abono: abono || "" });
+      continue;
+    }
+    let resto = linea.trim().replace(/\s+/g, " ");
+    if (/^fecha\b/i.test(resto)) continue; // encabezado
+    const f = { fecha: "", nombre: "", red: "", contacto: "", abono: "" };
+    let m = resto.match(/^(\d{1,2}[-/ ](?:[a-záéíóú]{3,}\.?|\d{1,2})[-/ ]\d{2,4})\s+/i);
+    if (m) { f.fecha = m[1]; resto = resto.slice(m[0].length); }
+    m = resto.match(/\s*\$\s?[\d.,]+\s*$/) || resto.match(/\s+(\d{1,3}(?:[.,]\d{3})+)\s*$/);
+    if (m) { f.abono = m[0].trim(); resto = resto.slice(0, m.index).trim(); }
+    const low = resto.toLowerCase();
+    let pos = -1, red = "";
+    for (const rd of REDES) { const i = low.search(new RegExp("(^|\\s)" + rd.replace(" ", "\\s") + "(\\s|$)")); if (i >= 0 && (pos < 0 || i < pos)) { pos = i; red = rd; } }
+    if (pos >= 0) {
+      const ini = low[pos] === " " ? pos + 1 : pos;
+      f.nombre = resto.slice(0, ini).trim(); f.red = resto.slice(ini, ini + red.length);
+      f.contacto = resto.slice(ini + red.length).trim();
+    } else {
+      // Sin red social: el contacto es el último dato si es un celular o N/A
+      m = resto.match(/\s((?:\+?57\s?)?3\d{2}\s?\d{3}\s?\d{4}|n\/?a)$/i);
+      if (m) { f.contacto = m[1]; resto = resto.slice(0, m.index); }
+      f.nombre = resto.trim();
+    }
+    if (f.nombre) filas.push(f);
+  }
+  return filas;
+}
+function pintarVistaImport() {
+  const filas = leerFilasReservas($("#rsImpTexto").value);
+  $("#rsVista").innerHTML = filas.length ? `<div class="nota" style="margin:0 0 4px">Así se va a importar (${filas.length} fila${filas.length === 1 ? "" : "s"}). Revisa que cada dato esté en su columna:</div>
+    <div class="scroll"><table class="tabla"><thead><tr><th>Fecha</th><th>Nombre</th><th>Red</th><th>WhatsApp</th><th class="num">Abono</th></tr></thead><tbody>${filas.slice(0, 40).map(f => `<tr><td>${esc(f.fecha)}</td><td>${esc(f.nombre)}</td><td>${esc(redSocial(f.red))}</td><td>${esc(f.contacto)}</td><td class="num">${num(f.abono) ? C.cop(num(f.abono)) : ""}</td></tr>`).join("")}</tbody></table></div>` : "";
+}
+$("#rsImpTexto").addEventListener("input", pintarVistaImport);
+$("#rsBorrarTodo").onclick = async e => {
+  const b = e.currentTarget, prod = $("#rsProd").value;
+  if (!prod) return;
+  const ids = Object.entries(S.reservas || {}).filter(([, r]) => r.producto === prod).map(([id]) => id);
+  if (!ids.length) { toast("No hay reservas de ese producto"); return; }
+  if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = `Toca otra vez para borrar ${ids.length} reservas de ${prod}`; return; }
+  try {
+    await updateDoc(doc(db, "usuarios", ADMIN_UID), Object.fromEntries(ids.map(id => [`reservas.${id}`, deleteField()])));
+    toast(`Borradas ${ids.length} reservas de ${prod}`);
+  } catch (err) { toast(C.mensajeError(err)); }
+  b.dataset.confirmar = ""; b.textContent = "Borrar todas las reservas del producto elegido";
+};
 // Mismo cliente aunque cambien tildes, mayúsculas o espacios
 const normNombre = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim();
 const redSocial = red => ({ whatsapp: "WhatsApp", instagram: "Instagram", ml: "Mercado Libre", facebook: "Facebook", tiktok: "TikTok" })[String(red || "").trim().toLowerCase()] || titulo(red || "");
@@ -758,16 +822,20 @@ async function enviarLinkSaldo(id) {
   const unitario = S.preciosReserva?.[claveProd(r.producto)] || 0;
   if (!unitario) { toast("Primero escribe el precio final del producto"); $("#rsPrecio").focus(); return; }
   if (r.confirmacion) { toast("Este cliente ya confirmó. Para cambiar algo, cóbrale desde la calculadora."); return; }
+  // Abrir la pestaña de WhatsApp ya (con el clic), y llenarla después de guardar: así el navegador no la bloquea
+  const ventana = window.open("", "_blank");
   const token = r.saldoToken || (C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo());
   const datos = { nombre: titulo(r.nombre), producto: r.producto, unidades: r.unidades || 1, unitario, abonos: r.abonos?.length ? r.abonos : (r.abono ? [r.abono] : []), abono: r.abono || 0, reservaId: id, estado: "enviado", creado: Date.now() };
   const b = writeBatch(db);
   b.set(doc(db, "saldos", token), datos);
   b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
-  await b.commit();
+  try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
   const link = URL_SALDO + "?c=" + token;
   const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, ya está disponible tu reserva de ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
   const tel = /^\d{10}$/.test(r.contacto) ? r.contacto : "";
-  window.open(tel ? `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+  const url = tel ? `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+  if (ventana) ventana.location.href = url; else window.open(url, "_blank");
+  if (!tel) toast(`${titulo(r.nombre)} no tiene celular guardado: escoge su chat en WhatsApp`);
 }
 // Cuando el cliente confirma, sus datos pasan a la reserva y el link queda cerrado.
 async function procesarSaldos(lista) {
