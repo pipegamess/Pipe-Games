@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113v">
+<link rel="stylesheet" href="estilos.css?v=20261113w">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -356,8 +356,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div><b style="font-size:14px">Medio de pago del saldo</b><div class="cb-metodos" id="cbMetodos"></div></div>
           <div class="aviso" id="cbAviso" hidden></div>
           <div class="item" id="cbResumen"></div>
+          <div class="item" id="cbLinkRes" hidden></div>
           <div class="btns">
-            <button class="btn" type="button" id="cbLink">Enviar link de saldo</button>
+            <button class="btn" type="button" id="cbLink">Generar link de saldo</button>
             <button class="btn sec" type="button" id="cbWa">Enviar cobro por WhatsApp</button>
             <button class="btn sec chico" type="button" id="cbCopiar">Copiar mensaje</button>
             <button class="btn sec chico" type="button" id="cbGuia">Crear guía con estos datos</button>
@@ -412,10 +413,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113v";
-import * as C from "./comun.js?v=20261113v";
-import * as T from "./tarifas-envio.js?v=20261113v";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261113v";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113w";
+import * as C from "./comun.js?v=20261113w";
+import * as T from "./tarifas-envio.js?v=20261113w";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261113w";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -813,7 +814,7 @@ $("#cbLink").onclick = async () => {
   const total = items.reduce((a, x) => a + x.q * x.v, 0);
   if (!total) { toast("Elige el producto o escribe el precio"); $("#cbProd").focus(); return; }
   const dest = destinoCobro();
-  const ventana = window.open("", "_blank");
+  const ventana = null;
   const id = "v" + Date.now().toString(36), token = C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo();
   const resumen = items.length === 1 ? items[0].n + (items[0].q > 1 ? " (" + items[0].q + " unidades)" : "") : `${items[0].n} y ${items.length - 1} artículo${items.length > 2 ? "s" : ""} más`;
   const hoy = new Date().toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "2-digit" }).replace(/\./g, "").replace(/ /g, "-");
@@ -824,8 +825,16 @@ $("#cbLink").onclick = async () => {
   const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL;
   const texto = `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}`;
   const url = dest.tel ? `https://api.whatsapp.com/send?phone=57${dest.tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
-  if (ventana) ventana.location.href = url; else window.open(url, "_blank");
-  toast(dest.tel ? "Link de saldo enviado" : "Escoge el chat del cliente en WhatsApp (no hay celular guardado)");
+  ventana?.close();
+  // El link queda a la vista: copiarlo, abrir la pantalla de saldo o enviarlo por WhatsApp
+  $("#cbLinkRes").hidden = false;
+  $("#cbLinkRes").innerHTML = `<b>Link de saldo de ${esc(titulo(d.cliente))} listo</b>
+    <div class="guia" style="word-break:break-all;font-size:13px">${esc(link)}</div>
+    <span class="nota">El cliente abre este link, ve sus productos, elige ciudad de envío y medio de pago, y deja sus datos.</span>
+    <div class="btns"><a class="btn chico" href="${esc(url)}" target="_blank" rel="noopener">Enviar por WhatsApp${dest.tel ? "" : " (escoge el chat)"}</a><button class="btn sec chico" type="button" id="cbLinkCopiar">Copiar mensaje</button><a class="btn sec chico" href="${esc(link)}" target="_blank" rel="noopener">Ver pantalla de saldo</a></div>`;
+  $("#cbLinkCopiar").onclick = () => copiar(texto, "Mensaje con el link copiado");
+  $("#cbLinkRes").scrollIntoView({ behavior: "smooth", block: "center" });
+  toast("Link de saldo creado");
 };
 $("#cbArts").addEventListener("click", e => { if (e.target.closest("[data-quitarart]")) { e.target.closest(".art").remove(); calcular(); } });
 $("#cbArts").addEventListener("input", e => {
@@ -857,7 +866,7 @@ $("#cbGuia").onclick = () => {
   $("#nTel").focus();
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
-$("#cbLimpiar").onclick = () => { cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+$("#cbLimpiar").onclick = () => { $("#cbLinkRes").hidden = true; cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
 /* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
 let cbReserva = null; // reserva cargada en la calculadora {id, tel}
 // Busca el celular del cliente: primero la reserva cargada con "Cobrar"; si no, por nombre
@@ -1861,7 +1870,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113v";
+const VERSION_PANEL = "20261113w";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
