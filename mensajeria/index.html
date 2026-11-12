@@ -201,6 +201,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
                 <b style="font-size:14px">Tipos de producto (medidas del paquete)</b>
                 <div class="lista" id="skxTipos" style="gap:6px"></div>
                 <button class="btn sec chico" type="button" id="skxMasTipo" style="align-self:flex-start">+ Agregar tipo de producto</button>
+                <label style="max-width:24em">Tipo de producto por defecto<select id="skxTipo"></select></label>
                 <div class="btns"><button class="btn chico" type="button" id="skxGuardar">Guardar</button><button class="btn sec chico" type="button" id="skxProbar">Probar conexión</button></div>
               </div></details>
             <div class="fila"><label>Destinatario<input id="skxNom"></label><label>Celular<input id="skxTel" inputmode="numeric"></label></div>
@@ -208,7 +209,6 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <div class="sug-caja"><label>Municipio de destino<input id="skxCiudad" autocomplete="off" placeholder="Ej. Medellín"></label><div class="sugerencias" id="skxCiudadSug" hidden></div></div>
             <label>Dirección<input id="skxDir"></label>
             <div class="fila"><label>Complemento y referencias<input id="skxComp"></label><label>Barrio<input id="skxBarrio"></label></div>
-            <div class="fila"><label>Tipo de producto<select id="skxTipo"></select></label><label>Unidades<input id="skxUnid" type="number" min="1" value="1" inputmode="numeric"></label></div>
             <div class="nota" id="skxMedidas"></div>
             <div class="btns"><button class="btn chico" type="button" id="skxCotizar">Cotizar con Skydropx</button></div>
             <div id="skxTarifas"></div>
@@ -986,19 +986,20 @@ $("#skxTipos").addEventListener("click", e => { if (e.target.closest("[data-quit
 function pintarTiposSelect() {
   const sel = $("#skxTipo"), antes = sel.value;
   sel.innerHTML = tiposSkx().map((t, i) => `<option value="${i}">${esc(t.n)}</option>`).join("");
-  if (antes && +antes < tiposSkx().length) sel.value = antes;
+  const def = S.skx?.tipoDefecto ?? 0;
+  sel.value = String(antes && +antes < tiposSkx().length ? antes : Math.min(def, tiposSkx().length - 1));
   mostrarMedidas();
 }
 function mostrarMedidas() {
-  const t = tiposSkx()[+$("#skxTipo").value || 0], u = Math.max(1, num($("#skxUnid").value) || 1);
-  $("#skxMedidas").textContent = t ? `Paquete ${t.l} × ${t.a} × ${t.h} cm · ${t.kg} kg · valor declarado ${C.cop((t.v || 0) * u)}${u > 1 ? ` (${u} × ${C.cop(t.v || 0)})` : ""}. Para cambiarlo, edita el tipo en “Conexión y datos del remitente”.` : "";
+  const t = tiposSkx()[+$("#skxTipo").value || 0], u = skxUnidades;
+  $("#skxMedidas").textContent = t ? `Paquete ${t.l} × ${t.a} × ${t.h} cm · ${t.kg} kg · valor declarado ${C.cop((t.v || 0) * u)}${u > 1 ? ` (${u} × ${C.cop(t.v || 0)})` : ""}. ` : "";
 }
 $("#skxTipo").onchange = mostrarMedidas;
-$("#skxUnid").addEventListener("input", mostrarMedidas);
+let skxUnidades = 1; // de la reserva; en envíos manuales, 1
 $("#skxGuardar").onclick = async () => {
   const datos = { url: $("#skxUrl").value.trim().replace(/\/+$/, ""),
     remitente: { nombre: $("#skxRNom").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() },
-    tipos: leerTiposEditor().length ? leerTiposEditor() : TIPOS_BASE, variante: S.skx?.variante ?? 0 };
+    tipos: leerTiposEditor().length ? leerTiposEditor() : TIPOS_BASE, tipoDefecto: +$("#skxTipo").value || 0, variante: S.skx?.variante ?? 0 };
   try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: datos }, { merge: true }); S.skx = datos; cargarSkx(); pintarTiposEditor(); pintarTiposSelect(); $("#skxAjustes").open = false; toast("Datos de Skydropx guardados: quedan fijos para todas las guías"); } catch (e) { toast(C.mensajeError(e)); }
 };
 async function skx(metodo, ruta, cuerpo) {
@@ -1052,8 +1053,8 @@ function skxDesdeReserva(id) {
   irA("nueva"); $("#skx").open = true;
   $("#skxNom").value = titulo(r.nombre); $("#skxTel").value = c.telefono || ""; $("#skxMail").value = c.correo || "";
   $("#skxCiudad").value = c.ciudad || ""; $("#skxDir").value = c.direccion || ""; $("#skxComp").value = c.complemento || ""; $("#skxBarrio").value = c.barrio || "";
-  $("#skxUnid").value = r.unidades || 1;
-  $("#skxTipo").value = "0"; mostrarMedidas();
+  skxUnidades = r.unidades || 1;
+  $("#skxTipo").value = String(Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)); mostrarMedidas();
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
   setTimeout(() => $("#skx").scrollIntoView({ behavior: "smooth" }), 50);
   toast(`Datos de ${titulo(r.nombre)} listos. Revisa y toca “Cotizar con Skydropx”.`);
@@ -1065,7 +1066,7 @@ function datosSkx() {
   const m = T.envBuscar($("#skxCiudad").value)?.x;
   const t = tiposSkx()[+$("#skxTipo").value || 0] || TIPOS_BASE[0];
   return {
-    m, rem, valor: (t.v || 0) * Math.max(1, num($("#skxUnid").value) || 1),
+    m, rem, valor: (t.v || 0) * skxUnidades,
     paquete: { length: t.l, width: t.a, height: t.h, weight: t.kg }, tipo: t.n,
     dest: { nombre: $("#skxNom").value.trim(), tel: $("#skxTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""), correo: $("#skxMail").value.trim(), dir: $("#skxDir").value.trim(), comp: $("#skxComp").value.trim(), barrio: $("#skxBarrio").value.trim() }
   };
