@@ -1,5 +1,5 @@
 // Datos y utilidades compartidas entre panel, rastreo y app del mensajero.
-import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111c";
+import { URL_RASTREO, TOMTOM_KEY } from "./config.js?v=20261111d";
 
 export const LOCALIDADES = [
   ["Usaquén", 4.7110, -74.0300], ["Chapinero", 4.6450, -74.0620], ["Santa Fe", 4.6030, -74.0680],
@@ -398,3 +398,15 @@ export function mensajeError(e) {
   if (c.includes("unavailable") || c.includes("network")) return "Sin conexión a internet. Intenta de nuevo.";
   return e?.message || "Ocurrió un error.";
 }
+
+/* ---------- Simulador de cobros (mismas reglas del catálogo pipegames.com.co) ---------- */
+// Si cambian en el catálogo (index.html: ENVIO_LOCAL_VALOR, SIM_METODOS, SIM_LIMITE_CREDITO), cambiarlas aquí también.
+export const ENVIO_LOCAL = 10000; // domicilio en Bogotá, Chía y Soacha
+export const LIMITE_CREDITO = 1000000; // desde este monto no aplican Addi ni Sistecrédito
+export const METODOS_PAGO = [
+  { id: "transf", t: "Transferencia · Llave Bre-B", d: "Sin recargo", calc: b => b },
+  { id: "tarjeta", t: "Tarjeta de crédito · Link de pago", d: "Recargo 3.59% + $900", calc: b => Math.ceil((b + 900) / (1 - 0.0359)) },
+  { id: "addi", t: "Addi · Pago a cuotas", d: "Recargo 7.7% · requiere cédula y correo", calc: b => Math.ceil(b / 0.92265), credito: true },
+  { id: "siste", t: "Sistecrédito · Pago a cuotas", d: "Recargo 5% · requiere cédula y correo", calc: b => Math.ceil(b / (1 - 0.05)), credito: true },
+  { id: "contraentrega", t: "Contra entrega", d: "Paga al recibir · efectivo o Nequi", calc: b => b }
+];
