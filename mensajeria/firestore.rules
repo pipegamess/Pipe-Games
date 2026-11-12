@@ -113,7 +113,9 @@ service cloud.firestore {
 
     match /solicitudes/{id} {
       allow get: if true;
-      allow list, update, delete: if esAdmin();
+      allow list, delete: if esAdmin();
+      // Una solicitud de otra ciudad nunca se convierte en guía local (protege contra un panel con versión vieja)
+      allow update: if esAdmin() && !(resource.data.ciudad == 'nacional' && request.resource.data.estado == 'creada');
       allow create: if request.resource.data.keys().hasOnly(['nombre', 'telefono', 'ciudad', 'direccion', 'complemento', 'barrio', 'lat', 'lng', 'pedido', 'estado', 'creado', 'municipio', 'transportadora', 'correo'])
         && request.resource.data.estado == 'nueva'
         && request.resource.data.nombre is string && request.resource.data.nombre.size() >= 2 && request.resource.data.nombre.size() <= 80
