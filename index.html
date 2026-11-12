@@ -1204,6 +1204,13 @@
   .sim-cred input:focus { border-color:var(--acc); }
   .sim-cred input.bad { border-color:#e84040; }
   .sim-cred-err { font-size:0.7rem; color:#ff7a7a; margin-top:0.4rem; min-height:1em; }
+  .envio-info { font-size:0.78rem; line-height:1.4; margin:-0.2rem 0 0.6rem; text-align:left; }
+  .envio-info:empty { display:none; }
+  .envio-info .ok { display:block; padding:0.5rem 0.65rem; border-radius:8px; background:rgba(37,211,102,0.1); border:1px solid rgba(37,211,102,0.35); color:var(--text); }
+  .envio-info .ok b { color:#3ddc84; }
+  .envio-info .otro { display:block; padding:0.45rem 0.65rem; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--border); color:var(--muted); }
+  .sim-city { width:100%; padding:0.55rem 0.75rem; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:0.9rem; font-family:'Barlow',sans-serif; outline:none; }
+  .sim-city:focus { border-color:var(--acc); }
   .sim-actions button:disabled { opacity:0.4; cursor:not-allowed; }
 
   /* ══ PUBLICAR EN GITHUB (panel Admin) ══ */
@@ -1415,7 +1422,9 @@
     </div>
     <div id="simChosen" style="display:none"></div>
     <div id="simStep2" style="display:none">
-      <div class="sim-label">2. ¿Cómo quieres pagar?</div>
+      <div class="sim-label">2. ¿A qué ciudad lo enviamos?</div>
+      <input type="text" class="sim-city" id="simCiudad" maxlength="40" placeholder="Ej: Bogotá, Chía, Soacha, Medellín..." oninput="simCiudadTxt=this.value;simRender()" autocomplete="address-level2">
+      <div class="sim-label">3. ¿Cómo quieres pagar?</div>
       <div class="sim-methods" id="simMethods"></div>
       <div id="simLimit"></div>
       <div id="simCred"></div>
@@ -1456,7 +1465,8 @@
   <div class="name-modal-box">
     <h3>¿Cuál es tu nombre? 👋</h3>
     <p>Para personalizar tu pedido en WhatsApp</p>
-    <input type="text" id="clientCity" placeholder="Tu ciudad..." maxlength="40" onkeydown="if(event.key==='Enter')document.getElementById('clientName').focus()">
+    <input type="text" id="clientCity" placeholder="Tu ciudad..." maxlength="40" oninput="envioPreviewModal()" onkeydown="if(event.key==='Enter')document.getElementById('clientName').focus()">
+    <div class="envio-info" id="envioInfo"></div>
     <input type="text" id="clientName" placeholder="Tu nombre..." maxlength="40" onkeydown="if(event.key==='Enter')enviarPedidoWA()">
     <div class="name-modal-btns">
       <button class="btn-name-cancel" onclick="cerrarNameModal()">Cancelar</button>
@@ -4779,6 +4789,7 @@ function openWA(name, price, platform) {
   document.getElementById('clientCity').value = '';
   document.getElementById('clientName').value = '';
   document.getElementById('nameModal').classList.add('open');
+  envioPreviewModal();
   setTimeout(() => document.getElementById('clientCity').focus(), 100);
 }
 
@@ -5063,6 +5074,56 @@ function closeCart() {
   document.getElementById("cartOverlay").classList.remove("open");
 }
 
+/* ══ ENVÍO LOCAL (Bogotá, Chía, Soacha: +$10.000) ══ */
+const ENVIO_LOCAL_VALOR = 10000;
+function envioDeCiudad(txt) {
+  const n = String(txt || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z ]/g, ' ');
+  if (/\bbogota\b/.test(n)) return { local:true, ciudad:'Bogotá', valor:ENVIO_LOCAL_VALOR };
+  if (/\bchia\b/.test(n))   return { local:true, ciudad:'Chía', valor:ENVIO_LOCAL_VALOR };
+  if (/\bsoacha\b/.test(n)) return { local:true, ciudad:'Soacha', valor:ENVIO_LOCAL_VALOR };
+  return { local:false, ciudad:String(txt || '').trim(), valor:0, escrito:n.trim().length >= 3 };
+}
+/* Vista previa del envío en la ventana de nombre/ciudad */
+function envioPreviewModal() {
+  const el = document.getElementById('envioInfo');
+  if (!el) return;
+  if (pendingReservationBody !== null) { el.innerHTML = ''; return; }
+  const env = envioDeCiudad(document.getElementById('clientCity').value);
+  let base = 0, metodo = null;
+  if (pendingWAItem) {
+    const sp = simPagoItem && simPagoItem.name === pendingWAItem ? simPagoItem : null;
+    base = sp ? priceToNum(sp.price) * sp.qty : priceToNum(pendingWAPrice);
+    metodo = sp ? sp.metodo : null;
+  } else {
+    base = cart.reduce((s, i) => s + priceToNum(i.price) * i.qty, 0);
+    metodo = simPagoCarrito;
+  }
+  if (env.local) {
+    const m = metodo ? simMetodosPermitidos(base).find(x => x.id === metodo) : null;
+    const tot = m ? m.calc(base + env.valor) : base + env.valor;
+    el.innerHTML = `<span class="ok">🚚 Envío a ${env.ciudad}: <b>+${numToPrice(env.valor)}</b>` +
+      (base > 0 ? `<br>Total a pagar${m && m.id !== 'transf' ? ' (' + m.t.split(' · ')[0] + ')' : ''}: <b>${numToPrice(tot)}</b>` : '') + `</span>`;
+  } else if (env.escrito) {
+    el.innerHTML = `<span class="otro">🚚 El valor del envío a tu ciudad te lo confirmamos por WhatsApp.</span>`;
+  } else {
+    el.innerHTML = '';
+  }
+}
+/* Líneas de envío/total para el mensaje de WhatsApp */
+function envioLineasMsg(ciudad, base, metodo) {
+  const env = envioDeCiudad(ciudad);
+  let txt = '';
+  if (env.local) {
+    txt += `\n🚚 *Envío a ${env.ciudad}:* ${numToPrice(env.valor)}`;
+    if (base > 0) txt += `\n💰 *Total con envío: ${numToPrice(base + env.valor)}*`;
+  } else if (env.escrito) {
+    txt += `\n🚚 *Envío a ${env.ciudad}:* por confirmar`;
+  }
+  const pago = simTextoPago(metodo, base, env.local ? env.valor : 0);
+  if (pago) txt += `\n${pago}`;
+  return txt;
+}
+
 /* ══ SIMULADOR DE PRECIOS ══ */
 const SIM_LIMITE_CREDITO = 1000000; // desde este monto no aplican Addi ni Sistecrédito
 const SIM_METODOS = [
@@ -5075,6 +5136,7 @@ let simItem = null;      // {tipo:'item'|'cart', name, platform, price, img, qty
 let simMetodo = 'transf';
 let simPagoCarrito = null; // método elegido para el carrito (se agrega al mensaje de WhatsApp)
 let simPagoItem = null;    // {name, platform, metodo} para pedir un solo artículo
+let simCiudadTxt = '';
 let simDatos = { cedula:'', email:'' }; // solo en memoria; se envían únicamente en el mensaje de WhatsApp
 function simEsCredito(id) { const m = SIM_METODOS.find(x => x.id === id); return !!(m && m.credito); }
 function simCedulaOk(v) { return /^[0-9]{5,10}$/.test(String(v || '').replace(/[.\s]/g, '')); }
@@ -5185,8 +5247,10 @@ function simRender() {
   }
   const permitidos = simMetodosPermitidos(base);
   if (!permitidos.some(m => m.id === simMetodo)) simMetodo = 'transf';
+  const env = envioDeCiudad(simCiudadTxt), envio = env.local ? env.valor : 0, bEnv = base + envio;
+  const ci = document.getElementById('simCiudad'); if (ci && ci.value !== simCiudadTxt) ci.value = simCiudadTxt;
   document.getElementById('simMethods').innerHTML = permitidos.map(m => {
-    const tot = m.calc(base), rec = tot - base;
+    const tot = m.calc(bEnv), rec = tot - bEnv;
     return `<button class="sim-m${m.id === simMetodo ? ' on' : ''}" onclick="simElegirMetodo('${m.id}')">
       <span class="rad"></span>
       <span class="info"><span class="t">${m.t}</span><span class="d">${m.d}</span></span>
@@ -5196,9 +5260,14 @@ function simRender() {
   document.getElementById('simLimit').innerHTML = base >= SIM_LIMITE_CREDITO
     ? `<div class="sim-limit">ℹ️ Para compras desde <b>$1.000.000</b> solo recibimos <b>transferencia por Llave Bre-B</b> o <b>tarjeta de crédito</b>. Addi y Sistecrédito no aplican para este monto.</div>`
     : '';
-  const m = simMetodoById(simMetodo), tot = m.calc(base), rec = tot - base;
+  const m = simMetodoById(simMetodo), tot = m.calc(bEnv), rec = tot - bEnv;
+  const filaEnvio = env.local
+    ? `<div class="sim-row"><span>Envío a ${env.ciudad}</span><b>${numToPrice(envio)}</b></div>`
+    : (env.escrito ? `<div class="sim-row"><span>Envío a ${simEsc(env.ciudad)}</span><b>Se confirma por WhatsApp</b></div>`
+                   : `<div class="sim-row"><span>Envío</span><b>Escribe tu ciudad</b></div>`);
   document.getElementById('simSummary').innerHTML = `
     <div class="sim-row"><span>Precio de los artículos</span><b>${numToPrice(base)}</b></div>
+    ${filaEnvio}
     <div class="sim-row"><span>Recargo por medio de pago</span><b>${rec > 0 ? numToPrice(rec) : '$0'}</b></div>
     <div class="sim-row tot"><span>Total a pagar</span><b>${numToPrice(tot)}</b></div>`;
   document.getElementById('simCred').innerHTML = m.credito
@@ -5231,21 +5300,27 @@ function simPedirCarrito() {
   closeSimulador();
   renderCartItems();
   pedirPorWA();
+  document.getElementById('clientCity').value = simCiudadTxt;
+  envioPreviewModal();
 }
 function simPedirItem() {
   if (!simItem || simItem.tipo !== 'item') return;
   if (simEsCredito(simMetodo) && !simDatosOk()) { simActualizarBotones(); return; }
   simPagoItem = { name:simItem.name, platform:simItem.platform, price:simItem.price, qty:simItem.qty, metodo:simMetodo };
+  const it = simItem;
   closeSimulador();
-  openWA(simItem.name, simItem.price, simItem.platform);
+  openWA(it.name, it.price, it.platform);
+  document.getElementById('clientCity').value = simCiudadTxt;
+  envioPreviewModal();
 }
 /* Texto para el mensaje de WhatsApp. Devuelve '' si el método ya no aplica al monto. */
-function simTextoPago(metodoId, base) {
+function simTextoPago(metodoId, base, envio) {
   if (!metodoId) return '';
   const m = simMetodosPermitidos(base).find(x => x.id === metodoId);
   if (!m) return '';
-  const tot = m.calc(base);
-  let txt = `💳 *Medio de pago:* ${m.t}` + (tot > base ? `\n💵 *Total a pagar con recargo: ${numToPrice(tot)}*` : '');
+  const b = base + (envio || 0);
+  const tot = m.calc(b);
+  let txt = `💳 *Medio de pago:* ${m.t}` + (tot > b ? `\n💵 *Total a pagar con recargo: ${numToPrice(tot)}*` : '');
   if (m.credito && simDatosOk()) {
     txt += `\n🪪 *Cédula:* ${simDatos.cedula.replace(/[.\s]/g, '')}\n📧 *Correo:* ${simDatos.email.trim()}`;
   }
@@ -5258,7 +5333,8 @@ function simNotaCarrito() {
   if (simPagoCarrito && !simMetodosPermitidos(base).some(m => m.id === simPagoCarrito)) simPagoCarrito = null;
   if (!simPagoCarrito || !cart.length) { el.innerHTML = ''; return; }
   const m = simMetodoById(simPagoCarrito);
-  el.innerHTML = `Pago con <b>${m.t}</b>: <b>${numToPrice(m.calc(base))}</b>`;
+  const env = envioDeCiudad(simCiudadTxt);
+  el.innerHTML = `Pago con <b>${m.t}</b>${env.local ? ' + envío a ' + env.ciudad : ''}: <b>${numToPrice(m.calc(base + (env.local ? env.valor : 0)))}</b>`;
 }
 
 // ── FILTRO DE PRECIO ─────────────────────────────────────
@@ -5277,6 +5353,7 @@ function pedirPorWA() {
   document.getElementById('clientCity').value = '';
   document.getElementById('clientName').value = '';
   document.getElementById('nameModal').classList.add('open');
+  envioPreviewModal();
   setTimeout(() => document.getElementById('clientCity').focus(), 100);
 }
 
@@ -5291,6 +5368,7 @@ function abrirModalPreventa(body) {
   document.getElementById('clientCity').value = '';
   document.getElementById('clientName').value = '';
   document.getElementById('nameModal').classList.add('open');
+  envioPreviewModal();
   setTimeout(() => document.getElementById('clientCity').focus(), 100);
 }
 
@@ -5342,11 +5420,11 @@ function enviarPedidoWA() {
       : `Hola${ciudadTxt}, me interesa *${itemName}*${platTxt}${precioTxt} 🎮 ¿Está disponible?`;
     const sp = simPagoItem;
     simPagoItem = null;
-    if (sp && sp.name === itemName && sp.platform === itemPlatform) {
-      const base = priceToNum(sp.price) * sp.qty;
-      const pago = simTextoPago(sp.metodo, base);
-      msg += `\n\n` + (sp.qty > 1 ? `📦 *Cantidad:* ${sp.qty} (${numToPrice(base)})\n` : '') + pago;
-    }
+    const usaSim = sp && sp.name === itemName && sp.platform === itemPlatform;
+    const base = usaSim ? priceToNum(sp.price) * sp.qty : priceToNum(itemPrice);
+    const extra = envioLineasMsg(ciudad, base, usaSim ? sp.metodo : null);
+    if (usaSim && sp.qty > 1) msg += `\n\n📦 *Cantidad:* ${sp.qty} (${numToPrice(base)})`;
+    if (extra) msg += (usaSim && sp.qty > 1 ? '' : '\n') + extra;
     pendingWAMessage = msg;
     enviarPorLinea('573118836995');
     return;
@@ -5362,9 +5440,9 @@ function enviarPedidoWA() {
     msg += `${idx+1}. *${item.name}* (${item.platform})\n`;
     msg += `   ${item.qty} × ${item.price} = ${numToPrice(sub)}\n`;
   });
-  msg += `\n💰 *Total: ${numToPrice(grand)}*`;
-  const pagoTxt = simTextoPago(simPagoCarrito, grand);
-  if (pagoTxt) msg += `\n${pagoTxt}`;
+  const envCart = envioDeCiudad(ciudad);
+  msg += envCart.local ? `\n🛒 *Subtotal productos: ${numToPrice(grand)}*` : `\n💰 *Total: ${numToPrice(grand)}*`;
+  msg += envioLineasMsg(ciudad, grand, simPagoCarrito);
   msg += `\n\n¿Está disponible? 🙏`;
   pendingWAMessage = msg;
   enviarPorLinea('573118836995');
