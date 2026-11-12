@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113r">
+<link rel="stylesheet" href="estilos.css?v=20261113s">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -406,9 +406,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113r";
-import * as C from "./comun.js?v=20261113r";
-import * as T from "./tarifas-envio.js?v=20261113r";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113s";
+import * as C from "./comun.js?v=20261113s";
+import * as T from "./tarifas-envio.js?v=20261113s";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -859,7 +859,7 @@ function pintarReservas() {
     .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
   const abonado = del.reduce((s, r) => s + (r.abono || 0), 0);
   const uds = r => r.unidades || 1, saldoR = r => Math.max(precio * uds(r) - (r.abono || 0), 0);
-  $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Clientes</span></div><div><b>${del.reduce((s, r) => s + uds(r), 0)}</b><span>Unidades</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + saldoR(r), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div>`;
+  $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Clientes</span></div><div><b>${del.reduce((s, r) => s + uds(r), 0)}</b><span>Unidades</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + saldoR(r), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div><div><b style="color:var(--warn)">${del.filter(r => !r.pagado).length}</b><span>Pendientes por pago</span></div>`;
   const EST = { pendiente: ["Por cobrar", "disponible"], cobrado: ["Cobro enviado", "en_camino"], confirmado: ["Confirmó datos", "recogida"], pagado: ["Pagada", "entregada"], sinabono: ["Sin abono", "novedad"] };
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item${r.linkEnviado ? " rs-enviado" : ""}"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
       <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
@@ -1802,7 +1802,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113r";
+const VERSION_PANEL = "20261113s";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
