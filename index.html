@@ -5564,9 +5564,9 @@ function construirMensajeConSaludo(body, nombre, ciudad) {
   const ciudadTxt = ciudad ? ` desde *${ciudad}*` : '';
   if (nombre) {
     const bodyMin = body.charAt(0).toLowerCase() + body.slice(1);
-    return `Hola! 👋 Soy *${nombre}*${ciudadTxt} y ${bodyMin}`;
+    return `Hola, soy *${nombre}*${ciudadTxt} y ${bodyMin}`;
   }
-  return `Hola${ciudadTxt}! 👋 ${body}`;
+  return `Hola${ciudadTxt}. ${body}`;
 }
 
 function cerrarNameModal() {
@@ -5598,47 +5598,60 @@ function enviarPedidoWA() {
   pendingWAPrice = null;
   pendingWAPlatform = null;
 
-  const ciudadTxt = ciudad ? ` desde *${ciudad}*` : '';
-
+  let items, metodo;
   if (itemName) {
-    const precioTxt = itemPrice ? ` (${itemPrice})` : '';
-    const platTxt = itemPlatform ? ` [${itemPlatform}]` : '';
-    let msg = nombre
-      ? `Hola! 👋 Soy *${nombre}*${ciudadTxt} y me interesa *${itemName}*${platTxt}${precioTxt} 🎮 ¿Está disponible?`
-      : `Hola${ciudadTxt}, me interesa *${itemName}*${platTxt}${precioTxt} 🎮 ¿Está disponible?`;
     const sp = simPagoItem;
-    simPagoItem = null;
     const usaSim = sp && sp.name === itemName && sp.platform === itemPlatform;
-    const base = usaSim ? priceToNum(sp.price) * sp.qty : priceToNum(itemPrice);
-    const extra = envioLineasMsg(ciudad, base, usaSim ? sp.metodo : null);
-    if (usaSim && sp.qty > 1) msg += `\n\n📦 *Cantidad:* ${sp.qty} (${numToPrice(base)})`;
-    if (extra) msg += (usaSim && sp.qty > 1 ? '' : '\n') + extra;
-    pendingWAMessage = msg;
-    enviarPorLinea('573118836995');
-    return;
+    items = [{ name:itemName, platform:itemPlatform, price:itemPrice, qty:usaSim ? sp.qty : 1 }];
+    metodo = usaSim ? sp.metodo : null;
+  } else {
+    items = cart.map(i => ({ name:i.name, platform:i.platform, price:i.price, qty:i.qty }));
+    metodo = simPagoCarrito;
   }
-  let msg = nombre
-    ? `Hola! 👋 Soy *${nombre}*${ciudadTxt} y quiero hacer el siguiente pedido en *Pipe Games* 🎮\n\n`
-    : `Hola${ciudadTxt}! 👋 Quiero hacer el siguiente pedido en *Pipe Games* 🎮\n\n`;
-  let grand = 0;
-  cart.forEach((item, idx) => {
-    const unitVal = priceToNum(item.price);
-    const sub = unitVal * item.qty;
-    grand += sub;
-    msg += `${idx+1}. *${item.name}* (${item.platform})\n`;
-    msg += `   ${item.qty} × ${item.price} = ${numToPrice(sub)}\n`;
-  });
-  const envCart = envioDeCiudad(ciudad);
-  msg += envCart.local ? `\n🛒 *Subtotal productos: ${numToPrice(grand)}*` : `\n💰 *Total: ${numToPrice(grand)}*`;
-  msg += envioLineasMsg(ciudad, grand, simPagoCarrito);
-  msg += `\n\n¿Está disponible? 🙏`;
-  pendingWAMessage = msg;
+  simPagoItem = null;
+  pendingWAMessage = waArmarPedido(nombre, ciudad, items, metodo);
   enviarPorLinea('573118836995');
+}
+
+/* Mensaje de pedido para WhatsApp: sin emojis (los enlaces de WhatsApp los dañan y llegan como "�") */
+function waArmarPedido(nombre, ciudad, items, metodo) {
+  let msg = nombre
+    ? `Hola, soy *${nombre}*${ciudad ? ` desde *${ciudad}*` : ''}.\nQuiero hacer este pedido en *Pipe Games*:\n\n`
+    : `Hola${ciudad ? `, escribo desde *${ciudad}*` : ''}.\nQuiero hacer este pedido en *Pipe Games*:\n\n`;
+  let base = 0;
+  items.forEach((it, i) => {
+    const sub = priceToNum(it.price) * it.qty;
+    base += sub;
+    msg += `${i + 1}. *${it.name}*${it.platform ? ` (${it.platform})` : ''}\n`;
+    msg += `    ${it.qty} x ${it.price || numToPrice(priceToNum(it.price))} = ${numToPrice(sub)}\n`;
+  });
+  const env = envioDeCiudad(ciudad);
+  const envio = env.local ? env.valor : 0;
+  const m = metodo ? simMetodosPermitidos(base).find(x => x.id === metodo) : null;
+  const total = m ? m.calc(base + envio) : base + envio;
+  const recargo = total - (base + envio);
+  msg += `\nSubtotal productos: ${numToPrice(base)}`;
+  if (env.tipo === 'local') msg += `\n${env.titulo}: ${numToPrice(envio)}`;
+  else if (env.tipo === 'nacional') msg += `\nEnvío por ${ENVIO_TRANSP.find(t => t.id === env.transp).n} a ${env.ciudad}: ${numToPrice(envio)}`;
+  else if (env.escrito) msg += `\nEnvío a ${env.ciudad}: por confirmar`;
+  if (m && recargo > 0) {
+    const etq = { tarjeta:'Recargo tarjeta de crédito (3.59% + $900)', addi:'Recargo Addi (7.7%)', siste:'Recargo Sistecrédito (5%)' }[m.id] || 'Recargo medio de pago';
+    msg += `\n${etq}: ${numToPrice(recargo)}`;
+  }
+  msg += `\n*TOTAL A PAGAR: ${numToPrice(total)}*` + (env.local ? '' : (env.escrito ? ' (sin envío)' : ''));
+  if (m) {
+    msg += `\n\n*Medio de pago:* ${m.t.replace(' · ', ' - ')}`;
+    if (m.credito && simDatosOk()) msg += `\n*Cédula:* ${simDatos.cedula.replace(/[.\s]/g, '')}\n*Correo:* ${simDatos.email.trim()}`;
+  }
+  msg += `\n\n¿Está disponible?`;
+  return msg;
 }
 
 function enviarPorLinea(numero) {
   if (!pendingWAMessage) return;
-  window.open('https://wa.me/' + numero + '?text=' + encodeURIComponent(pendingWAMessage), '_blank');
+  // Quita emojis (WhatsApp los muestra como "�" al abrir el enlace) y usa el enlace oficial
+  const limpio = pendingWAMessage.replace(/[\u{10000}-\u{10FFFF}]/gu, '').replace(/[\uFE0F\u200D]/g, '').replace(/([^\n ]) {2,}/g, '$1 ').replace(/[ \t]+\n/g, '\n').trim();
+  window.open('https://api.whatsapp.com/send?phone=' + numero + '&text=' + encodeURIComponent(limpio), '_blank');
   pendingWAMessage = null;
 }
 
