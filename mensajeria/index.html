@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113l">
+<link rel="stylesheet" href="estilos.css?v=20261113m">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -406,9 +406,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113l";
-import * as C from "./comun.js?v=20261113l";
-import * as T from "./tarifas-envio.js?v=20261113l";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113m";
+import * as C from "./comun.js?v=20261113m";
+import * as T from "./tarifas-envio.js?v=20261113m";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -864,7 +864,7 @@ function pintarReservas() {
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item${r.linkEnviado ? " rs-enviado" : ""}"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
       <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.correo ? ` · ${esc(r.confirmacion.correo)}` : " · <b>sin correo</b>"}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
-      ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular<input id="rsEdTel" inputmode="numeric" maxlength="16" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label></div>
+      ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular<input id="rsEdTel" inputmode="numeric" maxlength="16" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
       <div class="btns"><button class="btn chico" data-rsedguardar="${r.id}">Guardar</button><button class="btn sec chico" data-rsedcancel="1">Cancelar</button></div>` : ""}
       <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
@@ -905,7 +905,14 @@ $("#rsLista").addEventListener("click", async e => {
     if (nombre.length < 2) { toast("Escribe el nombre"); return; }
     const prod = $("#rsEdProd").value.trim().replace(/\s+/g, " ");
     if (prod.length < 2) { toast("Escribe el nombre del videojuego"); return; }
-    try { await updateDoc(ref, { [`reservas.${id}.nombre`]: nombre, [`reservas.${id}.contacto`]: tel || $("#rsEdTel").value.trim(), [`reservas.${id}.producto`]: prod }); rsEditando = null; toast("Reserva actualizada"); }
+    const cambios = { [`reservas.${id}.nombre`]: nombre, [`reservas.${id}.contacto`]: tel || $("#rsEdTel").value.trim(), [`reservas.${id}.producto`]: prod };
+    if ($("#rsEdMail")) {
+      const mail = $("#rsEdMail").value.trim().toLowerCase();
+      if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) { toast("Revisa el correo"); return; }
+      cambios[`reservas.${id}.confirmacion.correo`] = mail;
+      if (mail) cambios[`reservas.${id}.skydropx.error`] = null; // con correo, la orden se vuelve a enviar sola
+    }
+    try { await updateDoc(ref, cambios); rsEditando = null; toast("Reserva actualizada"); }
     catch (err) { toast(C.mensajeError(err)); }
     return;
   }
@@ -1326,6 +1333,12 @@ async function enviarOrdenReserva2(id, auto) {
   } catch (e) { console.warn("orden reserva", id, e); }
   if (!res) return;
   const c = res.confirmacion, uds = res.unidades || 1;
+  if (!c.correo) {
+    // Sin correo del cliente Skydropx pone el de la cuenta: no se envía hasta tenerlo
+    await updateDoc(ref, { [`reservas.${id}.skydropx.enviando`]: null, [`reservas.${id}.skydropx.error`]: "Falta el correo del cliente. Agrégalo en Cobros → Reservas → Editar y la orden se envía sola." }).catch(() => {});
+    if (!auto) toast("Falta el correo del cliente: agrégalo en Cobros → Reservas → Editar");
+    return;
+  }
   const x = { nombre: res.nombre, telefono: c.telefono || res.contacto, correo: c.correo || "", municipio: c.ciudad || "", direccion: c.direccion || "", complemento: c.complemento || "", barrio: c.barrio || "",
     transportadora: idTransp(c.transportadora), contenido: `${res.producto}${uds > 1 ? " x" + uds : ""}`, envioCobrado: c.envio || 0 };
   try {
@@ -1786,7 +1799,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113l";
+const VERSION_PANEL = "20261113m";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
