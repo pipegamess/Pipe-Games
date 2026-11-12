@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113c">
+<link rel="stylesheet" href="estilos.css?v=20261113d">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -86,9 +86,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113c";
-import * as C from "./comun.js?v=20261113c";
-import * as T from "./tarifas-envio.js?v=20261113c";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113d";
+import * as C from "./comun.js?v=20261113d";
+import * as T from "./tarifas-envio.js?v=20261113d";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -102,7 +102,7 @@ const LOCALES = { bogota: "bogota", chia: "chia", soacha: "soacha" };
 const METODOS = C.METODOS_PAGO.filter(m => m.id !== "contraentrega"); // los mismos del catálogo
 
 const id = new URLSearchParams(location.search).get("c") || "";
-let S = null, metodo = "transf", pin = null, marcador = null, mapa = null;
+let S = null, metodo = "transf", metodoElegido = false, pin = null, marcador = null, mapa = null;
 
 function mensaje(t) { $("#intro").textContent = t; }
 const precioTotal = () => (S.unitario || 0) * (S.unidades || 1);
@@ -158,7 +158,7 @@ $("#sEnvio").addEventListener("click", e => {
 });
 
 /* ---------- medio de pago ---------- */
-$("#sMetodos").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (!b) return; metodo = b.dataset.m; pintar(); });
+$("#sMetodos").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (!b) return; metodo = b.dataset.m; metodoElegido = true; pintar(); });
 
 function calculo() {
   env = T.envioDeCiudad($("#sCiudad").value);
@@ -193,12 +193,13 @@ function pintar() {
   if (local) prepararMapa();
   // Medios de pago
   const htmlMet = c.permitidos.map(m => { const t = c.base > 0 ? m.calc(c.base) : c.base, r = t - c.base;
-    return `<button type="button" class="op${m.id === metodo ? " on" : ""}" data-m="${m.id}"><span class="rad"></span><span class="info"><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span><span class="v">${C.cop(Math.max(t, 0))}<small>${r > 0 ? "+" + C.cop(r) : "Sin recargo"}</small></span></button>`; }).join("");
+    return `<button type="button" class="op${metodoElegido && m.id === metodo ? " on" : ""}" data-m="${m.id}"><span class="rad"></span><span class="info"><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span><span class="v">${C.cop(Math.max(t, 0))}<small>${r > 0 ? "+" + C.cop(r) : "Sin recargo"}</small></span></button>`; }).join("");
   if (htmlMet !== ultimoMet) { ultimoMet = htmlMet; $("#sMetodos").innerHTML = htmlMet; }
   $("#sLimite").hidden = precioTotal() < C.LIMITE_CREDITO;
   $("#sCredito").hidden = !c.m.credito;
   // Pago con llave: mostrar la llave y el QR para escanear o guardar
-  const conLlave = c.m.id === "transf";
+  // Solo cuando ya eligió lugar de envío y escogió pagar con llave
+  const conLlave = metodoElegido && c.m.id === "transf" && valida;
   if (conLlave && !$("#sLlave").dataset.listo) { $("#sLlave").innerHTML = bloqueLlave(); $("#sLlave").dataset.listo = "1"; }
   $("#sLlave").hidden = !conLlave;
   // Total
@@ -255,6 +256,7 @@ $("#fSaldo").onsubmit = async e => {
   const c = calculo();
   const err = (t, f) => { $("#sErr").textContent = t; if (f) $(f).focus(); };
   if (!["local", "nacional", "otro"].includes(env.tipo)) return err("Escribe tu ciudad y elígela de la lista.", "#sCiudad");
+  if (!metodoElegido) return err("Elige cómo vas a pagar.");
   const tel = $("#sTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
   if ($("#sDir").value.trim().length < 4) return err("Escribe la dirección de entrega.", "#sDir");
   if (!/^\d{10}$/.test(tel)) return err("Escribe un celular de 10 dígitos.", "#sTel");
