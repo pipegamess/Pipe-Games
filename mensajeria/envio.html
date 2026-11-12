@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Datos de envío - Prueba</title>
+<meta name="description" content="Escribe tus datos de entrega para que te enviemos tu pedido.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="estilos.css?v=20261111c">
+<style>
+.envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+#mapa{height:min(42vh,360px);min-height:240px}
+.fila{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:480px){.fila{grid-template-columns:1fr}}
+.sug-caja{position:relative}
+.sugerencias{position:absolute;left:0;right:0;top:100%;z-index:1200;margin-top:4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);max-height:300px;overflow-y:auto}
+.sugerencias button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);padding:10px 12px;font:inherit}
+.sugerencias button:last-child{border-bottom:0}
+.sugerencias button:hover{background:var(--chip)}
+.sugerencias .t2{font-size:12px;color:var(--muted)}
+.estado-pin{font-size:13px;color:var(--muted)}
+.estado-pin.ok{color:var(--ok);font-weight:600}
+.estado-pin.mal{color:var(--bad);font-weight:600}
+.listo{font-family:var(--f-display);font-size:28px;font-weight:700;line-height:1.1}
+.pie{font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<main class="envoltura">
+  <header><h1>Datos de <span class="marca">envío</span></h1><p class="nota" id="intro" style="margin:4px 0 0">Escribe a dónde te llevamos tu pedido. Tarda menos de un minuto.</p></header>
+  <div id="resumen"></div>
+  <form class="panel" id="fEnvio" novalidate>
+    <label>Nombre de quien recibe<input id="eNom" autocomplete="name" maxlength="80" required></label>
+    <label>Celular<input id="eTel" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16" placeholder="3001234567" required></label>
+    <label>Ciudad<select id="eCiudad"><option value="bogota">Bogotá</option><option value="soacha">Soacha</option><option value="chia">Chía</option></select></label>
+    <div class="sug-caja"><label>Dirección<input id="eDir" autocomplete="off" maxlength="120" placeholder="Ej. Calle 26 # 68-10" required></label><div class="sugerencias" id="eSug" hidden></div></div>
+    <div class="fila">
+      <label>Complemento de la dirección<input id="eComp" maxlength="80" placeholder="Torre, apartamento, casa…"></label>
+      <label>Barrio<input id="eBarrio" maxlength="60" placeholder="Ej. Modelia"></label>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Tu ubicación en el mapa</b><button class="btn sec chico" type="button" id="eGps">📍 Usar mi ubicación</button></div>
+      <div id="mapa" class="mapa"></div>
+      <div class="estado-pin" id="ePin">Escribe la dirección o toca “Usar mi ubicación”. Luego revisa que el punto quede en tu casa; puedes moverlo o tocar el mapa.</div>
+    </div>
+    <div class="error" id="eErr"></div>
+    <button class="btn btn-turno" type="submit" id="eBtn">Enviar mis datos</button>
+  </form>
+  <div id="salida"></div>
+  <p class="pie">Mensajería Prueba · Bogotá</p>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111c";
+import * as C from "./comun.js?v=20261111c";
+const V = FIREBASE_VERSION;
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+const { getFirestore, doc, getDoc, setDoc, onSnapshot } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+const db = getFirestore(initializeApp(firebaseConfig));
+const $ = s => document.querySelector(s);
+const { esc } = C;
+const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+const pedido = new URLSearchParams(location.search).get("p") || null;
+let pin = null, marcador = null;
+
+/* ---------- pedido preparado por despacho (link personalizado) ---------- */
+if (pedido) {
+  try {
+    const p = await getDoc(doc(db, "prepedidos", pedido));
+    if (!p.exists()) { cerrado("Este enlace no es válido. Pídele a la tienda uno nuevo."); }
+    else {
+      const d = p.data();
+      if (d.usado) {
+        const link = d.guia ? C.linkRastreo({ numero: d.guia, clave: d.clave }) : "";
+        cerrado(`Este enlace ya se usó.${d.guia ? ` Tu guía es <span class="guia">${esc(d.guia)}</span>.` : ""}`, link);
+      } else if (d.contenido || d.valor) {
+        $("#resumen").innerHTML = `<div class="panel"><dl class="kv">${d.contenido ? `<dt>Tu pedido</dt><dd>${esc(d.contenido)}</dd>` : ""}<dt>Pago</dt><dd>${d.valor ? "Pagas " + C.cop(d.valor) + " al recibir (efectivo o Nequi)" : "Ya está pago"}</dd></dl></div>`;
+      }
+    }
+  } catch { /* si falla la lectura, el formulario sigue funcionando */ }
+}
+function cerrado(html, link) {
+  $("#fEnvio").hidden = true; $("#intro").hidden = true;
+  $("#salida").innerHTML = `<div class="panel"><div>${html}</div>${link ? `<a class="btn" href="${esc(link)}">Rastrear mi pedido</a>` : ""}</div>`;
+}
+
+/* ---------- mapa ---------- */
+const mapa = L.map("mapa", { zoomControl: true });
+C.capaMapa(L).addTo(mapa);
+mapa.setView([C.BOGOTA.lat, C.BOGOTA.lng], 11);
+const ciudad = () => C.ciudadDeTexto($("#eDir").value) || $("#eCiudad").value;
+function ponerPin(p, texto, clase = "ok") {
+  pin = { lat: +p.lat, lng: +p.lng };
+  if (!marcador) {
+    marcador = L.marker([pin.lat, pin.lng], { draggable: true, icon: C.icono(L, "destino", "") }).addTo(mapa);
+    marcador.on("dragend", () => { const ll = marcador.getLatLng(); pin = { lat: ll.lat, lng: ll.lng }; estadoPin("Punto ajustado. Así llegará el mensajero.", "ok"); });
+  } else marcador.setLatLng([pin.lat, pin.lng]);
+  mapa.setView([pin.lat, pin.lng], 17);
+  estadoPin(texto, clase);
+}
+const estadoPin = (t, c = "") => { $("#ePin").className = "estado-pin " + c; $("#ePin").textContent = t; };
+mapa.on("click", e => ponerPin(e.latlng, "Punto marcado. Puedes arrastrarlo si hace falta."));
+$("#eCiudad").onchange = () => { const c = C.CIUDADES[$("#eCiudad").value]; if (!pin) mapa.setView([c.centro.lat, c.centro.lng], 13); buscar(); };
+
+/* ---------- búsqueda de dirección (TomTom) ---------- */
+async function tomtom(texto, modo) {
+  const c = C.CIUDADES[ciudad()], [s, w, n, e] = c.bbox;
+  const limpio = C.quitarCiudad(texto), nd = C.normalizarDireccion(limpio);
+  const q = (nd.via ? nd.texto.replace(/\s*#\s*/, " ") : limpio) + ", " + c.consulta;
+  const url = `https://api.tomtom.com/search/2/${modo === "geocode" ? "geocode" : "search"}/${encodeURIComponent(q)}.json?key=${TOMTOM_KEY}&countrySet=CO&language=es-419&limit=5&lat=${c.centro.lat}&lon=${c.centro.lng}&topLeft=${n},${w}&btmRight=${s},${e}${modo === "geocode" ? "" : "&typeahead=true&idxSet=Addr,Str,PAD,POI,Geo"}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("TomTom " + r.status);
+  const j = await r.json();
+  return (j.results || []).filter(x => x.position).map(x => ({ lat: x.position.lat, lng: x.position.lon, t1: x.poi?.name || (x.address?.freeformAddress || "").replace(/,\s*(Bogotá|Bogota|Soacha|Chía|Chia)(,.*)?$/i, ""), t2: [x.address?.municipalitySubdivision, x.address?.municipality].filter(Boolean).join(", ") }));
+}
+let timer = null, ultima = "";
+$("#eDir").addEventListener("input", () => {
+  const c = C.ciudadDeTexto($("#eDir").value); if (c) $("#eCiudad").value = c;
+  clearTimeout(timer); timer = setTimeout(buscar, 650);
+});
+async function buscar() {
+  const t = $("#eDir").value.trim();
+  if (t.length < 5 || t + ciudad() === ultima) return;
+  ultima = t + ciudad();
+  let l = [];
+  try { l = await tomtom(t, "search"); } catch {}
+  if ($("#eDir").value.trim() !== t) return;
+  const caja = $("#eSug");
+  if (!l.length) { caja.hidden = true; return; }
+  caja.innerHTML = l.map((x, i) => `<button type="button" data-i="${i}"><span>${esc(x.t1)}</span><span class="t2">${esc(x.t2)}</span></button>`).join("");
+  caja.hidden = false;
+  caja.onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; const x = l[+b.dataset.i]; caja.hidden = true; ponerPin(x, "Revisa que el punto quede en tu casa. Si no, arrástralo o toca el mapa en el sitio correcto."); };
+}
+document.addEventListener("click", e => { if (!e.target.closest(".sug-caja")) $("#eSug").hidden = true; });
+// Si no eligió sugerencia, ubicar al salir del campo
+$("#eDir").addEventListener("change", async () => {
+  if (pin) return;
+  try { const r = await tomtom($("#eDir").value.trim(), "geocode"); if (r[0] && !pin) ponerPin(r[0], "Ubicación aproximada: revisa que el punto quede en tu casa y muévelo si hace falta.", ""); } catch {}
+});
+
+/* ---------- mi ubicación ---------- */
+$("#eGps").onclick = () => {
+  if (!navigator.geolocation) { estadoPin("Tu navegador no permite compartir la ubicación. Marca el punto en el mapa.", "mal"); return; }
+  estadoPin("Buscando tu ubicación…");
+  navigator.geolocation.getCurrentPosition(async pos => {
+    ponerPin({ lat: pos.coords.latitude, lng: pos.coords.longitude }, `Ubicación tomada del celular (precisión ${Math.round(pos.coords.accuracy)} m). Revisa el punto.`);
+    if (!$("#eDir").value.trim()) {
+      try {
+        const r = await fetch(`https://api.tomtom.com/search/2/reverseGeocode/${pos.coords.latitude},${pos.coords.longitude}.json?key=${TOMTOM_KEY}&language=es-419`);
+        const a = (await r.json()).addresses?.[0]?.address;
+        if (a?.streetNameAndNumber || a?.street) $("#eDir").value = a.streetNameAndNumber || a.street;
+        if (a?.municipalitySubdivision && !$("#eBarrio").value) $("#eBarrio").value = a.municipalitySubdivision;
+      } catch {}
+    }
+  }, () => estadoPin("No pudimos leer tu ubicación. Revisa que el GPS esté activado o marca el punto en el mapa.", "mal"), { enableHighAccuracy: true, timeout: 15000 });
+};
+
+/* ---------- enviar ---------- */
+$("#fEnvio").onsubmit = async e => {
+  e.preventDefault(); $("#eErr").textContent = "";
+  const tel = $("#eTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
+  const datos = {
+    nombre: $("#eNom").value.trim(), telefono: tel, ciudad: ciudad(),
+    direccion: C.quitarCiudad($("#eDir").value.trim()), complemento: $("#eComp").value.trim(), barrio: $("#eBarrio").value.trim(),
+    lat: pin?.lat ?? null, lng: pin?.lng ?? null, pedido, estado: "nueva", creado: Date.now()
+  };
+  if (datos.nombre.length < 2) return error("Escribe el nombre de quien recibe.", "#eNom");
+  if (!/^\d{10}$/.test(tel)) return error("Escribe un celular de 10 dígitos.", "#eTel");
+  if (datos.direccion.length < 4) return error("Escribe la dirección.", "#eDir");
+  if (!pin) return error("Marca tu ubicación en el mapa: toca “Usar mi ubicación” o toca el mapa en tu casa.");
+  const b = $("#eBtn"); b.disabled = true; b.textContent = "Enviando…";
+  try {
+    const id = C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo();
+    await setDoc(doc(db, "solicitudes", id), datos);
+    ls.set("solicitud", id);
+    esperarGuia(id);
+  } catch (err) { error("No se pudo enviar. Revisa tu conexión e intenta de nuevo."); b.disabled = false; b.textContent = "Enviar mis datos"; }
+};
+function error(t, foco) { $("#eErr").textContent = t; if (foco) $(foco).focus(); }
+
+function esperarGuia(id) {
+  $("#fEnvio").hidden = true; $("#resumen").hidden = true; $("#intro").hidden = true;
+  $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Recibimos tus datos!</div><p class="nota" style="margin:0" id="sEst">Estamos creando tu guía de envío…</p></div>`;
+  const t = setTimeout(() => { const el = $("#sEst"); if (el) el.textContent = "Tu guía se creará en unos minutos y te enviaremos el número por WhatsApp. Puedes cerrar esta página."; }, 20000);
+  onSnapshot(doc(db, "solicitudes", id), s => {
+    const d = s.data();
+    if (!d || d.estado !== "creada" || !d.guia) return;
+    clearTimeout(t);
+    $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Listo! Tu envío está creado</div>
+      <dl class="kv"><dt>Guía</dt><dd class="guia">${esc(d.guia)}</dd><dt>Para rastrear</dt><dd>Número de guía y los últimos 4 dígitos de tu celular</dd></dl>
+      <a class="btn" href="${esc(C.linkRastreo({ numero: d.guia, clave: d.clave }))}">Rastrear mi pedido</a></div>`;
+  }, () => {});
+}
+// Si ya envió desde este celular con este mismo enlace, mostrar el resultado
+if (pedido && ls.get("solicitud") && ls.get("solicitudPedido") === pedido) esperarGuia(ls.get("solicitud"));
+$("#fEnvio").addEventListener("submit", () => ls.set("solicitudPedido", pedido || ""));
+</script>
+</body>
+</html>
