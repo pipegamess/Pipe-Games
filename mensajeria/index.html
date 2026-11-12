@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113h">
+<link rel="stylesheet" href="estilos.css?v=20261113i">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -406,9 +406,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113h";
-import * as C from "./comun.js?v=20261113h";
-import * as T from "./tarifas-envio.js?v=20261113h";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261113i";
+import * as C from "./comun.js?v=20261113i";
+import * as T from "./tarifas-envio.js?v=20261113i";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1337,6 +1337,20 @@ async function enviarOrdenReserva2(id, auto) {
     if (!auto) toast("Skydropx no recibió la orden: " + (e.message || e));
   }
 }
+// Formas de escribir ciudad/departamento del destino que se prueban con Skydropx
+const ALIAS_DEPTO = { "valle del cauca": ["Valle"], "la guajira": ["Guajira"], "san andres y providencia": ["San Andres", "Archipielago de San Andres"], "bogota d.c.": ["Bogota D.C.", "Cundinamarca"], "norte de santander": ["N. de Santander"] };
+function variantesDestino(ciudad, depto, barrio) {
+  const c = quitarTildes(ciudad), dp = quitarTildes(depto);
+  const ciudades = [...new Set([c, ciudad, c.replace(/\s*\(.*\)/, ""), c.split(",")[0], c.replace(/ de indias$/i, ""), c.toUpperCase()])].filter(Boolean);
+  const deptos = [...new Set([dp, depto, ...(ALIAS_DEPTO[dp.toLowerCase()] || []), dp.toUpperCase()])].filter(Boolean);
+  const l = [];
+  for (const d of deptos) for (const ci of ciudades) {
+    l.push({ area_level1: d, area_level2: ci, area_level3: quitarTildes(barrio || ci), state: d, city: ci });
+    if (barrio) l.push({ area_level1: d, area_level2: ci, area_level3: ci, state: d, city: ci, sector: ci });
+  }
+  const vistos = new Set();
+  return l.filter(v => { const k = JSON.stringify(v); if (vistos.has(k)) return false; vistos.add(k); return true; }).slice(0, 16);
+}
 // Arma y envía la orden a Skydropx; devuelve el id de la orden o lanza el error de Skydropx
 async function postOrdenSkx(x, id) {
   const rem = S.skx?.remitente || {};
@@ -1366,16 +1380,24 @@ async function postOrdenSkx(x, id) {
   const prefs = prov ? [[prov], []] : [[]];
   if (transp) cuerpo.order.tags = [transp, ...(x.tipoProducto?.n ? [x.tipoProducto.n] : [])];
   {
-    let r = null, err = null;
-    for (const sp of prefs) {
-      cuerpo.order.shipping_preferences = sp;
+    // Skydropx valida ciudad y departamento del destino contra su lista: se prueban otras formas de escribirlos
+    const ciudadDest = m?.c || (x.municipio || "").split(" - ")[0], deptoDest = m?.d || (x.municipio || "").split(" - ")[1] || "";
+    const formasDest = variantesDestino(ciudadDest, deptoDest, x.barrio);
+    let iD = 0, iP = 0, r = null, err = null;
+    for (let intento = 0; intento < 20; intento++) {
+      cuerpo.order.shipping_preferences = prefs[Math.min(iP, prefs.length - 1)];
+      Object.assign(cuerpo.order.recipient_address, formasDest[iD]);
       try { r = await skx("POST", "/orders", cuerpo); err = null; break; }
       catch (e) {
         err = e; const msg = String(e.message || "");
-        if (/422/.test(msg) && /tags/i.test(msg) && cuerpo.order.tags) { delete cuerpo.order.tags; try { r = await skx("POST", "/orders", cuerpo); err = null; break; } catch (e2) { err = e2; } }
-        if (!/422/.test(String(err.message)) || !/shipping_preferences|preferenc/i.test(String(err.message))) break;
+        if (!/422/.test(msg)) break;
+        if (/tags/i.test(msg) && cuerpo.order.tags) { delete cuerpo.order.tags; continue; }
+        if (/shipping_preferences|preferenc/i.test(msg) && iP < prefs.length - 1) { iP++; continue; }
+        if (/address_to|recipient/i.test(msg) && iD < formasDest.length - 1) { iD++; continue; }
+        break;
       }
     }
+    if (!r && err && /address_to|recipient/i.test(String(err.message))) throw new Error(`Skydropx no reconoce la ciudad de destino “${ciudadDest} - ${deptoDest}”. Revisa el municipio del cliente o crea la guía desde el panel. (${err.message})`);
     if (!r) throw err || new Error("Skydropx no recibió la orden");
     return { oid: String(hallar(r, "id") || ""), r, transp };
   }
@@ -1760,7 +1782,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261113h";
+const VERSION_PANEL = "20261113i";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
