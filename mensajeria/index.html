@@ -57,6 +57,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .aviso-ubic{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
 .aviso-ubic b{color:var(--ink)}
 .opciones-cobro{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:640px){.tipo-fila{grid-template-columns:1fr 1fr!important}}
 .cb-metodos{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .cb-m{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;text-align:left;font:inherit}
 .cb-m.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
@@ -197,9 +198,9 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
                 <label>Dirección de recogida<input id="skxRDir"></label>
                 <div class="fila"><label>Barrio<input id="skxRBarrio"></label><label>Código postal<input id="skxRCp" inputmode="numeric" placeholder="110911"></label></div>
                 <div class="fila"><label>Ciudad<input id="skxRCiudad" value="Bogotá"></label><label>Departamento<input id="skxRDepto" value="Cundinamarca"></label></div>
-                <b style="font-size:14px">Paquete por defecto</b>
-                <div class="fila"><label>Largo (cm)<input id="skxL" inputmode="numeric" value="20"></label><label>Ancho (cm)<input id="skxA" inputmode="numeric" value="15"></label></div>
-                <div class="fila"><label>Alto (cm)<input id="skxH" inputmode="numeric" value="5"></label><label>Peso (kg)<input id="skxP" inputmode="decimal" value="0.5"></label></div>
+                <b style="font-size:14px">Tipos de producto (medidas del paquete)</b>
+                <div class="lista" id="skxTipos" style="gap:6px"></div>
+                <button class="btn sec chico" type="button" id="skxMasTipo" style="align-self:flex-start">+ Agregar tipo de producto</button>
                 <div class="btns"><button class="btn chico" type="button" id="skxGuardar">Guardar</button><button class="btn sec chico" type="button" id="skxProbar">Probar conexión</button></div>
               </div></details>
             <div class="fila"><label>Destinatario<input id="skxNom"></label><label>Celular<input id="skxTel" inputmode="numeric"></label></div>
@@ -208,7 +209,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <label>Dirección<input id="skxDir"></label>
             <div class="fila"><label>Complemento y referencias<input id="skxComp"></label><label>Barrio<input id="skxBarrio"></label></div>
             <div class="fila"><label>Código postal (si lo pide la transportadora)<input id="skxCp" inputmode="numeric"></label><label>Contenido<input id="skxCont"></label></div>
-            <div class="fila"><label>Largo × ancho × alto (cm)<input id="skxDim" placeholder="20 x 15 x 5"></label><label>Peso (kg)<input id="skxPeso" inputmode="decimal"></label></div>
+            <div class="fila"><label>Tipo de producto<select id="skxTipo"></select></label><label>Medidas y peso<input id="skxMedidas" readonly tabindex="-1" style="background:var(--chip)"></label></div>
             <label>Valor declarado del contenido (COP)<input class="din" id="skxValor" inputmode="numeric" placeholder="Ej. 280.000"></label>
             <div class="btns"><button class="btn chico" type="button" id="skxCotizar">Cotizar con Skydropx</button></div>
             <div id="skxTarifas"></div>
@@ -962,19 +963,38 @@ function cargarSkx() {
   $("#skxEstado").textContent = (a.url || SKYDROPX_URL) ? "· " + (a.url || SKYDROPX_URL).replace(/^https?:\/\//, "") + (a.remitente?.direccion ? "" : " · faltan datos del remitente") : "· falta configurar";
   pintarSkxLista();
   if (skxCargado) return; skxCargado = true;
-  const r = a.remitente || {}, p = a.paquete || {};
+  const r = a.remitente || {};
   $("#skxUrl").value = a.url || SKYDROPX_URL || "";
-  $("#skxRNom").value = r.nombre || S.recogida?.remitente || "Pipe Games"; $("#skxRTel").value = r.telefono || ""; $("#skxRMail").value = r.correo || "";
+  $("#skxRNom").value = r.nombre || S.recogida?.remitente || "Pipe Games"; $("#skxRTel").value = r.telefono || "3118836995"; $("#skxRMail").value = r.correo || "";
   $("#skxRDir").value = r.direccion || S.recogida?.direccion || ""; $("#skxRBarrio").value = r.barrio || ""; $("#skxRCp").value = r.cp || "";
   $("#skxRCiudad").value = r.ciudad || "Bogotá"; $("#skxRDepto").value = r.depto || "Cundinamarca";
-  $("#skxL").value = p.l || 20; $("#skxA").value = p.a || 15; $("#skxH").value = p.h || 5; $("#skxP").value = p.kg || 0.5;
+  pintarTiposEditor(); pintarTiposSelect();
   if (!a.remitente?.direccion) $("#skxAjustes").open = true;
 }
+// Tipos de producto con sus medidas; el primero es el que se usa por defecto
+const TIPOS_BASE = [{ n: "Juego (sobre de seguridad)", l: 22, a: 19, h: 4, kg: 1 }];
+const tiposSkx = () => (S.skx?.tipos?.length ? S.skx.tipos : TIPOS_BASE);
+function pintarTiposEditor(lista = tiposSkx()) {
+  $("#skxTipos").innerHTML = lista.map(t => `<div class="fila tipo-fila" style="grid-template-columns:2fr repeat(4,1fr) auto;align-items:end;gap:6px">
+    <label>Tipo<input data-t="n" value="${esc(t.n)}"></label><label>Largo<input data-t="l" inputmode="decimal" value="${t.l}"></label><label>Ancho<input data-t="a" inputmode="decimal" value="${t.a}"></label><label>Alto<input data-t="h" inputmode="decimal" value="${t.h}"></label><label>Kg<input data-t="kg" inputmode="decimal" value="${t.kg}"></label>
+    <button class="btn sec chico" type="button" data-quitartipo>Quitar</button></div>`).join("");
+}
+const leerTiposEditor = () => [...document.querySelectorAll("#skxTipos .tipo-fila")].map(f => { const v = k => f.querySelector(`[data-t="${k}"]`).value.trim(); const n2 = k => +String(v(k)).replace(",", ".") || 0; return { n: v("n"), l: n2("l"), a: n2("a"), h: n2("h"), kg: n2("kg") }; }).filter(t => t.n && t.l && t.a && t.h && t.kg);
+$("#skxMasTipo").onclick = () => { pintarTiposEditor([...leerTiposEditor(), { n: "", l: "", a: "", h: "", kg: "" }]); };
+$("#skxTipos").addEventListener("click", e => { if (e.target.closest("[data-quitartipo]")) { e.target.closest(".tipo-fila").remove(); } });
+function pintarTiposSelect() {
+  const sel = $("#skxTipo"), antes = sel.value;
+  sel.innerHTML = tiposSkx().map((t, i) => `<option value="${i}">${esc(t.n)}</option>`).join("");
+  if (antes && +antes < tiposSkx().length) sel.value = antes;
+  mostrarMedidas();
+}
+function mostrarMedidas() { const t = tiposSkx()[+$("#skxTipo").value || 0]; $("#skxMedidas").value = t ? `${t.l} × ${t.a} × ${t.h} cm · ${t.kg} kg` : ""; }
+$("#skxTipo").onchange = mostrarMedidas;
 $("#skxGuardar").onclick = async () => {
   const datos = { url: $("#skxUrl").value.trim().replace(/\/+$/, ""),
     remitente: { nombre: $("#skxRNom").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() },
-    paquete: { l: +$("#skxL").value || 20, a: +$("#skxA").value || 15, h: +$("#skxH").value || 5, kg: +String($("#skxP").value).replace(",", ".") || 0.5 } };
-  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: datos }, { merge: true }); S.skx = datos; cargarSkx(); toast("Datos de Skydropx guardados"); } catch (e) { toast(C.mensajeError(e)); }
+    tipos: leerTiposEditor().length ? leerTiposEditor() : TIPOS_BASE, variante: S.skx?.variante ?? 0 };
+  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: datos }, { merge: true }); S.skx = datos; cargarSkx(); pintarTiposEditor(); pintarTiposSelect(); $("#skxAjustes").open = false; toast("Datos de Skydropx guardados: quedan fijos para todas las guías"); } catch (e) { toast(C.mensajeError(e)); }
 };
 async function skx(metodo, ruta, cuerpo) {
   const url = (S.skx?.url || $("#skxUrl").value.trim() || SKYDROPX_URL).replace(/\/+$/, "");
@@ -1029,17 +1049,20 @@ function skxDesdeReserva(id) {
   $("#skxCiudad").value = c.ciudad || ""; $("#skxDir").value = c.direccion || ""; $("#skxComp").value = c.complemento || ""; $("#skxBarrio").value = c.barrio || "";
   $("#skxCont").value = r.producto + ((r.unidades || 1) > 1 ? " x" + r.unidades : "");
   $("#skxValor").value = miles((S.preciosReserva?.[claveProd(r.producto)] || 0) * (r.unidades || 1));
+  $("#skxTipo").value = "0"; mostrarMedidas();
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
   setTimeout(() => $("#skx").scrollIntoView({ behavior: "smooth" }), 50);
   toast(`Datos de ${titulo(r.nombre)} listos. Revisa y toca “Cotizar con Skydropx”.`);
 }
 function datosSkx() {
-  const a = S.skx || {}, rem = a.remitente || {}, paq = a.paquete || {};
+  const a = S.skx || {};
+  // Remitente: lo guardado; si aún no se ha guardado, lo que está escrito en el formulario
+  const rem = a.remitente?.direccion ? a.remitente : { nombre: $("#skxRNom").value.trim(), telefono: $("#skxRTel").value.replace(/\D/g, ""), correo: $("#skxRMail").value.trim(), direccion: $("#skxRDir").value.trim(), barrio: $("#skxRBarrio").value.trim(), cp: $("#skxRCp").value.trim(), ciudad: $("#skxRCiudad").value.trim(), depto: $("#skxRDepto").value.trim() };
   const m = T.envBuscar($("#skxCiudad").value)?.x;
-  const dims = ($("#skxDim").value.match(/\d+(?:[.,]\d+)?/g) || []).map(x => +x.replace(",", "."));
+  const t = tiposSkx()[+$("#skxTipo").value || 0] || TIPOS_BASE[0];
   return {
     m, rem, valor: num($("#skxValor").value),
-    paquete: { length: dims[0] || paq.l || 20, width: dims[1] || paq.a || 15, height: dims[2] || paq.h || 5, weight: +String($("#skxPeso").value).replace(",", ".") || paq.kg || 0.5 },
+    paquete: { length: t.l, width: t.a, height: t.h, weight: t.kg }, tipo: t.n,
     dest: { nombre: $("#skxNom").value.trim(), tel: $("#skxTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""), correo: $("#skxMail").value.trim(), dir: $("#skxDir").value.trim(), comp: $("#skxComp").value.trim(), barrio: $("#skxBarrio").value.trim(), cp: $("#skxCp").value.trim(), cont: $("#skxCont").value.trim() }
   };
 }
