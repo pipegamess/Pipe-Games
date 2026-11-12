@@ -5185,6 +5185,16 @@ function envioDeCiudad(txt) {
   }
   return { local:false, tipo:'otro', ciudad:et, valor:0, escrito:true, titulo:'Envío a ' + et };
 }
+/* Consolas, parlantes e iPads: no se muestra costo de envío; se confirma por WhatsApp */
+const ENVIO_OCULTO_RX = /\b(CONSOLA|PARLANTE|IPAD)\b/i;
+function envOcultoItems(items) { return (items || []).some(i => ENVIO_OCULTO_RX.test(i && i.name || '')); }
+function simItemsActuales() { return !simItem ? [] : (simItem.tipo === 'cart' ? cart : [simItem]); }
+function envioPedido(txt, items) {
+  const e = envioDeCiudad(txt);
+  if (envOcultoItems(items) && (e.tipo === 'local' || e.tipo === 'nacional' || e.tipo === 'otro'))
+    return Object.assign({}, e, { local:false, tipo:'oculto', valor:0, escrito:true, titulo:'Envío a ' + e.ciudad });
+  return e;
+}
 function envElegirTransp(clave, id, origen) {
   envioTransp[clave] = id;
   if (origen === 'sim') simRender(); else envioPreviewModal();
@@ -5200,6 +5210,7 @@ function envChipsHTML(env, origen) {
 function envAvisoHTML(env, inputId) {
   if (envHaySug(inputId)) return '';
   if (env.tipo === 'local') return `<div class="env-otro">🛵 <b>${env.titulo}</b>: ${numToPrice(env.valor)}</div>`;
+  if (env.tipo === 'oculto') return `<div class="env-otro">🚚 El costo de envío de este artículo a <b>${simEsc(env.ciudad)}</b> te lo confirmamos por WhatsApp. Completa tus datos y envía tu pedido.</div>`;
   if (env.tipo === 'otro') return `<div class="env-otro">📦 <b>${simEsc(env.ciudad)}</b> no está en nuestra lista de tarifas. El costo de envío se confirmará por WhatsApp; puedes continuar con tu compra.</div>`;
   if (env.tipo === 'invalido' && env.multi) return `<div class="env-bad">⚠️ Hay varios municipios llamados <b>${simEsc(env.multi[0].c)}</b>. Elige el tuyo:` +
     env.multi.map(m => `<button type="button" onclick="envUsarSug('${inputId}','${m.key}')">${simEsc(envEtiqueta(m))}</button>`).join('') + `</div>`;
@@ -5244,7 +5255,8 @@ function envioPreviewModal() {
   const el = document.getElementById('envioInfo');
   if (!el) return;
   if (pendingReservationBody !== null) { el.innerHTML = ''; return; }
-  const env = envioDeCiudad(document.getElementById('clientCity').value);
+  const envItems = pendingWAItem ? [{ name:pendingWAItem }] : cart;
+  const env = envioPedido(document.getElementById('clientCity').value, envItems);
   let base = 0, metodo = null;
   if (pendingWAItem) {
     const sp = simPagoItem && simPagoItem.name === pendingWAItem ? simPagoItem : null;
@@ -5261,7 +5273,9 @@ function envioPreviewModal() {
       (env.tipo === 'nacional' ? envChipsHTML(env, 'modal') : '<br>') +
       (base > 0 ? `Total a pagar${m && m.id !== 'transf' ? ' (' + m.t.split(' · ')[0] + ')' : ''}: <b>${numToPrice(tot)}</b>` : '') + `</span>`;
   } else if (env.escrito && !envHaySug('clientCity')) {
-    el.innerHTML = `<span class="otro">🚚 Para este municipio, el valor del envío te lo confirmamos por WhatsApp.</span>`;
+    el.innerHTML = env.tipo === 'oculto'
+      ? `<span class="otro">🚚 El costo de envío de este artículo te lo confirmamos por WhatsApp.</span>`
+      : `<span class="otro">🚚 Para este municipio, el valor del envío te lo confirmamos por WhatsApp.</span>`;
   } else {
     el.innerHTML = '';
   }
@@ -5478,7 +5492,7 @@ function simRender() {
   if (simMetodo && !permitidos.some(m => m.id === simMetodo)) simMetodo = simCheckout ? null : 'transf';
   if (!simMetodo && !simCheckout) simMetodo = 'transf';
   simSetModo();
-  const env = envioDeCiudad(simCiudadTxt), envio = env.local ? env.valor : 0, bEnv = base + envio;
+  const env = envioPedido(simCiudadTxt, simItemsActuales()), envio = env.local ? env.valor : 0, bEnv = base + envio;
   const ci = document.getElementById('simCiudad'); if (ci && ci.value !== simCiudadTxt) ci.value = simCiudadTxt;
   document.getElementById('simEnvio').innerHTML = env.tipo === 'nacional' ? envChipsHTML(env, 'sim') : envAvisoHTML(env, 'simCiudad');
   document.getElementById('simMethods').innerHTML = permitidos.map(m => {
@@ -5567,7 +5581,7 @@ function simNotaCarrito() {
   if (simPagoCarrito && !simMetodosPermitidos(base).some(m => m.id === simPagoCarrito)) simPagoCarrito = null;
   if (!simPagoCarrito || !cart.length) { el.innerHTML = ''; return; }
   const m = simMetodoById(simPagoCarrito);
-  const env = envioDeCiudad(simCiudadTxt);
+  const env = envioPedido(simCiudadTxt, cart);
   el.innerHTML = `Pago con <b>${m.t}</b>${env.local ? ' + ' + (env.tipo === 'local' ? 'domicilio' : 'envío') : ''}: <b>${numToPrice(m.calc(base + (env.local ? env.valor : 0)))}</b>`;
 }
 
@@ -5673,7 +5687,7 @@ function waArmarPedido(nombre, ciudad, items, metodo) {
     msg += `${i + 1}. *${it.name}*${it.platform ? ` (${it.platform})` : ''}\n`;
     msg += `    ${it.qty} x ${it.price || numToPrice(priceToNum(it.price))} = ${numToPrice(sub)}\n`;
   });
-  const env = envioDeCiudad(ciudad);
+  const env = envioPedido(ciudad, items);
   const envio = env.local ? env.valor : 0;
   const m = metodo ? simMetodosPermitidos(base).find(x => x.id === metodo) : null;
   const total = m ? m.calc(base + envio) : base + envio;
