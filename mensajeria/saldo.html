@@ -8,12 +8,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261113w">
+<link rel="stylesheet" href="estilos.css?v=20261113x">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261113w";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261113x";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261113w">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261113x">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -94,9 +94,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113w";
-import * as C from "./comun.js?v=20261113w";
-import * as T from "./tarifas-envio.js?v=20261113w";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261113x";
+import * as C from "./comun.js?v=20261113x";
+import * as T from "./tarifas-envio.js?v=20261113x";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -127,6 +127,7 @@ function iniciar() {
     <div class="total"><span>Saldo</span><span>${C.cop(Math.max(saldoBase(), 0))}</span></div>
     <p class="nota" style="margin:0">Elige la ciudad y el medio de pago para ver el total con envío.</p></div>`;
   $("#fSaldo").hidden = false;
+  if (S.ciudadSugerida && !$("#sCiudad").value) { const r = T.envBuscar(S.ciudadSugerida); if (r?.x) $("#sCiudad").value = T.envEtiqueta(r.x); }
   pintar();
 }
 const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
@@ -171,7 +172,8 @@ $("#sMetodos").addEventListener("click", e => { const b = e.target.closest("[dat
 
 function calculo() {
   env = T.envioDeCiudad($("#sCiudad").value);
-  const envio = env.local ? env.valor : 0;
+  // Envío fijado por la tienda (link de cobro): no se muestran transportadoras ni tarifas del catálogo
+  const envio = S.envioFijo ? S.envioFijo : env.local ? env.valor : 0;
   const base = Math.max(saldoBase(), 0) + envio;
   const permitidos = METODOS.filter(m => !(m.credito && precioTotal() >= C.LIMITE_CREDITO));
   if (!permitidos.some(m => m.id === metodo)) metodo = "transf";
@@ -192,7 +194,7 @@ function pintar() {
   else if (env.tipo === "otro") htmlEnv = `<div class="aviso"><b>${esc(env.ciudad)}</b> no está en nuestra lista de tarifas. El costo del envío te lo confirmamos por WhatsApp.</div>`;
   else if (env.tipo === "invalido" && env.multi) htmlEnv = `<div class="aviso">Hay varios municipios con ese nombre. Elige el tuyo en la lista.</div>`;
   else if (env.tipo === "invalido") htmlEnv = `<div class="aviso">No encontramos <b>${esc(env.ciudad)}</b>. Escribe tu municipio y elígelo de la lista.</div>`;
-  $("#sEnvio").innerHTML = htmlEnv;
+  $("#sEnvio").innerHTML = S.envioFijo ? (env.tipo === "invalido" ? htmlEnv : "") : htmlEnv;
   // Dirección: con mapa solo en Bogotá, Chía y Soacha
   const valida = ["local", "nacional", "otro"].includes(env.tipo);
   $("#secDir").hidden = !valida;
@@ -210,7 +212,7 @@ function pintar() {
   // Los datos de la llave Bre-B y el QR se muestran solo en la pantalla final, después de confirmar
   $("#sLlave").hidden = true;
   // Total
-  const filaEnv = env.local ? `<div class="linea"><span>${esc(env.tipo === "local" ? env.titulo : "Envío por " + (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || ""))}</span><span>${C.cop(c.envio)}</span></div>`
+  const filaEnv = S.envioFijo ? `<div class="linea"><span>Envío</span><span>${C.cop(S.envioFijo)}</span></div>` : env.local ? `<div class="linea"><span>${esc(env.tipo === "local" ? env.titulo : "Envío por " + (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || ""))}</span><span>${C.cop(c.envio)}</span></div>`
     : env.tipo === "otro" ? `<div class="linea"><span>Envío a ${esc(env.ciudad)}</span><span>Se confirma por WhatsApp</span></div>` : `<div class="linea"><span>Envío</span><span>Elige tu ciudad</span></div>`;
   $("#sTotal").innerHTML = `<div class="linea"><span>Saldo</span><span>${C.cop(Math.max(saldoBase(), 0))}</span></div>${filaEnv}${c.recargo > 0 ? `<div class="linea"><span>Recargo por medio de pago</span><span>${C.cop(c.recargo)}</span></div>` : ""}<div class="total"><span>Total a pagar</span><span>${C.cop(Math.max(c.total, 0))}</span></div>`;
 }
@@ -272,8 +274,8 @@ $("#fSaldo").onsubmit = async e => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test($("#sCorreo").value.trim())) return err("Escribe tu correo electrónico.", "#sCorreo");
   if (c.m.credito && !/^\d{5,13}$/.test($("#sCedula").value.replace(/\D/g, ""))) return err("Escribe tu cédula para tramitar el crédito.", "#sCedula");
   const respuesta = {
-    ciudad: env.ciudad, tipoEnvio: env.tipo, ciudadLocal: claveLocal(env) || "", transportadora: env.tipo === "nacional" ? (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || "") : "",
-    envio: c.envio, envioPorConfirmar: env.tipo === "otro", metodo: c.m.id, metodoTxt: c.m.t, recargo: c.recargo, total: c.total, saldo: Math.max(saldoBase(), 0),
+    ciudad: env.ciudad, tipoEnvio: env.tipo, ciudadLocal: claveLocal(env) || "", transportadora: !S.envioFijo && env.tipo === "nacional" ? (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || "") : "",
+    envio: c.envio, envioFijo: !!S.envioFijo, envioPorConfirmar: !S.envioFijo && env.tipo === "otro", metodo: c.m.id, metodoTxt: c.m.t, recargo: c.recargo, total: c.total, saldo: Math.max(saldoBase(), 0),
     direccion: $("#sDir").value.trim(), complemento: $("#sComp").value.trim(), barrio: $("#sBarrio").value.trim(), telefono: tel,
     lat: pin?.lat ?? (sinUbic ? C.CIUDADES[claveLocal(env)].centro.lat : null), lng: pin?.lng ?? (sinUbic ? C.CIUDADES[claveLocal(env)].centro.lng : null), sinUbicacion: !!sinUbic,
     cedula: c.m.credito ? $("#sCedula").value.replace(/\D/g, "") : "", correo: $("#sCorreo").value.trim().toLowerCase()
