@@ -92,6 +92,20 @@ service cloud.firestore {
       allow list, write: if esAdmin();
     }
 
+    // Link de saldo de una reserva: el cliente lo abre con su código y confirma una sola vez
+    match /saldos/{id} {
+      allow get: if true;
+      allow list, create, delete: if esAdmin();
+      allow update: if esAdmin() || (
+        resource.data.estado == 'enviado'
+        && request.resource.data.estado == 'confirmado'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'respuesta', 'confirmado'])
+        && request.resource.data.respuesta is map
+        && request.resource.data.respuesta.size() <= 25
+        && request.resource.data.confirmado is number
+      );
+    }
+
     match /prepedidos/{id} {
       allow get: if true;
       allow list, write: if esAdmin();

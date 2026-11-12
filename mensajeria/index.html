@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261111e">
+<link rel="stylesheet" href="estilos.css?v=20261111f">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -300,7 +300,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <div class="item" id="rsCaja">
           <div class="fila" style="align-items:end"><label>Producto<select id="rsProd"></select></label><label>Precio final del producto<input class="din" id="rsPrecio" inputmode="numeric" placeholder="Cuando lo sepas"></label></div>
           <div class="cifras" id="rsCifras"></div>
-          <div class="fila"><label>Buscar<input id="rsBuscar" placeholder="Nombre o celular"></label><label>Mostrar<select id="rsFiltro"><option value="todas">Todas</option><option value="pendiente">Por cobrar</option><option value="cobrado">Cobro enviado</option><option value="pagado">Pagadas</option><option value="sinabono">Sin abono</option></select></label></div>
+          <div class="fila"><label>Buscar<input id="rsBuscar" placeholder="Nombre o celular"></label><label>Mostrar<select id="rsFiltro"><option value="todas">Todas</option><option value="pendiente">Por cobrar</option><option value="cobrado">Cobro enviado</option><option value="confirmado">Confirmó datos</option><option value="pagado">Pagadas</option><option value="sinabono">Sin abono</option></select></label></div>
           <div class="lista" id="rsLista"></div>
           <details><summary style="cursor:pointer"><b>Importar reservas</b> <span class="nota">· pega la tabla desde Excel o Google Sheets</span></summary>
             <div class="lista" style="margin-top:8px">
@@ -327,8 +327,8 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111e";
-import * as C from "./comun.js?v=20261111e";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111f";
+import * as C from "./comun.js?v=20261111f";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -345,13 +345,14 @@ const S = { guias: {}, ubic: {}, mens: {}, inv: [], entregas: [], tab: "guias", 
 let subs = [];
 
 /* ---------- NOTIFICACIONES (campana): entregas y novedades que reportan los mensajeros ---------- */
-const TIPOS_NOTI = { entregada: { ic: "✅", txt: "entregada" }, novedad: { ic: "⚠️", txt: "con novedad" }, disponible: { ic: "🆕", txt: "creada por el cliente (formulario)" } };
+const TIPOS_NOTI = { entregada: { ic: "✅", txt: "entregada" }, novedad: { ic: "⚠️", txt: "con novedad" }, disponible: { ic: "🆕", txt: "creada por el cliente (formulario)" }, confirmo: { ic: "🧾", txt: "· el cliente confirmó ciudad y pago" } };
 let notiYaVistas = null; // claves de avisos ya conocidos (para avisar solo de los nuevos)
 function listaNotis() {
   const l = [];
   Object.values(S.guias).forEach(g => (g.eventos || []).forEach(e => {
     if (TIPOS_NOTI[e.estado] && e.por !== "despacho" && (e.estado !== "disponible" || e.por === "Formulario web")) l.push({ g, e, k: g.numero + "|" + e.estado + "|" + e.t });
   }));
+  Object.entries(S.reservas || {}).forEach(([id, r]) => { if (r.confirmacion?.t) l.push({ g: { numero: r.producto, cliente: titulo(r.nombre) + " · total " + C.cop(r.confirmacion.total) }, e: { estado: "confirmo", t: r.confirmacion.t }, k: "res|" + id + "|" + r.confirmacion.t, res: id }); });
   return l.sort((a, b) => b.e.t - a.e.t).slice(0, 40);
 }
 function pintarNotis() {
@@ -362,7 +363,7 @@ function pintarNotis() {
   const el = $("#listaNoti");
   if (el.hidden) return;
   el.innerHTML = `<div class="cab-noti"><b>Notificaciones</b>${nuevas ? `<button class="btn sec chico" id="notiLeidas">Marcar todas como leídas</button>` : ""}</div>`
-    + (l.length ? l.map(({ g, e }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por && e.por !== "Formulario web" ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
+    + (l.length ? l.map(({ g, e, res }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"${res ? ` data-notires="${res}"` : ""}><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por && e.por !== "Formulario web" ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
       : `<div class="vacio" style="margin:12px">Aquí aparecerán las entregas y novedades que marquen los mensajeros.</div>`);
 }
 async function marcarNotisLeidas() {
@@ -401,6 +402,7 @@ $("#listaNoti").addEventListener("click", e => {
   if (e.target.closest("#notiLeidas")) return marcarNotisLeidas();
   const b = e.target.closest("[data-noti]"); if (!b) return;
   $("#listaNoti").hidden = true;
+  if (b.dataset.notires) { irA("cobros"); const r = S.reservas?.[b.dataset.notires]; if (r) { $("#rsProd").value = r.producto; $("#rsFiltro").value = "confirmado"; $("#rsBuscar").value = titulo(r.nombre); pintarReservas(); setTimeout(() => $("#rsCaja").scrollIntoView({ behavior: "smooth" }), 50); } return; }
   if (S.guias[b.dataset.noti]) abrirDetalle(b.dataset.noti);
 });
 document.addEventListener("click", e => {
@@ -650,7 +652,7 @@ $("#cbCli").addEventListener("change", () => {
 });
 const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
 const claveProd = t => String(t || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-function estadoReserva(r) { return r.pagado ? "pagado" : r.cobrado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
+function estadoReserva(r) { return r.pagado ? "pagado" : r.confirmacion ? "confirmado" : r.cobrado || r.linkEnviado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
 function pintarReservas() {
   const todas = Object.entries(S.reservas || {}).map(([id, r]) => ({ id, ...r }));
   const prods = [...new Set(todas.map(r => r.producto))].sort();
@@ -665,10 +667,11 @@ function pintarReservas() {
   const abonado = del.reduce((s, r) => s + (r.abono || 0), 0);
   const uds = r => r.unidades || 1, saldoR = r => Math.max(precio * uds(r) - (r.abono || 0), 0);
   $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Clientes</span></div><div><b>${del.reduce((s, r) => s + uds(r), 0)}</b><span>Unidades</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + saldoR(r), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div>`;
-  const EST = { pendiente: ["Por cobrar", "disponible"], cobrado: ["Cobro enviado", "en_camino"], pagado: ["Pagada", "entregada"], sinabono: ["Sin abono", "novedad"] };
+  const EST = { pendiente: ["Por cobrar", "disponible"], cobrado: ["Cobro enviado", "en_camino"], confirmado: ["Confirmó datos", "recogida"], pagado: ["Pagada", "entregada"], sinabono: ["Sin abono", "novedad"] };
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
       <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
-      <div class="btns"><button class="btn chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+      ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)} · ${esc(r.confirmacion.correo)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
+      <div class="btns"><button class="btn chico" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>` : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
 $("#rsProd").onchange = pintarReservas;
@@ -684,6 +687,8 @@ $("#rsLista").addEventListener("click", async e => {
   const ref = doc(db, "usuarios", ADMIN_UID);
   try {
     if (b.dataset.rscobrar) cargarReserva(b.dataset.rscobrar);
+    if (b.dataset.rslink) await enviarLinkSaldo(b.dataset.rslink);
+    if (b.dataset.rsguia) guiaDesdeReserva(b.dataset.rsguia);
     if (b.dataset.rspagado) await updateDoc(ref, { [`reservas.${b.dataset.rspagado}.pagado`]: Date.now() });
     if (b.dataset.rsdeshacer) await updateDoc(ref, { [`reservas.${b.dataset.rsdeshacer}.pagado`]: deleteField() });
     if (b.dataset.rsborrar) {
@@ -745,6 +750,50 @@ $("#rsImp").onclick = async () => {
 // Mismo cliente aunque cambien tildes, mayúsculas o espacios
 const normNombre = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").replace(/\s+/g, " ").trim();
 const redSocial = red => ({ whatsapp: "WhatsApp", instagram: "Instagram", ml: "Mercado Libre", facebook: "Facebook", tiktok: "TikTok" })[String(red || "").trim().toLowerCase()] || titulo(red || "");
+
+/* ---------- LINK DE SALDO: el cliente elige ciudad (tarifas del catálogo) y medio de pago ---------- */
+const URL_SALDO = C.URL_ENVIO.replace(/envio\.html$/, "saldo.html");
+async function enviarLinkSaldo(id) {
+  const r = S.reservas?.[id]; if (!r) return;
+  const unitario = S.preciosReserva?.[claveProd(r.producto)] || 0;
+  if (!unitario) { toast("Primero escribe el precio final del producto"); $("#rsPrecio").focus(); return; }
+  if (r.confirmacion) { toast("Este cliente ya confirmó. Para cambiar algo, cóbrale desde la calculadora."); return; }
+  const token = r.saldoToken || (C.nuevoCodigo() + C.nuevoCodigo() + C.nuevoCodigo());
+  const datos = { nombre: titulo(r.nombre), producto: r.producto, unidades: r.unidades || 1, unitario, abonos: r.abonos?.length ? r.abonos : (r.abono ? [r.abono] : []), abono: r.abono || 0, reservaId: id, estado: "enviado", creado: Date.now() };
+  const b = writeBatch(db);
+  b.set(doc(db, "saldos", token), datos);
+  b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
+  await b.commit();
+  const link = URL_SALDO + "?c=" + token;
+  const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, ya está disponible tu reserva de ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
+  const tel = /^\d{10}$/.test(r.contacto) ? r.contacto : "";
+  window.open(tel ? `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+}
+// Cuando el cliente confirma, sus datos pasan a la reserva y el link queda cerrado.
+async function procesarSaldos(lista) {
+  for (const sd of lista) {
+    if (sd.estado !== "confirmado" || !sd.respuesta) continue;
+    try {
+      const b = writeBatch(db);
+      if (sd.reservaId) b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [sd.reservaId]: { confirmacion: { ...sd.respuesta, t: sd.confirmado || Date.now() } } } }, { merge: true });
+      b.update(doc(db, "saldos", sd.id), { estado: "recibido" });
+      await b.commit();
+      toast(`🧾 ${titulo(sd.nombre)} confirmó: ${sd.respuesta?.ciudad || ""} · total ${C.cop(sd.respuesta?.total)}`); sonido();
+    } catch (e) { console.warn("saldo", sd.id, e); }
+  }
+}
+function guiaDesdeReserva(id) {
+  const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
+  irA("nueva");
+  $("#nCli").value = titulo(r.nombre); $("#nTel").value = c.telefono || "";
+  $("#nCiudad").value = c.ciudadLocal || "bogota";
+  $("#nDir").value = c.direccion || ""; $("#nRef").value = [c.complemento, c.barrio ? "Barrio " + c.barrio : ""].filter(Boolean).join(" · ");
+  $("#nCont").value = r.producto + ((r.unidades || 1) > 1 ? " x" + r.unidades : "");
+  $("#nTipo").value = "Directo"; $("#nTipo").onchange();
+  ultimaBuscada = $("#nDir").value.trim();
+  if (c.lat != null) { ponerPin({ lat: c.lat, lng: c.lng }, "Ubicación que marcó el cliente. Revisa el marcador."); if (mapa) mapa.setView([c.lat, c.lng], 16); }
+  toast("Datos del cliente pasados a Nueva guía. Revisa y crea la guía.");
+}
 
 function cargarReserva(id) {
   const r = S.reservas?.[id]; if (!r) return;
@@ -846,6 +895,9 @@ function escuchar() {
   subs.push(onSnapshot(collection(db, "ubicaciones"), s => { S.ubicRaw = {}; s.forEach(d => S.ubicRaw[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
   subs.push(onSnapshot(collection(db, "acceso"), s => { S.acceso = s.docs.filter(d => d.id !== "_activo").map(d => ({ id: d.id, ...d.data() })); pintarAcceso(); }, () => { S.acceso = null; pintarAcceso(); }));
+  subs.push(onSnapshot(query(collection(db, "saldos"), where("estado", "==", "confirmado")), s => {
+    procesarSaldos(s.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, () => {}));
   subs.push(onSnapshot(query(collection(db, "solicitudes"), where("estado", "==", "nueva")), s => {
     S.solicitudes = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.creado - b.creado);
     procesarSolicitudes(S.solicitudes);

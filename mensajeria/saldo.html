@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tu saldo - Pipe Games</title>
+<meta name="description" content="Revisa tu saldo, elige la ciudad de envío y el medio de pago.">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="estilos.css?v=20261111f">
+<style>
+.envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+.paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
+.fila{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:480px){.fila{grid-template-columns:1fr}}
+.sug-caja{position:relative}
+.sugerencias{position:absolute;left:0;right:0;top:100%;z-index:1200;margin-top:4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);max-height:300px;overflow-y:auto}
+.sugerencias button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--ink);padding:10px 12px;font:inherit;cursor:pointer}
+.sugerencias button:last-child{border-bottom:0}
+.sugerencias button:hover{background:var(--chip)}
+.sugerencias .t2{font-size:12px;color:var(--muted)}
+.linea{display:flex;justify-content:space-between;gap:10px}
+.total{display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700}
+.opciones{display:flex;flex-direction:column;gap:6px}
+.op{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;text-align:left;font:inherit}
+.op.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.op .rad{width:16px;height:16px;border-radius:50%;border:2px solid var(--muted);flex:none;position:relative}
+.op.on .rad{border-color:var(--accent)}
+.op.on .rad::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--accent)}
+.op .info{flex:1;min-width:0;display:flex;flex-direction:column}
+.op small,.op .v small{color:var(--muted);font-size:12px;font-weight:400}
+.op .v{text-align:right;font-weight:700;display:flex;flex-direction:column;white-space:nowrap}
+#mapa{height:min(40vh,320px);min-height:220px}
+.estado-pin{font-size:13px;color:var(--muted)}
+.estado-pin.ok{color:var(--ok);font-weight:600}
+.estado-pin.mal{color:var(--bad);font-weight:600}
+.llave{font-family:var(--f-mono);font-size:26px;font-weight:600;letter-spacing:.04em}
+.listo{font-family:var(--f-display);font-size:28px;font-weight:700;line-height:1.1}
+.pie{font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<main class="envoltura">
+  <header><h1>Pipe <span class="marca">Games</span></h1><p class="nota" id="intro" style="margin:4px 0 0">Cargando tu saldo…</p></header>
+  <div id="resumen"></div>
+  <form id="fSaldo" class="lista" hidden novalidate>
+    <section class="panel">
+      <p class="paso">1. ¿A qué ciudad te lo enviamos?</p>
+      <div class="sug-caja"><label>Ciudad o municipio<input id="sCiudad" autocomplete="off" maxlength="60" placeholder="Ej. Bogotá, Medellín, Cali…"></label><div class="sugerencias" id="sCiudadSug" hidden></div></div>
+      <div id="sEnvio"></div>
+    </section>
+    <section class="panel" id="secDir" hidden>
+      <p class="paso">2. Dirección de entrega</p>
+      <div class="sug-caja"><label>Dirección<input id="sDir" autocomplete="off" maxlength="120" placeholder="Ej. Calle 26 # 68-10"></label><div class="sugerencias" id="sDirSug" hidden></div></div>
+      <div class="fila"><label>Complemento<input id="sComp" maxlength="80" placeholder="Torre, apartamento, casa…"></label><label>Barrio<input id="sBarrio" maxlength="60"></label></div>
+      <label>Celular de contacto<input id="sTel" type="tel" inputmode="numeric" maxlength="16" placeholder="3001234567"></label>
+      <div id="cajaMapa" class="lista" style="gap:8px" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Marca tu casa en el mapa</b><button class="btn sec chico" type="button" id="sGps">Usar mi ubicación</button></div>
+        <div id="mapa" class="mapa"></div>
+        <div class="estado-pin" id="sPin">Escribe la dirección o toca “Usar mi ubicación”, y revisa que el punto quede en tu casa.</div>
+      </div>
+    </section>
+    <section class="panel">
+      <p class="paso" id="tPago">3. ¿Cómo quieres pagar?</p>
+      <div class="opciones" id="sMetodos"></div>
+      <div class="aviso" id="sLimite" hidden>Para compras desde $1.000.000 solo recibimos transferencia por Llave Bre-B o tarjeta de crédito.</div>
+      <div class="lista" id="sCredito" hidden>
+        <p class="nota" style="margin:0">Para tramitar tu crédito necesitamos estos datos:</p>
+        <div class="fila"><label>Número de cédula<input id="sCedula" inputmode="numeric" maxlength="13"></label><label>Correo electrónico<input id="sCorreo" type="email" maxlength="80"></label></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div id="sTotal"></div>
+      <div class="error" id="sErr"></div>
+      <button class="btn btn-turno" type="submit" id="sBtn">Confirmar</button>
+      <p class="nota" style="margin:0">Valores aproximados. El recargo cubre la comisión de la plataforma de pago. Addi y Sistecrédito están sujetos a la aprobación de cada entidad.</p>
+    </section>
+  </form>
+  <div id="salida"></div>
+  <p class="pie">Pipe Games · Bogotá</p>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261111f";
+import * as C from "./comun.js?v=20261111f";
+import * as T from "./tarifas-envio.js?v=20261111f";
+const V = FIREBASE_VERSION;
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+const db = getFirestore(initializeApp(firebaseConfig));
+const $ = s => document.querySelector(s);
+const { esc } = C;
+const WA_TIENDA = "573118836995";
+const LLAVE = "0093607368", TITULAR = "Pipe Games";
+// Domicilio con mapa en estas ciudades (mismas del panel)
+const LOCALES = { bogota: "bogota", chia: "chia", soacha: "soacha" };
+const METODOS = C.METODOS_PAGO.filter(m => m.id !== "contraentrega"); // los mismos del catálogo
+
+const id = new URLSearchParams(location.search).get("c") || "";
+let S = null, metodo = "transf", pin = null, marcador = null, mapa = null;
+
+function mensaje(t) { $("#intro").textContent = t; }
+const precioTotal = () => (S.unitario || 0) * (S.unidades || 1);
+const saldoBase = () => precioTotal() - (S.abono || 0);
+
+function iniciar() {
+  $("#intro").textContent = `Hola ${C.primerNombre(titulo(S.nombre))}, este es el saldo de tu reserva.`;
+  const ab = S.abonos?.length ? S.abonos : (S.abono ? [S.abono] : []);
+  $("#resumen").innerHTML = `<div class="panel">
+    <div class="linea"><span><b>${esc(S.producto)}</b>${S.unidades > 1 ? ` · ${S.unidades} unidades` : ""}</span><span>${C.cop(precioTotal())}</span></div>
+    ${S.unidades > 1 ? `<div class="linea nota" style="margin:0"><span>${S.unidades} × ${C.cop(S.unitario)}</span><span></span></div>` : ""}
+    ${ab.map((v, i) => `<div class="linea"><span>${ab.length > 1 ? "Abono " + (i + 1) : "Tu abono"}</span><span>− ${C.cop(v)}</span></div>`).join("")}
+    <div class="total"><span>Saldo</span><span>${C.cop(Math.max(saldoBase(), 0))}</span></div>
+    <p class="nota" style="margin:0">Elige la ciudad y el medio de pago para ver el total con envío.</p></div>`;
+  $("#fSaldo").hidden = false;
+  pintar();
+}
+const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
+
+/* ---------- ciudad (municipios y tarifas del catálogo) ---------- */
+let env = T.envioDeCiudad("");
+function claveLocal(e) {
+  if (e.tipo !== "local") return "";
+  const k = T.envNorm(e.ciudad.split(" - ")[0]);
+  return LOCALES[k] || (k.startsWith("bogota") ? "bogota" : "");
+}
+$("#sCiudad").addEventListener("input", () => { sugerirCiudad(); pintar(); });
+$("#sCiudad").addEventListener("blur", () => setTimeout(() => {
+  const r = T.envBuscar($("#sCiudad").value);
+  if (r?.x && $("#sCiudad").value !== T.envEtiqueta(r.x)) $("#sCiudad").value = T.envEtiqueta(r.x);
+  $("#sCiudadSug").hidden = true; pintar();
+}, 150));
+function sugerirCiudad() {
+  const box = $("#sCiudadSug"), v = $("#sCiudad").value;
+  let n = T.envNorm(v.split(" - ")[0]); n = T.ENVIO_ALIAS[n] || n;
+  const r = T.envBuscar(v);
+  if (n.length < 2 || (r?.x && v.includes(" - "))) { box.hidden = true; return; }
+  const score = m => (m.k === n ? 0 : m.k.startsWith(n) ? 1 : 2) * 10 + (m.tar ? 0 : 1);
+  const res = T.ENVIO_MUNI.filter(m => m.k.startsWith(n) || m.k.split(" ").some(w => w.startsWith(n)) || (m.k === "bogota" && n.startsWith("bogota ")))
+    .sort((a, b) => score(a) - score(b) || a.k.localeCompare(b.k)).slice(0, 7);
+  box.innerHTML = res.length ? res.map(m => `<button type="button" data-k="${esc(m.key)}"><b>${esc(m.c)}</b><span class="t2">${esc(m.d)}</span></button>`).join("") : `<div class="nota" style="padding:10px 12px">No encontramos ese municipio. Revisa cómo está escrito.</div>`;
+  box.hidden = false;
+}
+$("#sCiudadSug").addEventListener("pointerdown", e => e.preventDefault());
+$("#sCiudadSug").addEventListener("click", e => {
+  const b = e.target.closest("[data-k]"); if (!b) return;
+  const m = T.ENVIO_MUNI.find(x => x.key === b.dataset.k);
+  $("#sCiudad").value = T.envEtiqueta(m); $("#sCiudadSug").hidden = true; pintar();
+});
+$("#sEnvio").addEventListener("click", e => {
+  const b = e.target.closest("[data-tr]"); if (!b) return;
+  T.envioTransp[b.dataset.clave] = b.dataset.tr; pintar();
+});
+
+/* ---------- medio de pago ---------- */
+$("#sMetodos").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (!b) return; metodo = b.dataset.m; pintar(); });
+
+function calculo() {
+  env = T.envioDeCiudad($("#sCiudad").value);
+  const envio = env.local ? env.valor : 0;
+  const base = Math.max(saldoBase(), 0) + envio;
+  const permitidos = METODOS.filter(m => !(m.credito && precioTotal() >= C.LIMITE_CREDITO));
+  if (!permitidos.some(m => m.id === metodo)) metodo = "transf";
+  const m = METODOS.find(x => x.id === metodo);
+  const total = base > 0 ? m.calc(base) : base;
+  return { envio, base, m, total, recargo: total - base, permitidos };
+}
+let ultimoMet = "";
+function pintar() {
+  if (!S) return;
+  const c = calculo();
+  // Envío
+  let htmlEnv = "";
+  if (env.tipo === "local") htmlEnv = `<div class="aviso" style="background:none"><b>${esc(env.titulo)}</b>: ${C.cop(env.valor)}</div>`;
+  else if (env.tipo === "nacional") htmlEnv = `<div class="opciones">${env.opciones.map(o => o.v
+      ? `<button type="button" class="op${o.id === env.transp ? " on" : ""}" data-tr="${o.id}" data-clave="${esc(env.clave)}"><span class="rad"></span><span class="info"><b>${esc(o.n)}</b><small>Envío a ${esc(env.ciudad)}</small></span><span class="v">${C.cop(o.v)}</span></button>`
+      : `<div class="op" style="opacity:.5;cursor:default"><span class="rad"></span><span class="info"><b>${esc(o.n)}</b><small>No disponible</small></span></div>`).join("")}</div>`;
+  else if (env.tipo === "otro") htmlEnv = `<div class="aviso"><b>${esc(env.ciudad)}</b> no está en nuestra lista de tarifas. El costo del envío te lo confirmamos por WhatsApp.</div>`;
+  else if (env.tipo === "invalido" && env.multi) htmlEnv = `<div class="aviso">Hay varios municipios con ese nombre. Elige el tuyo en la lista.</div>`;
+  else if (env.tipo === "invalido") htmlEnv = `<div class="aviso">No encontramos <b>${esc(env.ciudad)}</b>. Escribe tu municipio y elígelo de la lista.</div>`;
+  $("#sEnvio").innerHTML = htmlEnv;
+  // Dirección: con mapa solo en Bogotá, Chía y Soacha
+  const valida = ["local", "nacional", "otro"].includes(env.tipo);
+  $("#secDir").hidden = !valida;
+  const local = !!claveLocal(env);
+  $("#cajaMapa").hidden = !local;
+  $("#tPago").textContent = (valida ? "3" : "2") + ". ¿Cómo quieres pagar?";
+  if (local) prepararMapa();
+  // Medios de pago
+  const htmlMet = c.permitidos.map(m => { const t = c.base > 0 ? m.calc(c.base) : c.base, r = t - c.base;
+    return `<button type="button" class="op${m.id === metodo ? " on" : ""}" data-m="${m.id}"><span class="rad"></span><span class="info"><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span><span class="v">${C.cop(Math.max(t, 0))}<small>${r > 0 ? "+" + C.cop(r) : "Sin recargo"}</small></span></button>`; }).join("");
+  if (htmlMet !== ultimoMet) { ultimoMet = htmlMet; $("#sMetodos").innerHTML = htmlMet; }
+  $("#sLimite").hidden = precioTotal() < C.LIMITE_CREDITO;
+  $("#sCredito").hidden = !c.m.credito;
+  // Total
+  const filaEnv = env.local ? `<div class="linea"><span>${esc(env.tipo === "local" ? env.titulo : "Envío por " + (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || ""))}</span><span>${C.cop(c.envio)}</span></div>`
+    : env.tipo === "otro" ? `<div class="linea"><span>Envío a ${esc(env.ciudad)}</span><span>Se confirma por WhatsApp</span></div>` : `<div class="linea"><span>Envío</span><span>Elige tu ciudad</span></div>`;
+  $("#sTotal").innerHTML = `<div class="linea"><span>Saldo</span><span>${C.cop(Math.max(saldoBase(), 0))}</span></div>${filaEnv}${c.recargo > 0 ? `<div class="linea"><span>Recargo por medio de pago</span><span>${C.cop(c.recargo)}</span></div>` : ""}<div class="total"><span>Total a pagar</span><span>${C.cop(Math.max(c.total, 0))}</span></div>`;
+}
+
+/* ---------- mapa y dirección (Bogotá, Chía, Soacha) ---------- */
+function prepararMapa() {
+  const cfg = C.CIUDADES[claveLocal(env)];
+  if (!mapa) {
+    mapa = L.map("mapa"); C.capaMapa(L).addTo(mapa);
+    mapa.on("click", e => ponerPin(e.latlng, "Punto marcado. Puedes arrastrarlo si hace falta."));
+  }
+  if (!pin) mapa.setView([cfg.centro.lat, cfg.centro.lng], 12);
+  setTimeout(() => mapa.invalidateSize(), 60);
+}
+const estadoPin = (t, c = "") => { $("#sPin").className = "estado-pin " + c; $("#sPin").textContent = t; };
+function ponerPin(p, texto, clase = "ok") {
+  pin = { lat: +p.lat, lng: +p.lng };
+  if (!marcador) { marcador = L.marker([pin.lat, pin.lng], { draggable: true, icon: C.icono(L, "destino", "") }).addTo(mapa); marcador.on("dragend", () => { const ll = marcador.getLatLng(); pin = { lat: ll.lat, lng: ll.lng }; estadoPin("Punto ajustado.", "ok"); }); }
+  else marcador.setLatLng([pin.lat, pin.lng]);
+  mapa.setView([pin.lat, pin.lng], 17); estadoPin(texto, clase);
+}
+async function tomtom(texto) {
+  const k = claveLocal(env); if (!k) return [];
+  const c = C.CIUDADES[k], [s, w, n, e] = c.bbox, nd = C.normalizarDireccion(C.quitarCiudad(texto));
+  const q = (nd.via ? nd.texto.replace(/\s*#\s*/, " ") : texto) + ", " + c.consulta;
+  const r = await fetch(`https://api.tomtom.com/search/2/search/${encodeURIComponent(q)}.json?key=${TOMTOM_KEY}&countrySet=CO&language=es-419&limit=5&typeahead=true&lat=${c.centro.lat}&lon=${c.centro.lng}&topLeft=${n},${w}&btmRight=${s},${e}&idxSet=Addr,Str,PAD,POI,Geo`);
+  if (!r.ok) return [];
+  return ((await r.json()).results || []).filter(x => x.position).map(x => ({ lat: x.position.lat, lng: x.position.lon, t1: x.poi?.name || (x.address?.freeformAddress || "").replace(/,\s*(Bogotá|Bogota|Soacha|Chía|Chia)(,.*)?$/i, ""), t2: [x.address?.municipalitySubdivision, x.address?.municipality].filter(Boolean).join(", ") }));
+}
+let tDir = null;
+$("#sDir").addEventListener("input", () => { clearTimeout(tDir); tDir = setTimeout(async () => {
+  const t = $("#sDir").value.trim(); if (t.length < 5 || !claveLocal(env)) { $("#sDirSug").hidden = true; return; }
+  let l = []; try { l = await tomtom(t); } catch {}
+  if ($("#sDir").value.trim() !== t || !l.length) { $("#sDirSug").hidden = true; return; }
+  $("#sDirSug").innerHTML = l.map((x, i) => `<button type="button" data-i="${i}"><span>${esc(x.t1)}</span><span class="t2">${esc(x.t2)}</span></button>`).join("");
+  $("#sDirSug").hidden = false;
+  $("#sDirSug").onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; $("#sDirSug").hidden = true; ponerPin(l[+b.dataset.i], "Revisa que el punto quede en tu casa. Si no, arrástralo o toca el mapa."); };
+}, 650); });
+document.addEventListener("click", e => { if (!e.target.closest(".sug-caja")) { $("#sDirSug").hidden = true; } });
+$("#sGps").onclick = () => {
+  if (!navigator.geolocation) { estadoPin("Tu navegador no permite compartir la ubicación. Marca el punto en el mapa.", "mal"); return; }
+  estadoPin("Buscando tu ubicación…");
+  navigator.geolocation.getCurrentPosition(p => ponerPin({ lat: p.coords.latitude, lng: p.coords.longitude }, `Ubicación tomada del celular (precisión ${Math.round(p.coords.accuracy)} m). Revisa el punto.`),
+    () => estadoPin("No pudimos leer tu ubicación. Marca el punto en el mapa.", "mal"), { enableHighAccuracy: true, timeout: 15000 });
+};
+
+/* ---------- confirmar ---------- */
+$("#fSaldo").onsubmit = async e => {
+  e.preventDefault(); $("#sErr").textContent = "";
+  const c = calculo();
+  const err = (t, f) => { $("#sErr").textContent = t; if (f) $(f).focus(); };
+  if (!["local", "nacional", "otro"].includes(env.tipo)) return err("Escribe tu ciudad y elígela de la lista.", "#sCiudad");
+  const tel = $("#sTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
+  if ($("#sDir").value.trim().length < 4) return err("Escribe la dirección de entrega.", "#sDir");
+  if (!/^\d{10}$/.test(tel)) return err("Escribe un celular de 10 dígitos.", "#sTel");
+  if (claveLocal(env) && !pin) return err("Marca tu casa en el mapa: toca “Usar mi ubicación” o toca el mapa.");
+  if (c.m.credito && (!/^\d{5,13}$/.test($("#sCedula").value.replace(/\D/g, "")) || !/^\S+@\S+\.\S+$/.test($("#sCorreo").value.trim()))) return err("Escribe tu cédula y tu correo para tramitar el crédito.", "#sCedula");
+  const respuesta = {
+    ciudad: env.ciudad, tipoEnvio: env.tipo, ciudadLocal: claveLocal(env) || "", transportadora: env.tipo === "nacional" ? (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || "") : "",
+    envio: c.envio, envioPorConfirmar: env.tipo === "otro", metodo: c.m.id, metodoTxt: c.m.t, recargo: c.recargo, total: c.total, saldo: Math.max(saldoBase(), 0),
+    direccion: $("#sDir").value.trim(), complemento: $("#sComp").value.trim(), barrio: $("#sBarrio").value.trim(), telefono: tel,
+    lat: pin?.lat ?? null, lng: pin?.lng ?? null,
+    cedula: c.m.credito ? $("#sCedula").value.replace(/\D/g, "") : "", correo: c.m.credito ? $("#sCorreo").value.trim() : ""
+  };
+  const b = $("#sBtn"); b.disabled = true; b.textContent = "Enviando…";
+  try {
+    await updateDoc(doc(db, "saldos", id), { estado: "confirmado", respuesta, confirmado: Date.now() });
+    confirmado(respuesta);
+  } catch { err("No se pudo enviar. Revisa tu conexión e intenta de nuevo."); b.disabled = false; b.textContent = "Confirmar"; }
+};
+function confirmado(r) {
+  $("#fSaldo").hidden = true; $("#resumen").innerHTML = "";
+  $("#intro").textContent = S ? `Gracias, ${C.primerNombre(titulo(S.nombre))}.` : "Gracias.";
+  const total = r.total || 0;
+  const pasos = r.metodo === "transf" ? `<p style="margin:0">Transfiere <b>${C.cop(total)}</b>${r.envioPorConfirmar ? " (más el envío que te confirmaremos)" : ""} a la llave Bre-B:</p><div class="llave">${LLAVE}</div><p class="nota" style="margin:0">A nombre de ${TITULAR}. Luego envíanos el comprobante por WhatsApp.</p><button class="btn sec chico" type="button" id="cpLlave" style="align-self:flex-start">Copiar llave</button>`
+    : r.metodo === "tarjeta" ? `<p style="margin:0">Te enviaremos por WhatsApp el link de pago con tarjeta por <b>${C.cop(total)}</b>.</p>`
+    : `<p style="margin:0">Te contactaremos por WhatsApp para tramitar tu crédito con ${r.metodo === "addi" ? "Addi" : "Sistecrédito"} por <b>${C.cop(total)}</b>.</p>`;
+  const texto = `Hola, confirmo mi pedido de ${S?.producto || "mi reserva"}${S?.unidades > 1 ? " (" + S.unidades + " unidades)" : ""}.\nEnvío a: ${r.ciudad || ""}\nPago: ${r.metodoTxt || ""}\nTotal: ${C.copTxt(total)}${r.metodo === "transf" ? "\nAdjunto el comprobante." : ""}`;
+  $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Listo! Recibimos tu confirmación</div>
+    ${r.ciudad ? `<div class="linea"><span>Envío a</span><span>${esc(r.ciudad)}${r.transportadora ? " · " + esc(r.transportadora) : ""}</span></div>` : ""}
+    ${r.metodoTxt ? `<div class="linea"><span>Medio de pago</span><span>${esc(r.metodoTxt.split(" · ")[0])}</span></div>` : ""}
+    <div class="total"><span>Total a pagar</span><span>${C.cop(total)}</span></div>
+    ${pasos}
+    <a class="btn" href="https://wa.me/${WA_TIENDA}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">${r.metodo === "transf" ? "Enviar comprobante por WhatsApp" : "Escribirnos por WhatsApp"}</a></div>`;
+  $("#cpLlave") && ($("#cpLlave").onclick = async () => { try { await navigator.clipboard.writeText(LLAVE); $("#cpLlave").textContent = "Llave copiada"; } catch { prompt("Copia la llave:", LLAVE); } });
+}
+/* ---------- cargar el saldo (al final, cuando todo está definido) ---------- */
+try {
+  const s = id && /^[A-Za-z0-9]{12,40}$/.test(id) ? await getDoc(doc(db, "saldos", id)) : null;
+  if (!s || !s.exists()) mensaje("Este enlace no es válido. Escríbenos por WhatsApp y te ayudamos.");
+  else {
+    S = s.data();
+    if (S.estado !== "enviado") confirmado(S.respuesta || {}); else iniciar();
+  }
+} catch { mensaje("No pudimos cargar tu saldo. Revisa tu conexión y vuelve a abrir el enlace."); }
+
+</script>
+</body>
+</html>
