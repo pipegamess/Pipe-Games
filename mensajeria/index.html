@@ -286,13 +286,15 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <button class="btn sec chico" type="button" id="cbLimpiar">Limpiar</button>
           </div>
         </form>
-        <details class="item" id="cbAjustes">
-          <summary style="cursor:pointer"><b>Llave Bre-B</b> <span class="nota" id="cbLlaveEst"></span></summary>
-          <div class="lista" style="margin-top:10px">
-            <div class="fila"><label>Llave Bre-B<input id="ajLlave" placeholder="Pendiente"></label><label>A nombre de<input id="ajTitular" placeholder="Pipe Games"></label></div>
-            <button class="btn chico" type="button" id="ajGuardar" style="align-self:flex-start">Guardar</button>
+        <div class="item" id="cbAjustes">
+          <div class="arriba"><b>Llave Bre-B</b></div>
+          <dl class="kv"><dt>Llave</dt><dd class="guia">0093607368</dd><dt>A nombre de</dt><dd>Pipe Games</dd></dl>
+          <div class="lista" style="gap:8px">
+            <b style="font-size:14px">Foto del QR Bre-B</b>
+            <div id="cbQr"></div>
+            <div class="btns"><label class="btn sec chico" style="flex-direction:row">Adjuntar foto del QR<input type="file" id="cbQrArchivo" accept="image/*" hidden></label><a class="btn sec chico" id="cbQrBajar" download="QR-Bre-B-Pipe-Games.jpg" hidden>Descargar QR para enviar</a></div>
           </div>
-        </details>
+        </div>
         <h3>Cobros enviados</h3>
         <div class="lista" id="cbLista"></div>
       </section>
@@ -476,13 +478,22 @@ const miles = n => n ? n.toLocaleString("es-CO") : "";
 const NOMBRE_CIUDAD = { bogota: "Bogotá", soacha: "Soacha", chia: "Chía" };
 let cbMetodo = "transf";
 let ajustesCargados = false;
+// Datos fijos de pago (Bre-B)
+const LLAVE_BREB = "0093607368", TITULAR_BREB = "Pipe Games";
 function cargarAjustesCobro() {
-  const a = S.ajustesCobro || {};
-  $("#cbLlaveEst").textContent = a.llaveBreB ? "· " + a.llaveBreB : "· pendiente";
-  if (ajustesCargados) return; ajustesCargados = true;
-  $("#ajLlave").value = a.llaveBreB || ""; $("#ajTitular").value = a.titular || S.recogida?.remitente || "";
-  calcular();
+  const qr = S.ajustesCobro?.qr || "";
+  $("#cbQr").innerHTML = qr ? `<img src="${qr}" alt="Código QR Bre-B de Pipe Games" style="max-width:220px;border-radius:8px;border:1px solid var(--line)">` : `<span class="nota">Pendiente: aún no se ha adjuntado la foto del QR.</span>`;
+  $("#cbQrBajar").hidden = !qr; if (qr) $("#cbQrBajar").href = qr;
 }
+$("#cbQrArchivo").onchange = async e => {
+  const f = e.target.files?.[0]; if (!f) return;
+  try {
+    const img = await C.comprimirImagen(f);
+    await setDoc(doc(db, "usuarios", ADMIN_UID), { ajustesCobro: { qr: img } }, { merge: true });
+    S.ajustesCobro = { ...(S.ajustesCobro || {}), qr: img }; cargarAjustesCobro(); toast("Foto del QR guardada");
+  } catch (err) { toast("No se pudo guardar la foto: " + C.mensajeError(err)); }
+  e.target.value = "";
+};
 function agregarAbono(v = "") {
   const n = $("#cbAbonos").children.length + 1;
   const d = document.createElement("div"); d.className = "fila";
@@ -518,19 +529,18 @@ function calcular() {
     <div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700"><span>${d.saldo < 0 ? "Saldo a favor del cliente" : "Saldo a pagar"}</span><span style="color:${d.saldo > 0 ? "var(--accent)" : "var(--ok)"}">${C.cop(Math.abs(d.saldo))}</span></div>`;
   const a = S.ajustesCobro || {};
   const aviso = d.precio >= C.LIMITE_CREDITO ? "Desde $1.000.000 solo aplica transferencia Bre-B o tarjeta de crédito (no Addi ni Sistecrédito)."
-    : d.metodo === "transf" && !a.llaveBreB ? "La llave Bre-B está pendiente: el mensaje dirá “llave por confirmar”. Agrégala abajo en “Llave Bre-B”." : "";
+    : "";
   $("#cbAviso").hidden = !aviso; $("#cbAviso").textContent = aviso;
   $("#cbGuia").textContent = d.metodo === "contraentrega" && d.saldo > 0 ? `Crear guía contra entrega por ${C.cop(d.saldo)}` : "Crear guía con estos datos";
 }
 function mensajeCobro(d) {
-  const a = S.ajustesCobro || {}, tienda = a.titular || S.recogida?.remitente || "";
   const l = [`Hola${d.cliente ? " " + C.primerNombre(d.cliente) : ""} 👋 Este es el resumen de tu pedido:`, `• Precio final: ${C.cop(d.precio)}`];
   l.push(d.ciudad === "otro" ? `• Envío${d.destino ? " a " + d.destino : ""}: ${C.cop(d.envio)}` : `• Domicilio en ${d.destino}: ${C.cop(d.envio)}`);
   d.abonos.forEach((v, i) => l.push(`• ${i === 0 ? "Reserva/abono" : "Abono " + (i + 1)}: −${C.cop(v)}`));
   if (d.saldo <= 0) { l.push("", d.saldo < 0 ? `Tienes un saldo a favor de ${C.cop(-d.saldo)}.` : "Tu pedido está totalmente pago ✅", "¡Gracias por tu compra!"); return l.join("\n"); }
   if (d.recargo) l.push(`• Recargo ${d.metodoTxt.split(" · ")[0]}: ${C.cop(d.recargo)}`);
   l.push("", `*Saldo a pagar: ${C.cop(d.saldo)}*`, `💳 Medio de pago: ${d.metodoTxt}`, "");
-  if (d.metodo === "transf") l.push(`Transfiere a la llave Bre-B: *${a.llaveBreB || "(llave por confirmar)"}*${tienda ? " a nombre de " + tienda : ""}.`, "Envíanos el comprobante por aquí y despachamos tu pedido.");
+  if (d.metodo === "transf") l.push(`Transfiere a la llave Bre-B: *${LLAVE_BREB}* a nombre de ${TITULAR_BREB}.`, "Envíanos el comprobante por aquí y despachamos tu pedido.");
   if (d.metodo === "tarjeta") l.push("En un momento te enviamos el link de pago con tarjeta de crédito.");
   if (d.metodo === "addi" || d.metodo === "siste") l.push(`Para tramitar tu crédito con ${d.metodo === "addi" ? "Addi" : "Sistecrédito"} envíanos tu número de cédula y tu correo electrónico.`);
   if (d.metodo === "contraentrega") l.push("Lo pagas al recibir tu pedido, en efectivo o Nequi.");
@@ -574,11 +584,6 @@ $("#cbGuia").onclick = () => {
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
 $("#cbLimpiar").onclick = () => { $("#fCobro").reset(); $("#cbAbonos").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
-$("#ajGuardar").onclick = async () => {
-  const a = { ...(S.ajustesCobro || {}), llaveBreB: $("#ajLlave").value.trim(), titular: $("#ajTitular").value.trim() };
-  try { await setDoc(doc(db, "usuarios", ADMIN_UID), { ajustesCobro: a }, { merge: true }); S.ajustesCobro = a; cargarAjustesCobro(); calcular(); toast("Llave Bre-B guardada"); $("#cbAjustes").open = false; }
-  catch (err) { toast(C.mensajeError(err)); }
-};
 function pintarCobros() {
   calcular();
   const l = Object.entries(S.cobros || {}).map(([id, c]) => ({ id, ...c })).sort((a, b) => b.creado - a.creado).slice(0, 30);
