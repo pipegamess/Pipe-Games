@@ -171,15 +171,11 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <section class="panel" id="t-nueva" hidden>
         <div class="arriba" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2>Nueva guía</h2>
           <label class="formato" for="fmtImp">Formato de impresión <select id="fmtImp"><option value="etiqueta">Etiqueta 10 × 15 cm</option><option value="carta">Hoja carta</option></select></label></div>
-        <details class="item" id="formCli">
-          <summary style="cursor:pointer"><b>Formulario para que el cliente llene sus datos</b> <span class="nota">· la guía se crea sola</span></summary>
-          <p class="nota" style="margin:6px 0">Envíale al cliente el link por WhatsApp. Él escribe nombre, celular, dirección, complemento y barrio, y marca su casa en el mapa. Al enviarlo, la guía se crea sola mientras este panel esté abierto (en cualquier equipo) y te llega a la campana.</p>
-          <div class="fila"><label>Tipo de envío<select id="fcTipo"><option>Directo</option><option>Contra entrega</option><option>Otros</option></select></label><label id="fcLVal" hidden>Valor a cobrar<input id="fcVal" inputmode="numeric" placeholder="150000"></label></div>
-          <label>Contenido (opcional)<input id="fcCont" placeholder="Ej. Control PS5"></label>
-          <div class="btns"><button class="btn chico" type="button" id="fcCrear">Crear link y copiar mensaje</button><button class="btn sec chico" type="button" id="fcGen">Copiar link general</button></div>
-          <p class="nota" style="margin:0">El link personalizado sirve una sola vez y lleva el tipo de envío, el cobro y el contenido. El link general sirve para cualquiera y crea guías “Directo · Sin cobro”.</p>
-          <div id="fcRes"></div>
-        </details>
+        <div class="item" id="formCli">
+          <b>Formulario para que el cliente llene sus datos</b>
+          <span class="nota">Envíale este link por WhatsApp. El cliente escribe nombre, celular, dirección, complemento y barrio, y marca su casa en el mapa. Al enviarlo se crea sola una guía <b>Directo · Sin cobro</b> (mientras este panel esté abierto en algún equipo) y te llega a la campana.</span>
+          <div class="btns"><button class="btn chico" type="button" id="fcGen">Copiar mensaje con el link</button><a class="btn sec chico" id="fcVer" target="_blank" rel="noopener">Ver formulario</a></div>
+        </div>
         <div class="item ml-caja" id="mlCaja">
           <b>Etiquetas de Mercado Libre y Falabella</b>
           <span class="nota">Arrastra aquí los PDF de etiquetas que descargas de Mercado Libre (Flex) o de Falabella (Despacho directo), o toca el botón. Las guías se crean solas y el mensajero las recibe escaneando el código de esa misma etiqueta.</span>
@@ -356,21 +352,9 @@ document.addEventListener("click", e => {
 
 /* ---------- FORMULARIO DEL CLIENTE (envio.html) ---------- */
 const URL_ENVIO = C.URL_ENVIO;
-$("#fcTipo").onchange = () => { $("#fcLVal").hidden = $("#fcTipo").value !== "Contra entrega"; };
 const msgFormulario = link => `Hola 👋 Para enviarte tu pedido, escribe tus datos de entrega aquí (menos de un minuto): ${link}`;
-$("#fcGen").onclick = () => copiar(msgFormulario(URL_ENVIO), "Mensaje con el link general copiado");
-$("#fcCrear").onclick = async () => {
-  const tipo = $("#fcTipo").value, valor = tipo === "Contra entrega" ? parseInt($("#fcVal").value.replace(/\D/g, ""), 10) || 0 : 0;
-  if (tipo === "Contra entrega" && !valor) { toast("Escribe el valor a cobrar"); $("#fcVal").focus(); return; }
-  const id = C.nuevoCodigo() + C.nuevoCodigo();
-  try {
-    await setDoc(doc(db, "prepedidos", id), { tipoEnvio: tipo, valor, contenido: $("#fcCont").value.trim(), usado: false, creado: Date.now() });
-    const link = URL_ENVIO + "?p=" + id;
-    $("#fcRes").innerHTML = `<div class="nota" style="margin-top:6px">Link: <a href="${esc(link)}" target="_blank" rel="noopener">${esc(link)}</a></div>`;
-    copiar(msgFormulario(link), "Mensaje copiado: pégalo en el chat del cliente");
-    $("#fcCont").value = ""; $("#fcVal").value = "";
-  } catch (err) { toast(C.mensajeError(err)); }
-};
+$("#fcGen").onclick = () => copiar(msgFormulario(URL_ENVIO), "Mensaje copiado: pégalo en el chat del cliente");
+$("#fcVer").href = URL_ENVIO;
 
 // Cada solicitud nueva se convierte en guía. Todo va en una transacción:
 // si el panel está abierto en dos equipos, solo uno la crea.
