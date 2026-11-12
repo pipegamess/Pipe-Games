@@ -1133,7 +1133,11 @@ $("#skxTarifas").addEventListener("click", async e => {
   const rate = skxCot.rates.find(x => String(x.id) === rateId), d = skxCot.d;
   const b = e.target.closest("#skxCrear"); b.disabled = true; b.textContent = "Creando guía…";
   try {
-    const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: ref || "N/A" });
+    // Skydropx acepta máximo 30 caracteres en la referencia: se abrevia (Conjunto → Conj., Torre → T, Apartamento → Ap)
+    const corta = (t, max = 30) => { let x = String(t || "").replace(/\s+/g, " ").trim()
+      .replace(/conjunto( residencial)?/ig, "Conj.").replace(/torre/ig, "T").replace(/apartamento|apto\.?/ig, "Ap").replace(/barrio/ig, "B.").replace(/\s*·\s*/g, " ")
+      .replace(/\s+-\s+/g, " ").replace(/\b(de|del|la|el)\s+/ig, "").replace(/\b(T|Ap)\s+(\d)/g, "$1$2").replace(/\s+/g, " ").trim(); return x.length > max ? x.slice(0, max).trim() : x; };
+    const dirDe = (nombre, tel, correo, dir, ref) => ({ street1: dir, name: nombre, company: nombre, phone: tel, email: correo || "ventas@pipegames.com.co", reference: corta(ref) || "N/A" });
     if (!(d.valor > 0)) throw new Error("El valor declarado quedó en $0. Revisa el valor del tipo de producto en “Conexión y datos del remitente”.");
     const base = { rate_id: rateId, printing_format: "standard", declared_amount: d.valor,
       address_from: dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio),
