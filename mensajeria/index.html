@@ -7,12 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114f">
+<link rel="stylesheet" href="estilos.css?v=20261114h">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .quien{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
 .campana{position:relative}
+@media (max-width:640px){.campana .lista-noti{position:fixed!important;left:12px!important;right:12px!important;width:auto!important;top:var(--top-noti,64px)!important;max-height:calc(100vh - var(--top-noti,64px) - 16px)!important}}
 .campana>button{position:relative;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--panel,var(--bg));color:var(--ink);cursor:pointer;display:grid;place-items:center;padding:0}
 .campana>button svg{width:20px;height:20px}
 .campana .cuenta{position:absolute;top:-4px;right:-4px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--bad);color:#fff;font:700 11px/19px var(--f-body,system-ui);text-align:center}
@@ -23,8 +24,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .lista-noti .noti.nueva{background:color-mix(in srgb,var(--route) 9%,transparent)}
 .lista-noti .noti .ic{font-size:18px;line-height:1.2}
 .lista-noti .noti small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-.rejilla{display:grid;grid-template-columns:1fr;gap:14px}
-@media (min-width:960px){.rejilla{grid-template-columns:1.2fr 1fr;align-items:start}.col-mapa{position:sticky;top:12px}}
+.rejilla{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.rejilla>*{min-width:0}
+.rejilla .tabs{overflow-x:auto;max-width:100%}
+@media (min-width:960px){.rejilla{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);align-items:start}.col-mapa{position:sticky;top:12px}}
 #mapa{height:min(50vh,520px);min-height:300px}
 @media (min-width:960px){#mapa{height:calc(100vh - 100px);max-height:760px}}
 .col-mapa{position:relative}
@@ -416,10 +419,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114f";
-import * as C from "./comun.js?v=20261114f";
-import * as T from "./tarifas-envio.js?v=20261114f";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261114f";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114h";
+import * as C from "./comun.js?v=20261114h";
+import * as T from "./tarifas-envio.js?v=20261114h";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261114h";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -486,6 +489,8 @@ function revisarNotis() {
 }
 $("#bCampana").onclick = () => {
   const el = $("#listaNoti"); el.hidden = !el.hidden; pintarNotis();
+  // En pantallas angostas el panel va fijo, de borde a borde, justo debajo de la campana (nunca se sale de la pantalla)
+  if (!el.hidden) { const r = $("#bCampana").getBoundingClientRect(); el.style.setProperty("--top-noti", Math.round(r.bottom + 8) + "px"); }
   // Pedir permiso de avisos del navegador la primera vez (para avisar con la pestaña en segundo plano)
   if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
   if (!el.hidden) sonido.ctx?.resume?.();
@@ -1876,7 +1881,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261114f";
+const VERSION_PANEL = "20261114h";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
