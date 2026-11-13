@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114j">
+<link rel="stylesheet" href="estilos.css?v=20261114k">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -419,10 +419,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114j";
-import * as C from "./comun.js?v=20261114j";
-import * as T from "./tarifas-envio.js?v=20261114j";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261114j";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114k";
+import * as C from "./comun.js?v=20261114k";
+import * as T from "./tarifas-envio.js?v=20261114k";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261114k";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1881,7 +1881,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261114j";
+const VERSION_PANEL = "20261114k";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2236,8 +2236,9 @@ function pintarDetalle() {
       return (f && f !== "sin" ? `<div class="panel"><h3>${extra.length ? "Fotos" : "Foto"} ${nom}</h3><div class="fotos-entrega">${[f, ...extra].map((x, i) => `<img class="foto-entrega" alt="Foto ${i + 1} ${nom}" src="${x}">`).join("")}</div></div>` : `<div class="vacio">${f === "sin" ? (g.fotosBorradas ? "Las fotos de esta guía se borraron (más de 90 días)." : "Sin foto " + nom + ".") : "Cargando foto…"}</div>`)
         + (comp ? `<div class="panel"><h3>Comprobante de Nequi</h3><img class="foto-entrega" alt="Comprobante de pago por Nequi" src="${comp}"></div>` : ""); })()}
     ${g.destino?.verificar || S.editUbic ? `<div class="panel aviso-ubic"><b>${g.destino?.verificar ? "Ubicación cercana, comprobar manualmente." : "Editar ubicación de la entrega"}</b><span class="nota">${g.destino?.verificar ? "El sistema no encontró la dirección exacta y puso un punto cercano. " : ""}Arrastra el marcador al sitio correcto o toca el mapa. También puedes pegar un link de Google Maps o las coordenadas.</span>
-      <div class="fila" style="grid-template-columns:minmax(0,1fr) auto;align-items:end"><label>Link de Google Maps o coordenadas<input id="corrLink" placeholder="https://www.google.com/maps/…  o  4.6512, -74.1123" autocomplete="off"></label><button class="btn sec chico" data-acc="usarLink">Usar</button></div>
+      <div class="fila" style="grid-template-columns:minmax(0,1fr) auto;align-items:end"><label>Busca el lugar, o pega un link de Google Maps o coordenadas<input id="corrLink" placeholder="Ej. Zue Ámbar Soacha · Calle 26 # 68-10 · link de Maps" autocomplete="off"></label><button class="btn sec chico" data-acc="usarLink">Buscar</button></div>
       <div class="error" id="corrErr"></div>
+      <div class="lista" id="corrRes" style="gap:6px"></div>
       <div id="mapaCorr" class="mapa" style="height:260px"></div>
       <div class="btns"><button class="btn chico" data-acc="guardarUbic" ${S.corr ? "" : "disabled"}>Guardar ubicación</button>${g.destino?.verificar ? `<button class="btn sec chico" data-acc="ubicOk">La ubicación está bien</button>` : `<button class="btn sec chico" data-acc="editUbicNo">Cancelar</button>`}</div></div>` : ""}
     ${tipoAviso(g) && g.telefono ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
@@ -2285,6 +2286,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
   const n = S.abierta, g = S.guias[n];
   const a = b.dataset.acc;
   if (a === "cerrar") return cerrarDetalle();
+  if (a === "corrElegir") { S.corr = { lat: +b.dataset.lat, lng: +b.dataset.lng }; S.corrVista = null; const t = $("#corrLink").value; pintarDetalle(); if ($("#corrLink")) $("#corrLink").value = t; toast("Punto ubicado: revisa y toca Guardar ubicación"); return; }
   if (a === "editUbic") { S.editUbic = true; S.corr = null; S.corrVista = null; pintarDetalle(); setTimeout(() => document.getElementById("mapaCorr")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80); return; }
   if (a === "editUbicNo") { S.editUbic = false; S.corr = null; S.corrVista = null; pintarDetalle(); return; }
   if (a === "usarLink") {
@@ -2304,7 +2306,19 @@ $("#hojaDetalle").addEventListener("click", async e => {
       if (b.isConnected) { b.disabled = false; b.textContent = "Usar"; }
       if (!pos) return;
     }
-    if (!pos) { $("#corrErr").textContent = "No encontré el punto en ese texto. Pega el link de Google Maps (el de Compartir sirve) o las coordenadas (ej. 4.6512, -74.1123)."; return; }
+    if (!pos) {
+      // Texto normal: buscar el lugar o la dirección (conjuntos, edificios, negocios, direcciones)
+      if (/^https?:/i.test(txt) || txt.length < 3) { $("#corrErr").textContent = "No encontré el punto en ese link. Escribe el nombre del lugar o la dirección y toca Buscar."; return; }
+      b.disabled = true; b.textContent = "Buscando…";
+      try {
+        const ciu = Object.keys(C.CIUDADES).find(k => C.CIUDADES[k].nombre === g.destino?.ciudad) || "bogota";
+        const res = await tomtom(txt, "search", ciu);
+        $("#corrRes").innerHTML = res.length ? res.map((x, i) => `<button type="button" class="btn sec" style="justify-content:flex-start;text-align:left;white-space:normal" data-acc="corrElegir" data-lat="${x.lat}" data-lng="${x.lng}"><span><b>${esc(x.titulo)}</b><br><small class="nota">${esc(x.lugar)}</small></span></button>`).join("") : "";
+        if (!res.length) $("#corrErr").textContent = "No encontré ese lugar. Prueba con otro nombre o con la dirección, o toca el sitio en el mapa.";
+      } catch (err) { $("#corrErr").textContent = err.message || String(err); }
+      if (b.isConnected) { b.disabled = false; b.textContent = "Buscar"; }
+      return;
+    }
     S.corr = pos; S.corrVista = null; pintarDetalle(); toast("Punto ubicado: revisa y toca Guardar ubicación"); return;
   }
   if (a === "guardarUbic" || a === "ubicOk") {
