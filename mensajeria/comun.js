@@ -42,7 +42,7 @@ export function localidadCercana(p) {
 }
 
 export const ESTADOS = {
-  disponible: "Disponible",
+  disponible: "Pendiente de recogida",
   tomada: "Tomada",
   recogida: "Recogida",
   en_camino: "En camino",
