@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114l">
+<link rel="stylesheet" href="estilos.css?v=20261114m">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -419,10 +419,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114l";
-import * as C from "./comun.js?v=20261114l";
-import * as T from "./tarifas-envio.js?v=20261114l";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261114l";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114m";
+import * as C from "./comun.js?v=20261114m";
+import * as T from "./tarifas-envio.js?v=20261114m";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261114m";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1881,7 +1881,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261114l";
+const VERSION_PANEL = "20261114m";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2161,6 +2161,26 @@ document.addEventListener("click", e => {
 $("#vDetalle").addEventListener("click", e => { if (e.target.id === "vDetalle") cerrarDetalle(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#vDetalle").hidden) cerrarDetalle(); });
 let mapaCorr = null;
+// Segunda fuente de lugares (OpenStreetMap, gratis): encuentra conjuntos y lugares que TomTom no tiene
+async function buscarOSM(texto, ciudad) {
+  const cfg = C.CIUDADES[ciudad] || C.CIUDADES.bogota, [bs, bw, bn, be] = cfg.bbox;
+  try {
+    const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(texto)}&lat=${cfg.centro.lat}&lon=${cfg.centro.lng}&limit=6&bbox=${Math.min(bw, be) - 0.15},${Math.min(bs, bn) - 0.15},${Math.max(bw, be) + 0.15},${Math.max(bs, bn) + 0.15}`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return (d.features || []).map(f => { const p = f.properties || {}, [lng, lat] = f.geometry?.coordinates || [];
+      return { lat: +(+lat).toFixed(6), lng: +(+lng).toFixed(6), titulo: p.name || [p.street, p.housenumber].filter(Boolean).join(" "), lugar: ["OpenStreetMap", [p.street, p.housenumber].filter(Boolean).join(" "), p.district || p.locality, p.city].filter(Boolean).join(" · ") }; })
+      .filter(x => x.titulo && isFinite(x.lat) && isFinite(x.lng));
+  } catch { return []; }
+}
+async function buscarLugares(texto, ciudad) {
+  const [a, b] = await Promise.all([tomtom(texto, "search", ciudad).catch(() => []), buscarOSM(texto, ciudad)]);
+  const l = [...a]; b.forEach(x => { if (!l.some(y => Math.abs(y.lat - x.lat) < 0.0004 && Math.abs(y.lng - x.lng) < 0.0004)) l.push(x); });
+  // Primero los que contienen las palabras buscadas en el nombre
+  const pal = T.envNorm(texto).split(" ").filter(w => w.length > 2);
+  const pts = x => pal.filter(w => T.envNorm(x.titulo).includes(w)).length;
+  return l.sort((x, y) => pts(y) - pts(x)).slice(0, 8);
+}
 // Búsqueda con sugerencias mientras se escribe en "Editar ubicación"
 let timerCorr = null, ultimaCorr = "";
 document.addEventListener("input", e => {
@@ -2173,9 +2193,9 @@ document.addEventListener("input", e => {
     const g = S.guias[S.abierta]; if (!g || !$("#corrRes")) return;
     try {
       const ciu = Object.keys(C.CIUDADES).find(k => C.CIUDADES[k].nombre === g.destino?.ciudad) || "bogota";
-      const res = await tomtom(txt, "search", ciu);
+      const res = await buscarLugares(txt, ciu);
       if (!$("#corrLink") || $("#corrLink").value.trim() !== txt) return;
-      $("#corrErr").textContent = res.length ? "" : "Sin resultados. Prueba con otro nombre o con la dirección.";
+      $("#corrErr").textContent = res.length ? "" : "Sin resultados. Prueba con la dirección, o pega el link de Compartir de Google Maps.";
       $("#corrRes").innerHTML = res.map(x => `<button type="button" class="btn sec" style="justify-content:flex-start;text-align:left;white-space:normal" data-acc="corrElegir" data-lat="${x.lat}" data-lng="${x.lng}"><span><b>${esc(x.titulo)}</b><br><small class="nota">${esc(x.lugar)}</small></span></button>`).join("");
     } catch (err) { $("#corrErr").textContent = err.message || String(err); }
   }, 450);
@@ -2332,7 +2352,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
       b.disabled = true; b.textContent = "Buscando…";
       try {
         const ciu = Object.keys(C.CIUDADES).find(k => C.CIUDADES[k].nombre === g.destino?.ciudad) || "bogota";
-        const res = await tomtom(txt, "search", ciu);
+        const res = await buscarLugares(txt, ciu);
         $("#corrRes").innerHTML = res.length ? res.map((x, i) => `<button type="button" class="btn sec" style="justify-content:flex-start;text-align:left;white-space:normal" data-acc="corrElegir" data-lat="${x.lat}" data-lng="${x.lng}"><span><b>${esc(x.titulo)}</b><br><small class="nota">${esc(x.lugar)}</small></span></button>`).join("") : "";
         if (!res.length) $("#corrErr").textContent = "No encontré ese lugar. Prueba con otro nombre o con la dirección, o toca el sitio en el mapa.";
       } catch (err) { $("#corrErr").textContent = err.message || String(err); }
