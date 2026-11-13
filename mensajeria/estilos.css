@@ -96,3 +96,8 @@ body.basico .solo-maestro{display:none!important}
 /* Guía pendiente por imprimir */
 .pill.pend-imp{background:color-mix(in srgb,#f5c400 22%,var(--surface));color:var(--ink);border:1px solid #f5c400}
 button.pill{cursor:pointer;font:inherit;font-size:12px}
+/* Cifras del panel como atajos de filtro */
+.cifras button.cifra{all:unset;cursor:pointer;display:block;padding:4px 8px;margin:-4px -8px;border-radius:8px;color:inherit}
+.cifras button.cifra:hover{background:var(--chip)}
+.cifras button.cifra.on{background:var(--chip);box-shadow:inset 0 -3px 0 var(--accent)}
+.cifras button.cifra:focus-visible{outline:2px solid var(--accent)}
