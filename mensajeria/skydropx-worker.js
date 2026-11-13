@@ -46,6 +46,11 @@ export default {
     // 2) Reenviar a Skydropx
     let pedido;
     try { pedido = await req.json(); } catch { return responder({ error: "Cuerpo inválido" }, 400); }
+    // Abrir un link corto de Google Maps (maps.app.goo.gl) para leer las coordenadas del punto
+    if (String(pedido.metodo || "").toUpperCase() === "EXPANDIR") {
+      try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
+      catch (e) { return responder({ error: "No se pudo abrir el link: " + (e.message || e) }, 400); }
+    }
     const metodo = String(pedido.metodo || "GET").toUpperCase();
     const ruta = String(pedido.ruta || "");
     if (!["GET", "POST", "PATCH"].includes(metodo)) return responder({ error: "Método no permitido" }, 400);
@@ -112,4 +117,24 @@ async function verificarFirebase(token, env) {
   const llave = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", llave, b64u(f), new TextEncoder().encode(h + "." + p));
   if (!ok) throw new Error("firma no válida");
+}
+
+/* ---------- links cortos de Google Maps ---------- */
+const HOSTS_MAPS = /^(maps\.app\.goo\.gl|goo\.gl|g\.co|maps\.google\.[a-z.]+|www\.google\.[a-z.]+|google\.[a-z.]+)$/i;
+async function expandirMaps(enlace) {
+  let u = new URL(enlace.trim());
+  for (let i = 0; i < 6; i++) {
+    if (u.protocol !== "https:" || !HOSTS_MAPS.test(u.hostname)) throw new Error("solo links de Google Maps");
+    const r = await fetch(u.toString(), { redirect: "manual", headers: { "User-Agent": "Mozilla/5.0" } });
+    const sig = r.headers.get("location");
+    if (r.status >= 300 && r.status < 400 && sig) { u = new URL(sig, u); continue; }
+    // Algunas páginas traen las coordenadas en el HTML (por ejemplo /@4.6,-74.1 o center=4.6%2C-74.1)
+    if (!/@-?\d|[?&](q|ll|center|query)=-?\d|!3d-?\d|\/(search|place)\/-?\d/.test(u.toString())) {
+      const html = (await r.text()).slice(0, 300000);
+      const m = html.match(/@(-?\d{1,2}\.\d{4,}),(-?\d{1,3}\.\d{4,})/) || html.match(/center=(-?\d{1,2}\.\d{4,})%2C(-?\d{1,3}\.\d{4,})/) || html.match(/\[null,null,(-?\d{1,2}\.\d{4,}),(-?\d{1,3}\.\d{4,})\]/);
+      if (m) return "https://www.google.com/maps/@" + m[1] + "," + m[2] + ",17z";
+    }
+    return u.toString();
+  }
+  return u.toString();
 }

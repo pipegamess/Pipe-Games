@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114i">
+<link rel="stylesheet" href="estilos.css?v=20261114j">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -419,10 +419,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114i";
-import * as C from "./comun.js?v=20261114i";
-import * as T from "./tarifas-envio.js?v=20261114i";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261114i";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114j";
+import * as C from "./comun.js?v=20261114j";
+import * as T from "./tarifas-envio.js?v=20261114j";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261114j";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1881,7 +1881,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261114i";
+const VERSION_PANEL = "20261114j";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2163,8 +2163,9 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#vDeta
 let mapaCorr = null;
 // Coordenadas desde un link de Google Maps (…/@4.65,-74.1,17z · ?q=4.65,-74.1 · !3d4.65!4d-74.1) o texto "4.65, -74.1"
 function ubicacionDeTexto(t) {
-  t = decodeURIComponent(String(t || "")).trim();
-  const pats = [/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/, /@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/, /[?&](?:q|query|ll|center|destination|daddr)=(?:loc:)?(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/, /^(-?\d{1,2}\.\d+)\s*[,;]?\s+(-?\d{1,3}\.\d+)$/, /^(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)$/];
+  try { t = decodeURIComponent(String(t || "")); } catch { t = String(t || ""); }
+  t = t.replace(/\+/g, " ").trim();
+  const pats = [/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/, /@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/, /[?&](?:q|query|ll|center|destination|daddr)=(?:loc:)?(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/, /^(-?\d{1,2}\.\d+)\s*[,;]?\s+(-?\d{1,3}\.\d+)$/, /^(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)$/, /(?:search|place|dir)\/(?:[^/]*\/)?(-?\d{1,2}\.\d{3,})[,\s+]+(-?\d{1,3}\.\d{3,})/, /(-?\d{1,2}\.\d{4,})\s*,\s*\+?\s*(-?\d{1,3}\.\d{4,})/];
   for (const re of pats) { const m = t.match(re); if (m) { const lat = +m[1], lng = +m[2]; if (lat > -5 && lat < 14 && lng > -82 && lng < -66) return { lat: +lat.toFixed(6), lng: +lng.toFixed(6) }; } }
   return null;
 }
@@ -2287,8 +2288,23 @@ $("#hojaDetalle").addEventListener("click", async e => {
   if (a === "editUbic") { S.editUbic = true; S.corr = null; S.corrVista = null; pintarDetalle(); setTimeout(() => document.getElementById("mapaCorr")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80); return; }
   if (a === "editUbicNo") { S.editUbic = false; S.corr = null; S.corrVista = null; pintarDetalle(); return; }
   if (a === "usarLink") {
-    const pos = ubicacionDeTexto($("#corrLink").value);
-    if (!pos) { $("#corrErr").textContent = /goo\.gl|maps\.app/i.test($("#corrLink").value) ? "Ese es un link corto. Ábrelo, mantén presionado el punto en Google Maps y copia las coordenadas que aparecen (ej. 4.6512, -74.1123)." : "No encontré coordenadas en ese texto. Pega el link completo de Google Maps o las coordenadas (ej. 4.6512, -74.1123)."; return; }
+    const txt = $("#corrLink").value.trim(); $("#corrErr").textContent = "";
+    let pos = ubicacionDeTexto(txt);
+    // Link corto de "Compartir" (maps.app.goo.gl): se abre por el intermediario para leer el punto
+    const corto = txt.match(/https:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)\/\S+/i);
+    if (!pos && corto) {
+      b.disabled = true; b.textContent = "Leyendo link…";
+      try {
+        const url = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, ""), token = await auth.currentUser.getIdToken();
+        const j = await (await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo: "EXPANDIR", url: corto[0] }) })).json();
+        if (j.url) pos = ubicacionDeTexto(j.url);
+        else if (/Ruta no permitida|Método no permitido/.test(j.error || "")) j.error = "falta actualizar el código del intermediario en Cloudflare";
+        if (!pos) $("#corrErr").textContent = "No pude leer el punto de ese link" + (j.error ? " (" + j.error + ")" : "") + ". Mantén presionado el punto en Google Maps, copia las coordenadas que aparecen arriba (ej. 4.6512, -74.1123) y pégalas aquí.";
+      } catch (err) { $("#corrErr").textContent = "No pude abrir ese link. Copia las coordenadas del punto (ej. 4.6512, -74.1123) y pégalas aquí."; }
+      if (b.isConnected) { b.disabled = false; b.textContent = "Usar"; }
+      if (!pos) return;
+    }
+    if (!pos) { $("#corrErr").textContent = "No encontré el punto en ese texto. Pega el link de Google Maps (el de Compartir sirve) o las coordenadas (ej. 4.6512, -74.1123)."; return; }
     S.corr = pos; S.corrVista = null; pintarDetalle(); toast("Punto ubicado: revisa y toca Guardar ubicación"); return;
   }
   if (a === "guardarUbic" || a === "ubicOk") {
