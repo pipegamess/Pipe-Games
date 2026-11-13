@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114b">
+<link rel="stylesheet" href="estilos.css?v=20261114c">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -416,10 +416,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114b";
-import * as C from "./comun.js?v=20261114b";
-import * as T from "./tarifas-envio.js?v=20261114b";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261114b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114c";
+import * as C from "./comun.js?v=20261114c";
+import * as T from "./tarifas-envio.js?v=20261114c";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261114c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1876,7 +1876,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261114b";
+const VERSION_PANEL = "20261114c";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2167,6 +2167,7 @@ function pintarDetalle() {
   if (["novedad", "recogida", "en_camino"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="devolver">Marcar devuelta a la tienda</button>`);
   if (["disponible", "novedad"].includes(g.estado)) acciones.push(`<button class="btn peligro chico" data-acc="cancelar">Cancelar guía</button>`);
   // Solo el panel maestro: marcar entregada a mano (pruebas)
+  if (esMaestro() && ["disponible", "tomada", "recogida", "novedad"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="caminoManual" title="Para pruebas: marca la guía en camino sin pasar por la app">Marcar en camino (prueba)</button>`);
   if (esMaestro() && !["entregada", "cancelada", "devuelta"].includes(g.estado)) acciones.push(`<button class="btn ok chico" data-acc="entregarManual" title="Para pruebas: marca la guía como entregada sin pasar por la app">Marcar entregada (prueba)</button>`);
   if (g.estado !== "disponible") acciones.push(`<button class="btn sec chico" data-acc="reiniciar" title="Para pruebas: la guía vuelve a quedar disponible para escanear">Reiniciar guía (pruebas)</button>`);
   acciones.push(`<button class="btn peligro chico" data-acc="eliminar" title="Borra la guía, su rastreo y sus fotos. No se puede deshacer.">Eliminar guía</button>`);
@@ -2293,6 +2294,10 @@ $("#hojaDetalle").addEventListener("click", async e => {
       await lote.commit();
       Object.keys(fotoCache).forEach(k => { if (k.startsWith(n + ":")) delete fotoCache[k]; });
       toast("Guía reiniciada: ya se puede volver a escanear");
+    } else if (a === "caminoManual") {
+      if (!esMaestro()) return;
+      ev.push(C.evento("en_camino", "Marcada en camino desde el panel (prueba)", "despacho"));
+      await guardarGuia(n, { estado: "en_camino", eventos: ev }); toast("Guía marcada en camino");
     } else if (a === "entregarManual") {
       if (!esMaestro()) return;
       ev.push(C.evento("entregada", "Marcada entregada desde el panel (prueba)", "despacho"));
