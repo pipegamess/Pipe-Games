@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114c">
+<link rel="stylesheet" href="estilos.css?v=20261114d">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -179,7 +179,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
       <!-- GUÍAS -->
       <section class="panel" id="t-guias">
         <div class="cifras" id="cifras"></div>
-        <div class="buscar"><input id="busca" placeholder="Buscar por guía, cliente, dirección o número de venta" aria-label="Buscar"></div>
+        <div class="buscar" style="display:flex;gap:8px;flex-wrap:wrap"><input id="busca" style="flex:1 1 240px;min-width:0" placeholder="Buscar por guía, cliente, dirección o número de venta" aria-label="Buscar"><input id="fechaGuias" type="date" style="flex:0 0 auto" aria-label="Ver guías de una fecha" title="Ver las guías creadas en una fecha"><button class="btn sec chico" type="button" id="fechaGuiasNo" hidden>Quitar fecha</button></div>
         <div class="filtros" id="filtros"></div>
         <div class="btns"><button class="btn sec chico" id="bImpVarias">Imprimir varias guías</button></div>
         <div id="impVarias" class="item" hidden></div>
@@ -416,10 +416,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114c";
-import * as C from "./comun.js?v=20261114c";
-import * as T from "./tarifas-envio.js?v=20261114c";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261114c";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114d";
+import * as C from "./comun.js?v=20261114d";
+import * as T from "./tarifas-envio.js?v=20261114d";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261114d";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -432,7 +432,7 @@ const db = getFirestore(app);
 const $ = s => document.querySelector(s);
 const { esc } = C;
 
-const S = { guias: {}, ubic: {}, mens: {}, inv: [], entregas: [], tab: "guias", filtro: "activas", busca: "", pin: null, abierta: null, recogida: null, editRec: false, recPin: null };
+const S = { guias: {}, ubic: {}, mens: {}, inv: [], entregas: [], tab: "guias", filtro: "todas", fechaGuias: "", verAnteriores: false, busca: "", pin: null, abierta: null, recogida: null, editRec: false, recPin: null };
 let subs = [];
 
 /* ---------- NOTIFICACIONES (campana): entregas y novedades que reportan los mensajeros ---------- */
@@ -1876,7 +1876,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261114c";
+const VERSION_PANEL = "20261114d";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2072,8 +2072,12 @@ const quieta = g => LIMITE_QUIETA[g.estado] != null && horasQuieta(g) >= LIMITE_
 const textoHoras = h => h < 48 ? Math.floor(h) + " h" : Math.floor(h / 24) + " días";
 setInterval(() => { if (S.tab === "guias") pintarGuias(); }, 120000);
 
-const FILTROS = [["quietas", "Atrasadas"], ["comprobar", "Ubicación por comprobar"], ["avisar", "Por avisar"], ["imprimir", "Por imprimir"], ["activas", "Activas"], ["disponible", "Disponibles"], ["ruta", "En ruta"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["todas", "Todas"]];
+const FILTROS = [["todas", "Todas"], ["disponible", "Pendiente de recogida"], ["ruta", "En camino"], ["novedad", "Novedad"], ["entregada", "Entregadas"], ["avisar", "Por avisar"], ["imprimir", "Por imprimir"]];
+$("#fechaGuias").addEventListener("change", () => { S.fechaGuias = $("#fechaGuias").value; $("#fechaGuiasNo").hidden = !S.fechaGuias; pintar(); });
+$("#fechaGuiasNo").onclick = () => { $("#fechaGuias").value = ""; S.fechaGuias = ""; $("#fechaGuiasNo").hidden = true; pintar(); };
+const diaLocal = t => { const d = new Date(t); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
 $("#filtros").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.filtro = b.dataset.f; pintar(); } });
+$("#listaGuias").addEventListener("click", e => { if (e.target.closest("#verAnteriores")) { e.stopPropagation(); S.verAnteriores = !S.verAnteriores; pintar(); } }, true);
 $("#busca").addEventListener("input", e => { S.busca = e.target.value.trim().toLowerCase(); pintarGuias(); });
 $("#listaGuias").addEventListener("click", e => { if (e.target.closest("a[data-aviso]")) return; const it = e.target.closest("[data-g]"); if (it) abrirDetalle(it.dataset.g); });
 function pintarGuias() {
@@ -2093,14 +2097,21 @@ function pintarGuias() {
     return g.estado === S.filtro;
   });
   if (S.busca) lista = lista.filter(g => [g.numero, g.cliente, g.destino?.direccion, g.telefono, g.mensajeroNombre, g.marketplace?.venta, g.marketplace?.envio].join(" ").toLowerCase().includes(S.busca));
-  $("#listaGuias").innerHTML = lista.length ? lista.map(g => `
+  // Por fecha: solo ese día. Sin fecha (y sin búsqueda): las de hoy y, plegadas, las de días anteriores
+  const hoy = diaLocal(Date.now());
+  let anteriores = [];
+  if (S.fechaGuias) lista = lista.filter(g => diaLocal(g.creado) === S.fechaGuias);
+  else if (!S.busca) { anteriores = lista.filter(g => diaLocal(g.creado) !== hoy); lista = lista.filter(g => diaLocal(g.creado) === hoy); }
+  const tarjeta = g => `
     <div class="item clic" data-g="${esc(g.numero)}" tabindex="0">
       <div class="arriba"><span class="guia">${esc(g.numero)}</span><span style="display:flex;gap:6px;flex-wrap:wrap">${imprimible(g) ? `<button type="button" class="pill ${g.impresa ? "entregada" : "pend-imp"}" data-impt="${esc(g.numero)}" title="Toca para cambiar">${g.impresa ? "🖨 Impresa" : "🖨 Pendiente por imprimir"}</button>` : ""}${quieta(g) ? `<span class="pill novedad" title="${TXT_QUIETA[g.estado]}">Atrasada · ${textoHoras(horasQuieta(g))}</span>` : ""}${porComprobar(g) ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}${porAvisar(g) ? `<span class="pill devuelta">Sin avisar</span>` : ""}<span class="pill ${g.estado}">${C.ESTADOS[g.estado] || g.estado}</span></span></div>
       <div><b>${esc(g.cliente)}</b> · <span class="meta">${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}</span></div>
       <div class="meta">${C.fecha(g.creado)}${g.tipoEnvio ? " · " + esc(C.textoTipoEnvio(g)) : ""} · ${C.textoCobro(g)}${g.mensajeroNombre ? " · " + esc(g.mensajeroNombre) : ""}${g.estado === "novedad" ? ` · <span class="error">${esc(g.eventos?.at(-1)?.nota)}</span>` : ""}</div>
       ${porAvisar(g) ? `<div class="btns">${botonAviso(g, true)}</div>` : ""}
-    </div>`).join("")
-    : `<div class="vacio">${todas.length ? "No hay guías en este filtro." : "Aún no hay guías. Crea la primera en “Nueva guía”."}</div>`;
+    </div>`;
+  const vacioHoy = `<div class="vacio">${!todas.length ? "Aún no hay guías. Crea la primera en “Nueva guía”." : S.fechaGuias ? "No hay guías de esa fecha en este filtro." : S.busca ? "No hay guías que coincidan." : "No hay guías de hoy en este filtro."}</div>`;
+  $("#listaGuias").innerHTML = (lista.length ? lista.map(tarjeta).join("") : vacioHoy)
+    + (anteriores.length ? `<button type="button" class="btn sec" id="verAnteriores" style="justify-content:space-between">${S.verAnteriores ? "▾" : "▸"} Días anteriores (${anteriores.length})</button>${S.verAnteriores ? anteriores.map(tarjeta).join("") : ""}` : "");
 }
 
 // Impresión: pendiente (sin "impresa") o impresa; solo guías propias, no Mercado Libre ni Falabella
