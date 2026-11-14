@@ -7,8 +7,8 @@
 <meta name="description" content="Escribe tus datos de entrega para que te enviemos tu pedido.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114m">
-<link rel="stylesheet" href="tema-catalogo.css?v=20261114m">
+<link rel="stylesheet" href="estilos.css?v=20261114n">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261114n">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 #mapa{height:min(42vh,360px);min-height:240px}
@@ -43,7 +43,7 @@
   <form class="panel" id="fEnvio" novalidate>
     <label>Nombre de quien recibe<input id="eNom" autocomplete="name" maxlength="80" required></label>
     <label>Celular<input id="eTel" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16" required></label>
-    <label>Correo electrónico<input id="eMail" type="email" inputmode="email" autocomplete="email" maxlength="100" placeholder="nombre@correo.com" required></label>
+    <label id="eMailCaja" hidden>Correo electrónico<input id="eMail" type="email" inputmode="email" autocomplete="email" maxlength="100" placeholder="nombre@correo.com" required></label>
     <div class="sug-caja"><label>Ciudad o municipio<input id="eCiudad" autocomplete="off" maxlength="80" placeholder="Escribe tu ciudad o municipio" required></label><div class="sugerencias" id="eCiudadSug" hidden></div></div>
     <div id="eTransp" hidden></div>
     <div class="sug-caja"><label>Dirección<input id="eDir" autocomplete="off" maxlength="120" placeholder="Ej. Calle 26 # 68-10" required></label><div class="sugerencias" id="eSug" hidden></div></div>
@@ -64,9 +64,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261114m";
-import * as C from "./comun.js?v=20261114m";
-import * as T from "./tarifas-envio.js?v=20261114m";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261114n";
+import * as C from "./comun.js?v=20261114n";
+import * as T from "./tarifas-envio.js?v=20261114n";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, setDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -76,7 +76,7 @@ const { esc } = C;
 const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
 // Si el navegador entregó una copia vieja del formulario, cargar la publicada
-const VERSION_FORM = "20261114m";
+const VERSION_FORM = "20261114n";
 fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()).then(j => {
   if (String(j.v || "") > VERSION_FORM) { const u = new URL(location.href); if (u.searchParams.get("v") !== j.v) { u.searchParams.set("v", j.v); location.replace(u.toString()); } }
 }).catch(() => {});
@@ -130,6 +130,7 @@ function pintarCiudad() {
   const antes = claveLocal(env);
   env = T.envioDeCiudad($("#eCiudad").value);
   const local = claveLocal(env), nac = esNacional();
+  $("#eMailCaja").hidden = !nac; // el correo solo se pide para envíos fuera de Bogotá, Chía y Soacha
   resumen();
   $("#secMapa").hidden = !local;
   if (local) { setTimeout(() => mapa.invalidateSize(), 30); if (local !== antes && !pin) { const c = C.CIUDADES[local]; mapa.setView([c.centro.lat, c.centro.lng], 13); } }
@@ -212,10 +213,21 @@ async function buscar() {
   try { l = await tomtom(t, "search"); } catch {}
   if ($("#eDir").value.trim() !== t) return;
   const caja = $("#eSug");
-  if (!l.length) { caja.hidden = true; return; }
-  caja.innerHTML = l.map((x, i) => `<button type="button" data-i="${i}"><span>${esc(x.t1)}</span><span class="t2">${esc(x.t2)}</span></button>`).join("");
+  // Siempre al final: marcar la casa a mano en el mapa si no aparece en los resultados
+  caja.innerHTML = l.map((x, i) => `<button type="button" data-i="${i}"><span>${esc(x.t1)}</span><span class="t2">${esc(x.t2)}</span></button>`).join("")
+    + `<button type="button" data-manual="1"><span>📍 ${l.length ? "No aparece mi dirección" : "No encontramos tu dirección"}: la marco en el mapa</span><span class="t2">Toca en el mapa el sitio de tu casa o usa “Usar mi ubicación”</span></button>`;
   caja.hidden = false;
-  caja.onclick = e => { const b = e.target.closest("[data-i]"); if (!b) return; const x = l[+b.dataset.i]; caja.hidden = true; ponerPin(x, "Revisa que el punto quede en tu casa. Si no, arrástralo o toca el mapa en el sitio correcto."); };
+  caja.onclick = e => {
+    if (e.target.closest("[data-manual]")) { caja.hidden = true; marcarAMano(); return; }
+    const b = e.target.closest("[data-i]"); if (!b) return; const x = l[+b.dataset.i]; caja.hidden = true; ponerPin(x, "Revisa que el punto quede en tu casa. Si no, arrástralo o toca el mapa en el sitio correcto.");
+  };
+}
+function marcarAMano() {
+  const c = C.CIUDADES[ciudad()]?.centro;
+  if (!pin && c) mapa.setView([c.lat, c.lng], 14);
+  $("#ePin").textContent = "Acerca el mapa con dos dedos y toca el sitio de tu casa. El punto se puede arrastrar. También puedes tocar “Usar mi ubicación”.";
+  $("#ePin").className = "estado-pin";
+  $("#secMapa").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 document.addEventListener("click", e => { if (!e.target.closest(".sug-caja")) { $("#eSug").hidden = true; $("#eCiudadSug").hidden = true; } });
 // Si no eligió sugerencia, ubicar al salir del campo
@@ -255,8 +267,9 @@ $("#fEnvio").onsubmit = async e => {
   if (nac) { datos.municipio = env.ciudad; datos.transportadora = transp; }
   if (datos.nombre.length < 2) return error("Escribe el nombre de quien recibe.", "#eNom");
   if (!/^\d{10}$/.test(tel)) return error("Escribe un celular de 10 dígitos.", "#eTel");
-  if (!datos.correo) return error("Escribe tu correo electrónico.", "#eMail");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(datos.correo)) return error("Revisa el correo electrónico.", "#eMail");
+  if (!nac) datos.correo = "";
+  if (nac && !datos.correo) return error("Escribe tu correo electrónico.", "#eMail");
+  if (nac && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(datos.correo)) return error("Revisa el correo electrónico.", "#eMail");
   if (!nac && !claveLocal(env)) return error("Escribe tu ciudad o municipio y elígelo de la lista.", "#eCiudad");
   const otra = !nac && C.ciudadEnDireccion(T, $("#eDir").value, $("#eBarrio").value);
   if (otra) { $("#eCiudad").value = T.envEtiqueta(otra); pintarCiudad(); return error(`Tu dirección es en ${otra.c}: cambiamos la ciudad. Elige la transportadora y envía otra vez.`); }
