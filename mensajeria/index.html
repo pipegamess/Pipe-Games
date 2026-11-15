@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115j">
+<link rel="stylesheet" href="estilos.css?v=20261115k">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -423,10 +423,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115j";
-import * as C from "./comun.js?v=20261115j";
-import * as T from "./tarifas-envio.js?v=20261115j";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261115j";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115k";
+import * as C from "./comun.js?v=20261115k";
+import * as T from "./tarifas-envio.js?v=20261115k";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261115k";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -944,7 +944,7 @@ function pintarEstadoLink() {
   const chicos = `<div class="btns"><button class="btn sec chico" type="button" data-cbcopiar>Copiar link</button><a class="btn sec chico" href="${esc(i.link)}" target="_blank" rel="noopener">Ver lo que ve el cliente</a></div>`;
   const guia = c?.guia ? ` · guía <b>${esc(c.guia)}</b>` : "";
   let h;
-  if (r.pagado) h = `${paso(3, "✅ Pagado")}<span class="nota">${cr.estado === "approved" ? "Addi aprobó el crédito." : "Pago registrado."}${c?.guia ? ` Ya puedes despachar la guía ${esc(c.guia)}.` : c?.ciudadLocal ? " Crea la guía y marca la ubicación exacta en el mapa." : c ? " Revisa la orden en Skydropx para despachar." : ""}</span>${c?.ciudadLocal && !c.guia ? `<div class="btns"><button class="btn" type="button" data-cbguia>Crear guía</button></div>` : ""}`;
+  if (r.pagado) h = `${paso(3, "✅ Pagado")}<span class="nota">${cr.estado === "approved" ? "Addi aprobó el crédito." : "Pago registrado."}${c?.guia ? ` Ya puedes despachar la guía ${esc(c.guia)}.` : c?.ciudadLocal ? " Creando la guía…" : c ? " Revisa la orden en Skydropx para despachar." : ""}</span>${c?.guia ? `<div class="btns"><button class="btn sec chico" type="button" data-cbverguia="${esc(c.guia)}">Ver guía ${esc(c.guia)}</button></div>` : ""}`;
   else if (!c) h = `${paso(1, `Envíale el link a ${nom}`)}<span class="nota">${nom} elige ciudad, medio de pago y deja sus datos. Esto se actualiza solo cuando confirme.</span>
     <div class="btns"><a class="btn" href="${esc(i.url)}" target="_blank" rel="noopener">Enviar link por WhatsApp${i.tel ? "" : " (escoge el chat)"}</a></div>${chicos}`;
   else if (c.metodo !== "addi") h = `${paso(2, `${nom} confirmó: ${esc(c.metodoTxt?.split(" · ")[0] || c.metodo)} · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}. Cuando recibas el pago, márcalo.</span>
@@ -960,8 +960,9 @@ function pintarEstadoLink() {
   el.innerHTML = `<div class="lista" style="gap:8px">${origen}${alerta}${h}</div>`;
 }
 document.addEventListener("click", async e => {
-  const b = e.target.closest("[data-cbcopiar],[data-cbpagado],[data-cbbreb],[data-cbguia]"); if (!b || !cbLinkInfo) return;
+  const b = e.target.closest("[data-cbcopiar],[data-cbpagado],[data-cbbreb],[data-cbguia],[data-cbverguia]"); if (!b || !cbLinkInfo) return;
   if (b.hasAttribute("data-cbguia")) return guiaDesdeReserva(cbLinkReserva);
+  if (b.dataset.cbverguia) { if (S.guias[b.dataset.cbverguia]) abrirDetalle(b.dataset.cbverguia); else toast("La guía aún no ha cargado"); return; }
   if (b.hasAttribute("data-cbcopiar")) return copiar(cbLinkInfo.texto, "Mensaje con el link copiado");
   const r = S.reservas?.[cbLinkReserva];
   if (b.hasAttribute("data-cbpagado")) {
@@ -1309,6 +1310,49 @@ function reservaDeCatalogo(sd) {
   const total = items.reduce((a, i) => a + i.q * i.v, 0);
   const hoy = new Date().toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "2-digit" });
   return { nombre: sd.nombre || "Cliente", contacto: "", producto: "Pedidos del catálogo", detalle: sd.producto || "", items, total, unidades: 1, abono: 0, abonos: [], red: "Catálogo", fecha: hoy, orden: Date.now(), venta: true, saldoToken: sd.id, linkEnviado: sd.creado || Date.now(), ...(distintos.length ? { alertaPrecio: distintos } : {}) };
+}
+// Guía local de un pedido del catálogo ya pagado: ubica la dirección (TomTom) y la deja para comprobar si no es exacta
+const creandoGuia = new Set();
+async function crearGuiaPagada(id) {
+  if (creandoGuia.has(id)) return;
+  const r0 = S.reservas?.[id], c0 = r0?.confirmacion, rec = S.recogida;
+  if (!c0 || !rec || rec.lat == null || !C.CIUDADES[c0.ciudadLocal]) return;
+  creandoGuia.add(id);
+  try {
+    let pos = null;
+    try { pos = (await tomtom(c0.direccion, "geocode", c0.ciudadLocal))[0] || null; } catch (e) { console.warn("ubicar", e); }
+    const exacta = !!pos?.exacta, centro = C.CIUDADES[c0.ciudadLocal].centro;
+    const lat = pos ? pos.lat : centro.lat, lng = pos ? pos.lng : centro.lng;
+    let numero = "";
+    await runTransaction(db, async tx => {
+      const refA = doc(db, "usuarios", ADMIN_UID), a = await tx.get(refA);
+      const r = a.exists() ? a.data().reservas?.[id] : null, c = r?.confirmacion;
+      if (!r?.pagado || !c || c.guia) return;
+      const prefijo = C.prefijoTienda(rec.remitente);
+      let k = (a.data().consecutivos?.[prefijo] || 0) + 1;
+      numero = C.numeroGuia(prefijo, k);
+      for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
+      const loc = C.localidadEn(c.ciudadLocal, { lat, lng });
+      const g = {
+        numero, remitente: rec.remitente,
+        origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
+        cliente: titulo(r.nombre), telefono: c.telefono || "",
+        destino: { direccion: c.direccion, complemento: c.complemento || "", barrio: c.barrio || "", referencia: [c.complemento, c.barrio ? "Barrio " + c.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[c.ciudadLocal].nombre, lat, lng, aprox: !exacta, verificar: !exacta },
+        contenido: (r.items || []).map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") || r.detalle || r.producto, nota: "",
+        valor: 0, cobro: "pagado", tipoEnvio: "Directo", tipoEnvioOtro: "", marketplace: null,
+        zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
+        estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
+        reserva: id, origenWeb: true, creado: Date.now(), actualizado: Date.now(),
+        eventos: [C.evento("disponible", "Pedido del catálogo pagado" + (r.credito?.estado === "approved" ? " con Addi" : ""), "Catálogo")]
+      };
+      g.clave = C.claveDeseada(g);
+      tx.set(doc(db, "guias", numero), g);
+      tx.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(g));
+      tx.update(refA, { [`consecutivos.${prefijo}`]: k, [`reservas.${id}.confirmacion.guia`]: numero });
+    });
+    if (numero) { toast(`📦 Guía ${numero} creada para ${titulo(r0.nombre)}${exacta ? "" : " · comprueba la ubicación en el mapa"}`); sonido(); }
+  } catch (e) { console.warn("guía pagada", id, e); toast("No se pudo crear la guía de " + titulo(r0.nombre) + ": " + C.mensajeError(e)); }
+  finally { creandoGuia.delete(id); }
 }
 // Abre el cuadro de seguimiento (paso a paso) de un link de saldo ya existente
 function abrirLinkReserva(id) {
@@ -2002,11 +2046,13 @@ function escuchar() {
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); pintarEstadoLink(); if (S.tab === "nueva") pintarMapa();
     if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.orden && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida && !r.skydropx?.error && !(r.skydropx?.enviando && Date.now() - r.skydropx.enviando < 120000)).forEach(([id]) => enviarOrdenReserva(id, true));
+    // Pedido del catálogo en Bogotá, Chía o Soacha: al quedar pagado se crea la guía sola
+    if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => r.red === "Catálogo" && r.pagado && r.confirmacion?.ciudadLocal && !r.confirmacion.guia).forEach(([id]) => crearGuiaPagada(id));
   }, err));
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261115j";
+const VERSION_PANEL = "20261115k";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
