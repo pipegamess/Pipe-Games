@@ -476,6 +476,10 @@
     display:none; align-items:center; justify-content:center;
   }
   #nameModal.open { display:flex; }
+  .pc-modal { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:5000; display:none; align-items:center; justify-content:center; }
+  .pc-modal.open { display:flex; }
+  .pc-ir { text-decoration:none; background:var(--acc); color:#0a0a0f; }
+  .pc-ir:hover { background:#ffd84d; }
   .name-modal-box {
     background:var(--surface); border:1px solid var(--border); border-radius:12px;
     padding:1.5rem; width:300px; max-width:90vw;
@@ -5311,7 +5315,7 @@ let simPagoItem = null;    // {name, platform, metodo} para pedir un solo artíc
 let simCiudadTxt = '';
 let simCheckout = false;   // true = el cliente está haciendo el pedido (pasos obligatorios)
 let simNombreTxt = '';
-let simDatos = { cedula:'', email:'' }; // solo en memoria; se envían únicamente en el mensaje de WhatsApp
+let simDatos = { cedula:'', email:'' }; // se envían en el mensaje de WhatsApp y en el pedido a cuotas (link de saldo)
 function simEsCredito(id) { const m = SIM_METODOS.find(x => x.id === id); return !!(m && m.credito); }
 function simCedulaOk(v) { return /^[0-9]{5,10}$/.test(String(v || '').replace(/[.\s]/g, '')); }
 function simEmailOk(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()); }
@@ -5673,7 +5677,60 @@ function enviarPedidoWA() {
   }
   simPagoItem = null;
   pendingWAMessage = waArmarPedido(nombre, ciudad, items, metodo);
+  // Pago a cuotas: se crea el pedido en el panel y el cliente completa su dirección en su link
+  const token = pedidoCuotasPosible(ciudad, items, metodo) ? pcToken() : '';
+  if (token) pendingWAMessage += `\n\nLink de mi pedido: ${PC_URL_SALDO}?c=${token}`;
   enviarPorLinea('573118836995');
+  if (token) crearPedidoCuotas(token, nombre, ciudad, items, metodo);
+}
+
+/* ── Pedido a cuotas (Addi / Sistecrédito): queda en el panel de Pipe Games con su link de saldo ── */
+const PC_URL_SALDO = 'https://pipegames.com.co/mensajeria/saldo.html';
+const PC_FIRESTORE = 'https://firestore.googleapis.com/v1/projects/mensajeria-prueba-b9198/databases/(default)/documents/saldos';
+const PC_KEY = 'AIzaSyD7p7lfhVix5Td3Fj9QEftXbzGyNHTogp4'; // clave pública del proyecto (la misma de las páginas de mensajería)
+function pcToken() {
+  const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = new Uint32Array(18);
+  crypto.getRandomValues(r);
+  return Array.from(r, x => a[x % a.length]).join('');
+}
+function pedidoCuotasPosible(ciudad, items, metodo) {
+  if (!['addi', 'siste'].includes(metodo) || !simDatosOk() || !items.length) return false;
+  const env = envioPedido(ciudad, items);
+  return env.tipo !== 'oculto' && env.tipo !== 'invalido';
+}
+function pcValor(v) {
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(pcValor) } };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') return { integerValue: String(Math.round(v)) };
+  if (v && typeof v === 'object') return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, pcValor(x)])) } };
+  return { stringValue: String(v == null ? '' : v) };
+}
+async function crearPedidoCuotas(token, nombre, ciudad, items, metodo) {
+  const its = items.map(it => ({ n: (it.name + (it.platform ? ' · ' + it.platform : '')).slice(0, 120), q: it.qty || 1, v: priceToNum(it.price) }));
+  const total = its.reduce((a, i) => a + i.q * i.v, 0);
+  const env = envioPedido(ciudad, items);
+  const datos = {
+    nombre: (nombre || 'Cliente').slice(0, 80),
+    producto: (its[0].n + (its.length > 1 ? ` y ${its.length - 1} artículo${its.length > 2 ? 's' : ''} más` : '')).slice(0, 300),
+    items: its, unidades: 1, unitario: total, abono: 0, abonos: [], venta: true, estado: 'enviado',
+    creado: Date.now(), origen: 'catalogo', ciudadSugerida: String(env.ciudad || ciudad || '').slice(0, 80),
+    pre: { metodo, cedula: simDatos.cedula.replace(/\D/g, ''), correo: simDatos.email.trim().toLowerCase(), transp: env.tipo === 'nacional' ? (env.transp || '') : '' }
+  };
+  try {
+    const r = await fetch(`${PC_FIRESTORE}?documentId=${token}&key=${PC_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: Object.fromEntries(Object.entries(datos).map(([k, x]) => [k, pcValor(x)])) }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    pcAvisoListo(`${PC_URL_SALDO}?c=${token}`, metodo);
+  } catch (e) { console.warn('pedido a cuotas', e); }
+}
+function pcAvisoListo(link, metodo) {
+  let m = document.getElementById('pcModal');
+  if (!m) { m = document.createElement('div'); m.id = 'pcModal'; m.className = 'pc-modal'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="name-modal-box"><h3>Tu pedido quedó registrado</h3>
+    <p>Para tramitar tu crédito con ${metodo === 'addi' ? 'Addi' : 'Sistecrédito'}, completa tu dirección de envío. Cuando confirmes, revisamos tu pedido y te enviamos por WhatsApp el link para hacer la solicitud.</p>
+    <div class="name-modal-btns"><button type="button" class="btn-name-cancel" onclick="document.getElementById('pcModal').classList.remove('open')">Después</button>
+    <a class="btn-name-send pc-ir" href="${link}">Completar mi dirección</a></div></div>`;
+  m.classList.add('open');
 }
 
 /* Mensaje de pedido para WhatsApp: sin emojis (los enlaces de WhatsApp los dañan y llegan como "�") */

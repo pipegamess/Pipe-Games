@@ -136,7 +136,26 @@ service cloud.firestore {
     // Link de saldo de una reserva: el cliente lo abre con su código y confirma una sola vez
     match /saldos/{id} {
       allow get: if true;
-      allow list, create, delete: if esAdmin();
+      allow list, delete: if esAdmin();
+      // El catálogo crea el pedido cuando el cliente elige pago a cuotas (Addi o Sistecrédito)
+      allow create: if esAdmin() || (
+        id.matches('^[A-Z0-9]{18}$')
+        && request.resource.data.keys().hasOnly(['nombre', 'producto', 'items', 'unidades', 'unitario', 'abono', 'abonos', 'venta', 'estado', 'creado', 'origen', 'ciudadSugerida', 'pre'])
+        && request.resource.data.origen == 'catalogo'
+        && request.resource.data.estado == 'enviado'
+        && request.resource.data.venta == true
+        && request.resource.data.abono == 0
+        && request.resource.data.abonos.size() == 0
+        && request.resource.data.unidades == 1
+        && request.resource.data.unitario is int
+        && request.resource.data.unitario > 0 && request.resource.data.unitario < 50000000
+        && request.resource.data.nombre is string && request.resource.data.nombre.size() <= 80
+        && request.resource.data.producto is string && request.resource.data.producto.size() <= 300
+        && request.resource.data.items is list && request.resource.data.items.size() >= 1 && request.resource.data.items.size() <= 30
+        && request.resource.data.ciudadSugerida is string && request.resource.data.ciudadSugerida.size() <= 80
+        && request.resource.data.pre is map && request.resource.data.pre.size() <= 5
+        && request.resource.data.creado is int
+      );
       allow update: if esAdmin() || (
         resource.data.estado == 'enviado'
         && request.resource.data.estado == 'confirmado'

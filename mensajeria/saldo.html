@@ -8,12 +8,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115g">
+<link rel="stylesheet" href="estilos.css?v=20261115h">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261115g";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261115h";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261115g">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261115h">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -94,9 +94,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261115g";
-import * as C from "./comun.js?v=20261115g";
-import * as T from "./tarifas-envio.js?v=20261115g";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261115h";
+import * as C from "./comun.js?v=20261115h";
+import * as T from "./tarifas-envio.js?v=20261115h";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -128,6 +128,13 @@ function iniciar() {
     <p class="nota" style="margin:0">Elige la ciudad y el medio de pago para ver el total con envío.</p></div>`;
   $("#fSaldo").hidden = false;
   if (S.ciudadSugerida && !$("#sCiudad").value) { const r = T.envBuscar(S.ciudadSugerida); if (r?.x) $("#sCiudad").value = T.envEtiqueta(r.x); }
+  // Pedido armado en el catálogo: trae el medio de pago, la transportadora, la cédula y el correo que ya escribió
+  const pre = S.pre || {};
+  if (pre.metodo && METODOS.some(m => m.id === pre.metodo)) { metodo = pre.metodo; metodoElegido = true; }
+  if (pre.cedula && !$("#sCedula").value) $("#sCedula").value = String(pre.cedula).replace(/\D/g, "").slice(0, 13);
+  if (pre.correo && !$("#sCorreo").value) $("#sCorreo").value = String(pre.correo).slice(0, 80);
+  if (pre.transp) { const e = T.envioDeCiudad($("#sCiudad").value); if (e.clave) T.envioTransp[e.clave] = pre.transp; }
+  if (S.origen === "catalogo") $("#intro").textContent = `Hola ${C.primerNombre(titulo(S.nombre))}, recibimos tu pedido. Completa tu dirección y confirma para tramitar tu pago.`;
   pintar();
 }
 const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
