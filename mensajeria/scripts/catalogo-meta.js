@@ -68,7 +68,7 @@ async function foto(src) {
     if (!m) { console.error("No encontré la lista " + lista); process.exit(1); }
     for (const x of JSON.parse(m[1])) {
       const v = parseInt(String(x.price || "").replace(/\D/g, ""), 10) || 0;
-      if (!x.name || !v) continue;
+      if (!x.name || !/[A-Za-z0-9]/.test(x.name) || !v) continue; // sin nombre real (ej. ".") no va a Meta
       const plat = x.platform || lista.toUpperCase(), nk = x.name + "|" + plat;
       const enlazado = Object.prototype.hasOwnProperty.call(STOCK_MAP, nk);
       const k = enlazado ? STOCK_MAP[nk] : llave(x.name) + "|" + llavePlat(plat);
