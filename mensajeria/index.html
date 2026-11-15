@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115m">
+<link rel="stylesheet" href="estilos.css?v=20261115n">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -424,10 +424,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115m";
-import * as C from "./comun.js?v=20261115m";
-import * as T from "./tarifas-envio.js?v=20261115m";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261115m";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115n";
+import * as C from "./comun.js?v=20261115n";
+import * as T from "./tarifas-envio.js?v=20261115n";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261115n";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -807,7 +807,27 @@ $("#fCobro").addEventListener("input", e => {
 $("#fCobro").addEventListener("change", calcular);
 $("#cbMetodos").addEventListener("click", e => { const b = e.target.closest("[data-met]"); if (!b) return; cbMetodo = b.dataset.met; calcular(); });
 // Lista de productos del catálogo para elegir artículos
-$("#cbCatalogo").innerHTML = PRODUCTOS.map(p => `<option value="${esc(p.n)} · ${esc(p.p)}">${C.cop(p.v)}${p.a ? "" : " · agotado"}</option>`).join("");
+// Productos para cobrar: solo los disponibles en el catálogo, con el stock en vivo (stock.json del Excel)
+let PROD_DISP = PRODUCTOS.filter(p => p.a), dispCargado = 0;
+function pintarCatalogoCobro() { $("#cbCatalogo").innerHTML = PROD_DISP.map(p => `<option value="${esc(p.n)} · ${esc(p.p)}">${C.cop(p.v)}</option>`).join(""); }
+async function cargarDisponibles(forzar) {
+  if (!forzar && Date.now() - dispCargado < 30000) return;
+  dispCargado = Date.now();
+  let lista = PRODUCTOS, st = null;
+  try { lista = (await import(`./productos-catalogo.js?t=${Date.now()}`)).PRODUCTOS || PRODUCTOS; } catch {}
+  try { const r = await fetch(`../stock.json?_=${Date.now()}`, { cache: "no-store" }); if (r.ok) st = await r.json(); } catch {}
+  const prod = st?.productos || {}, usar = Object.keys(prod).length >= 50; // misma protección del catálogo
+  PROD_DISP = lista.filter(p => {
+    if (!usar || !p.k) return p.a;
+    let c = prod[p.k];
+    if (c === undefined) { if (!p.e) return p.a; c = 0; } // enlazado al Excel y ya no está: agotado
+    if (c < 0) return p.a; // solo unidades en importación (preventa): como esté en el catálogo
+    return c > 0;
+  });
+  pintarCatalogoCobro();
+}
+pintarCatalogoCobro(); cargarDisponibles(true);
+setInterval(() => cargarDisponibles(true), 180000);
 function agregarArticulo() {
   const f = document.createElement("div");
   f.className = "fila art"; f.style.cssText = "grid-template-columns:minmax(0,3fr) 70px minmax(0,1.3fr) auto;gap:6px;align-items:end";
@@ -815,9 +835,11 @@ function agregarArticulo() {
   $("#cbArts").appendChild(f); f.querySelector(".artN").focus();
 }
 $("#cbMasArt").onclick = agregarArticulo;
+$("#cbProd").addEventListener("focus", () => cargarDisponibles());
+$("#cbArts").addEventListener("focusin", e => { if (e.target.classList.contains("artN")) cargarDisponibles(); });
 $("#cbProd").addEventListener("input", () => {
   const val = $("#cbProd").value.trim().toLowerCase();
-  const p = PRODUCTOS.find(x => `${x.n} · ${x.p}`.toLowerCase() === val);
+  const p = PROD_DISP.find(x => `${x.n} · ${x.p}`.toLowerCase() === val);
   if (p) { $("#cbPrecio").value = miles(p.v); calcular(); }
 });
 // Link de saldo desde la calculadora: crea una "reserva" de venta y el cliente completa todo en el link
@@ -857,8 +879,8 @@ $("#cbLinkCat").onclick = () => {
   if (!lista.length) { toast("Elige el producto del catálogo"); $("#cbProd").focus(); return; }
   const norm = t => String(t || "").toLowerCase().replace(/\s+/g, " ").trim();
   const items = [], faltan = [];
-  lista.forEach(x => { const p = PRODUCTOS.find(y => norm(`${y.n} · ${y.p}`) === norm(x.n)); if (p) items.push({ n: p.n, p: p.p, q: x.q }); else faltan.push(x.n); });
-  if (faltan.length) { toast(`Elige de la lista del catálogo: ${faltan.join(", ")}`); return; }
+  lista.forEach(x => { const p = PROD_DISP.find(y => norm(`${y.n} · ${y.p}`) === norm(x.n)); if (p) items.push({ n: p.n, p: p.p, q: x.q }); else faltan.push(x.n); });
+  if (faltan.length) { toast(`No está disponible en el catálogo: ${faltan.join(", ")}. Elígelo de la lista.`); return; }
   const tel = telEscrito() || destinoCobro().tel;
   if (!tel) { toast("Escribe el WhatsApp del cliente"); $("#cbTel").focus(); return; }
   const pago = cbMetodo === "siste" ? "siste" : "addi";
@@ -874,7 +896,7 @@ $("#cbArts").addEventListener("input", e => {
   if (!e.target.classList.contains("artN")) return;
   // Al elegir un producto del catálogo, se pone su precio
   const val = e.target.value.trim().toLowerCase();
-  const p = PRODUCTOS.find(x => `${x.n} · ${x.p}`.toLowerCase() === val);
+  const p = PROD_DISP.find(x => `${x.n} · ${x.p}`.toLowerCase() === val);
   if (p) { e.target.value = p.n + " · " + p.p; e.target.closest(".art").querySelector(".artV").value = miles(p.v); calcular(); }
 });
 $("#cbMasAbono").onclick = () => { agregarAbono(); $("#cbAbonos").lastElementChild.querySelector("input").focus(); };
@@ -2081,7 +2103,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261115m";
+const VERSION_PANEL = "20261115n";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2200,6 +2222,7 @@ function verMensajero(id) {
 function irA(t) {
   if (t !== "nueva" && S.editRec) { S.editRec = false; S.recPin = null; pintarRecogida(); }
   S.tab = t; S.abierta = null; $("#vDetalle").hidden = true; if (t !== "mensajeros") S.verMens = null;
+  if (t === "cobros") cargarDisponibles();
   document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
   ["guias", "nueva", "mensajeros", "recaudo", "cobros"].forEach(x => $("#t-" + x).hidden = x !== t);
   pintar();

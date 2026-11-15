@@ -19,14 +19,21 @@ const antes = fs.existsSync(destino) ? fs.readFileSync(destino, "utf8") : "";
 if (antes !== salida) { fs.writeFileSync(destino, salida); console.log("tarifas-envio.js actualizado"); }
 else console.log("tarifas-envio.js sin cambios");
 
-// Productos del catálogo (nombre, plataforma y precio) para la calculadora de saldos de la mensajería
+// Productos del catálogo (nombre, plataforma y precio) para la calculadora de saldos de la mensajería.
+// k = llave del producto en stock.json (Excel de inventario) y e = está enlazado al Excel (si desaparece de él, queda agotado)
+const mMapa = catalogo.match(/^const PG_STOCK_MAP = (\{.*\});\s*$/m);
+const STOCK_MAP = mMapa ? JSON.parse(mMapa[1]) : {};
+const llave = v => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const llavePlat = v => { const x = llave(v); return ({ SW2: "SWITCH2", NS2: "SWITCH2", SW: "SWITCH", NS: "SWITCH" })[x] || x; };
 const productos = [];
 for (const lista of ["ps4", "ps5", "sw", "acc"]) {
   const m = catalogo.match(new RegExp("^const " + lista + " = (\\[.*\\]);\\s*$", "m"));
   if (!m) { console.error("No encontré la lista de productos " + lista); continue; }
   for (const x of JSON.parse(m[1])) {
     const v = parseInt(String(x.price || "").replace(/\D/g, ""), 10) || 0;
-    if (x.name && v) productos.push({ n: String(x.name).trim(), p: x.platform || lista.toUpperCase(), v, a: x.active !== false });
+    if (!x.name || !v) continue;
+    const p = x.platform || lista.toUpperCase(), nk = x.name + "|" + p, e = Object.prototype.hasOwnProperty.call(STOCK_MAP, nk);
+    productos.push({ n: String(x.name).trim(), p, v, a: x.active !== false, k: e ? STOCK_MAP[nk] : llave(x.name) + "|" + llavePlat(p), ...(e ? { e: 1 } : {}) });
   }
 }
 const salidaP = `// GENERADO AUTOMÁTICAMENTE desde el catálogo (index.html). No editar a mano.
