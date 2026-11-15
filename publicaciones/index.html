@@ -87,7 +87,7 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
 
 <form class="panel login" id="vLogin" hidden>
   <h2>Publicaciones · Pipe Games</h2>
-  <p class="note">Entra con la misma cuenta del panel de despacho.</p>
+  <p class="note">Entra con tu correo y contraseña de administrador de Pipe Games.</p>
   <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
   <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
   <button class="primary" type="submit" id="lEntrar">Entrar</button>
@@ -100,7 +100,7 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
       <h1>Generador de publicaciones <span>Pipe Games</span></h1>
       <p class="sub">Escribe el juego y se arman la descripción para marketplaces y el texto para Instagram.</p>
     </div>
-    <div class="top"><a href="./">Panel de despacho</a><button class="ghost" type="button" id="salir">Salir</button></div>
+    <div class="top"><button class="ghost" type="button" id="salir">Salir</button></div>
   </header>
 
   <div class="grid">
@@ -200,7 +200,7 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
 </div>
 
 <script type="module">
-import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "./config.js?v=20261114n";
+import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js?v=20261114n";
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
@@ -466,7 +466,7 @@ $("restaurarCierre").onclick = () => { try { localStorage.removeItem("pg_cierre2
 ["salidaMk", "salidaIg"].forEach(id => $(id).addEventListener("input", contar));
 document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => copiar(b.dataset.copy, b)));
 
-// Acceso: solo la cuenta de despacho
+// Acceso: solo la cuenta de administrador
 $("vLogin").addEventListener("submit", async (ev) => {
   ev.preventDefault(); $("lError").textContent = ""; $("lEntrar").disabled = true;
   try { await signInWithEmailAndPassword(auth, $("lCorreo").value.trim(), $("lClave").value); }
@@ -475,7 +475,7 @@ $("vLogin").addEventListener("submit", async (ev) => {
 });
 $("salir").onclick = () => signOut(auth);
 onAuthStateChanged(auth, async (u) => {
-  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta página es solo para la cuenta de despacho."; return; }
+  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta cuenta no tiene acceso al generador."; return; }
   $("vLogin").hidden = !!u; $("vApp").hidden = !u;
   if (!u) $("lCorreo").focus();
 });

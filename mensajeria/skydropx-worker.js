@@ -53,7 +53,7 @@ export default {
       try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
       catch (e) { return responder({ error: "No se pudo abrir el link: " + (e.message || e) }, 400); }
     }
-    // Generador de publicaciones: Claude redacta el texto (publicaciones.html)
+    // Generador de publicaciones: Claude redacta el texto (pipegames.com.co/publicaciones/)
     if (String(pedido.metodo || "").toUpperCase() === "REDACTAR") {
       if (!env.ANTHROPIC_API_KEY) return responder({ error: "Falta ANTHROPIC_API_KEY en el Worker" }, 500);
       const texto = String(pedido.prompt || "").slice(0, 12000);
