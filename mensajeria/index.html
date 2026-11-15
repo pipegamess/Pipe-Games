@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115c">
+<link rel="stylesheet" href="estilos.css?v=20261115d">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -419,10 +419,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115c";
-import * as C from "./comun.js?v=20261115c";
-import * as T from "./tarifas-envio.js?v=20261115c";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261115c";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115d";
+import * as C from "./comun.js?v=20261115d";
+import * as T from "./tarifas-envio.js?v=20261115d";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261115d";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -841,8 +841,10 @@ $("#cbLink").onclick = async () => {
   $("#cbLinkRes").innerHTML = `<b>Link de saldo de ${esc(titulo(d.cliente))} listo</b>
     <div class="guia" style="word-break:break-all;font-size:13px">${esc(link)}</div>
     <span class="nota">El cliente abre este link, ve sus productos, elige ciudad de envío y medio de pago, y deja sus datos.</span>
+    <div id="cbLinkEstado"></div>
     <div class="btns"><a class="btn chico" href="${esc(url)}" target="_blank" rel="noopener">Enviar por WhatsApp${dest.tel ? "" : " (escoge el chat)"}</a><button class="btn sec chico" type="button" id="cbLinkCopiar">Copiar mensaje</button><a class="btn sec chico" href="${esc(link)}" target="_blank" rel="noopener">Ver pantalla de saldo</a></div>`;
   $("#cbLinkCopiar").onclick = () => copiar(texto, "Mensaje con el link copiado");
+  cbLinkReserva = id; pintarEstadoLink();
   $("#cbLinkRes").scrollIntoView({ behavior: "smooth", block: "center" });
   toast("Link de saldo creado");
 };
@@ -876,7 +878,7 @@ $("#cbGuia").onclick = () => {
   $("#nTel").focus();
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
-$("#cbLimpiar").onclick = () => { $("#cbLinkRes").hidden = true; cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+$("#cbLimpiar").onclick = () => { $("#cbLinkRes").hidden = true; cbLinkReserva = null; cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
 /* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
 let cbReserva = null; // reserva cargada en la calculadora {id, tel}
 // Busca el celular del cliente: primero la reserva cargada con "Cobrar"; si no, por nombre
@@ -923,6 +925,19 @@ const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.to
 const claveProd = t => String(t || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 function estadoReserva(r) { return r.pagado ? "pagado" : r.confirmacion ? "confirmado" : r.cobrado || r.linkEnviado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
 let rsEditando = null;
+// Estado en vivo del link de saldo recién generado en la calculadora (y botón para autorizar Addi ahí mismo)
+let cbLinkReserva = null;
+function pintarEstadoLink() {
+  const el = $("#cbLinkEstado"); if (!el || !cbLinkReserva) return;
+  const r = S.reservas?.[cbLinkReserva]; if (!r) { el.innerHTML = ""; return; }
+  const c = r.confirmacion, cr = r.credito;
+  const est = { autorizado: "link de Addi enviado", approved: "crédito aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" };
+  el.innerHTML = r.pagado ? `<div class="aviso" style="border-color:var(--ok)"><b>✅ Pagado</b>${cr?.estado === "approved" ? " · Addi aprobó el crédito" : ""}</div>`
+    : !c ? `<span class="nota">⏳ Esperando que el cliente llene sus datos y confirme…</span>`
+    : `<div class="aviso">El cliente confirmó: <b>${esc(c.metodoTxt?.split(" · ")[0] || c.metodo)}</b> · ${C.cop(c.total)} · ${esc(c.ciudad || "")}${cr?.estado ? ` · Addi: ${esc(est[cr.estado] || cr.estado)}` : ""}</div>
+      ${c.metodo === "addi" ? `<div class="btns"><button class="btn chico btn-amarillo" type="button" data-cbaddi="${esc(cbLinkReserva)}">${cr?.codigo && cr.estado === "autorizado" ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button></div>` : ""}`;
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-cbaddi]"); if (b) autorizarAddi(b.dataset.cbaddi, b); });
 // Crédito Addi: el cliente confirmó con Addi y escribió por WhatsApp; al autorizar se crea la solicitud y se le envía el link
 async function autorizarAddi(id, b) {
   const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
@@ -1909,13 +1924,13 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); if (S.tab === "nueva") pintarMapa();
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); pintarEstadoLink(); if (S.tab === "nueva") pintarMapa();
     if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.orden && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida && !r.skydropx?.error && !(r.skydropx?.enviando && Date.now() - r.skydropx.enviando < 120000)).forEach(([id]) => enviarOrdenReserva(id, true));
   }, err));
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261115c";
+const VERSION_PANEL = "20261115d";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
