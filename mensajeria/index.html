@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115e">
+<link rel="stylesheet" href="estilos.css?v=20261115f">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -363,13 +363,16 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <div class="aviso" id="cbAviso" hidden></div>
           <div class="item" id="cbResumen"></div>
           <div class="item" id="cbLinkRes" hidden></div>
-          <div class="btns">
+          <div class="btns" id="cbAcciones">
             <button class="btn" type="button" id="cbLink">Generar link de saldo</button>
-            <button class="btn sec" type="button" id="cbWa">Enviar cobro por WhatsApp</button>
-            <button class="btn sec chico" type="button" id="cbCopiar">Copiar mensaje</button>
-            <button class="btn sec chico" type="button" id="cbGuia">Crear guía con estos datos</button>
             <button class="btn sec chico" type="button" id="cbLimpiar">Limpiar</button>
           </div>
+          <details id="cbOtras"><summary class="nota" style="cursor:pointer">Otras opciones (cobro sin link)</summary>
+            <div class="btns" style="margin-top:8px">
+              <button class="btn sec chico" type="button" id="cbWa">Enviar cobro por WhatsApp</button>
+              <button class="btn sec chico" type="button" id="cbCopiar">Copiar mensaje</button>
+              <button class="btn sec chico" type="button" id="cbGuia">Crear guía con estos datos</button>
+            </div></details>
         </form>
         <div class="item" id="cbAjustes" hidden>
           <div class="arriba"><b>Llave Bre-B</b></div>
@@ -420,10 +423,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115e";
-import * as C from "./comun.js?v=20261115e";
-import * as T from "./tarifas-envio.js?v=20261115e";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261115e";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115f";
+import * as C from "./comun.js?v=20261115f";
+import * as T from "./tarifas-envio.js?v=20261115f";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261115f";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -838,14 +841,10 @@ $("#cbLink").onclick = async () => {
   const url = dest.tel ? `https://api.whatsapp.com/send?phone=57${dest.tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
   ventana?.close();
   // El link queda a la vista: copiarlo, abrir la pantalla de saldo o enviarlo por WhatsApp
+  cbLinkReserva = id; cbLinkInfo = { nombre: titulo(d.cliente), link, url, texto, tel: dest.tel };
   $("#cbLinkRes").hidden = false;
-  $("#cbLinkRes").innerHTML = `<b>Link de saldo de ${esc(titulo(d.cliente))} listo</b>
-    <div class="guia" style="word-break:break-all;font-size:13px">${esc(link)}</div>
-    <span class="nota">El cliente abre este link, ve sus productos, elige ciudad de envío y medio de pago, y deja sus datos.</span>
-    <div id="cbLinkEstado"></div>
-    <div class="btns"><a class="btn chico" href="${esc(url)}" target="_blank" rel="noopener">Enviar por WhatsApp${dest.tel ? "" : " (escoge el chat)"}</a><button class="btn sec chico" type="button" id="cbLinkCopiar">Copiar mensaje</button><a class="btn sec chico" href="${esc(link)}" target="_blank" rel="noopener">Ver pantalla de saldo</a></div>`;
-  $("#cbLinkCopiar").onclick = () => copiar(texto, "Mensaje con el link copiado");
-  cbLinkReserva = id; pintarEstadoLink();
+  $("#cbLinkRes").innerHTML = `<div id="cbLinkEstado"></div>`;
+  pintarEstadoLink();
   $("#cbLinkRes").scrollIntoView({ behavior: "smooth", block: "center" });
   toast("Link de saldo creado");
 };
@@ -879,7 +878,7 @@ $("#cbGuia").onclick = () => {
   $("#nTel").focus();
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
-$("#cbLimpiar").onclick = () => { $("#cbLinkRes").hidden = true; cbLinkReserva = null; cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+$("#cbLimpiar").onclick = () => { $("#cbLinkRes").hidden = true; cbLinkReserva = null; cbLinkInfo = null; modoLink(false); cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
 /* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
 let cbReserva = null; // reserva cargada en la calculadora {id, tel}
 // Busca el celular del cliente: primero la reserva cargada con "Cobrar"; si no, por nombre
@@ -901,7 +900,7 @@ function destinoCobro() {
 }
 function pintarDestinoWa() {
   let el = document.getElementById("cbDestinoWa");
-  if (!el) { el = document.createElement("div"); el.id = "cbDestinoWa"; el.className = "nota"; $("#cbWa").parentElement.before(el); }
+  if (!el) { el = document.createElement("div"); el.id = "cbDestinoWa"; el.className = "nota"; $("#cbAcciones").before(el); }
   const d = destinoCobro(), hay = $("#cbCli").value.trim();
   el.innerHTML = !hay ? "" : d.tel ? `Se enviará al WhatsApp <b>${esc(d.tel)}</b> (${esc(d.fuente)}).`
     : `No hay celular guardado para este cliente${d.contacto ? " (contacto: " + esc(d.contacto) + ")" : ""}: WhatsApp te pedirá escoger el chat.`;
@@ -927,17 +926,49 @@ const claveProd = t => String(t || "").trim().toLowerCase().normalize("NFD").rep
 function estadoReserva(r) { return r.pagado ? "pagado" : r.confirmacion ? "confirmado" : r.cobrado || r.linkEnviado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
 let rsEditando = null;
 // Estado en vivo del link de saldo recién generado en la calculadora (y botón para autorizar Addi ahí mismo)
-let cbLinkReserva = null;
-function pintarEstadoLink() {
-  const el = $("#cbLinkEstado"); if (!el || !cbLinkReserva) return;
-  const r = S.reservas?.[cbLinkReserva]; if (!r) { el.innerHTML = ""; return; }
-  const c = r.confirmacion, cr = r.credito;
-  const est = { autorizado: "link de Addi enviado", approved: "crédito aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" };
-  el.innerHTML = r.pagado ? `<div class="aviso" style="border-color:var(--ok)"><b>✅ Pagado</b>${cr?.estado === "approved" ? " · Addi aprobó el crédito" : ""}</div>`
-    : !c ? `<span class="nota">⏳ Esperando que el cliente llene sus datos y confirme…</span>`
-    : `<div class="aviso">El cliente confirmó: <b>${esc(c.metodoTxt?.split(" · ")[0] || c.metodo)}</b> · ${C.cop(c.total)} · ${esc(c.ciudad || "")}${cr?.estado ? ` · Addi: ${esc(est[cr.estado] || cr.estado)}` : ""}</div>
-      ${c.metodo === "addi" ? `<div class="btns"><button class="btn chico btn-amarillo" type="button" data-cbaddi="${esc(cbLinkReserva)}">${cr?.codigo && cr.estado === "autorizado" ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button></div>` : ""}`;
+let cbLinkReserva = null, cbLinkInfo = null;
+// Con un link generado, abajo solo queda "Nuevo cobro"
+function modoLink(on) {
+  $("#cbLink").hidden = on; $("#cbOtras").hidden = on;
+  $("#cbLimpiar").textContent = on ? "Nuevo cobro" : "Limpiar";
+  const n = document.getElementById("cbDestinoWa"); if (n && on) n.hidden = true;
 }
+// Un paso a la vez: qué pasó y la única acción que toca ahora
+function pintarEstadoLink() {
+  const el = $("#cbLinkEstado"); if (!el || !cbLinkReserva || !cbLinkInfo) return;
+  modoLink(true);
+  const r = S.reservas?.[cbLinkReserva] || {}, c = r.confirmacion, cr = r.credito || {}, i = cbLinkInfo;
+  const nom = esc(C.primerNombre(i.nombre));
+  const paso = (n, t) => `<div class="nota" style="margin:0">Paso ${n} de 3</div><b>${t}</b>`;
+  const chicos = `<div class="btns"><button class="btn sec chico" type="button" data-cbcopiar>Copiar link</button><a class="btn sec chico" href="${esc(i.link)}" target="_blank" rel="noopener">Ver lo que ve el cliente</a></div>`;
+  const guia = c?.guia ? ` · guía <b>${esc(c.guia)}</b>` : "";
+  let h;
+  if (r.pagado) h = `${paso(3, "✅ Pagado")}<span class="nota">${cr.estado === "approved" ? "Addi aprobó el crédito." : "Pago registrado."}${c?.guia ? ` Ya puedes despachar la guía ${esc(c.guia)}.` : c ? " Revisa la orden en Skydropx para despachar." : ""}</span>`;
+  else if (!c) h = `${paso(1, `Envíale el link a ${nom}`)}<span class="nota">${nom} elige ciudad, medio de pago y deja sus datos. Esto se actualiza solo cuando confirme.</span>
+    <div class="btns"><a class="btn" href="${esc(i.url)}" target="_blank" rel="noopener">Enviar link por WhatsApp${i.tel ? "" : " (escoge el chat)"}</a></div>${chicos}`;
+  else if (c.metodo !== "addi") h = `${paso(2, `${nom} confirmó: ${esc(c.metodoTxt?.split(" · ")[0] || c.metodo)} · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}. Cuando recibas el pago, márcalo.</span>
+    <div class="btns"><button class="btn" type="button" data-cbpagado>Marcar pagado</button></div>`;
+  else if (cr.estado === "rejected" || cr.estado === "declined") h = `${paso(2, "❌ Addi no aprobó el crédito")}<span class="nota">Ofrécele a ${nom} pagar por Bre-B. Si paga, márcalo pagado${c.guia ? `; si no compra, borra la guía ${esc(c.guia)}` : ""}.</span>
+    <div class="btns"><button class="btn" type="button" data-cbbreb>Enviar datos de Bre-B por WhatsApp</button><button class="btn sec chico" type="button" data-cbpagado>Marcar pagado</button></div>`;
+  else if (cr.estado === "autorizado" && cr.codigo) h = `${paso(2, `⏳ Esperando que ${nom} complete Addi`)}<span class="nota">Le enviaste el link de Addi (vence en 2 horas). Esto se actualiza solo cuando Addi responda.</span>
+    <div class="btns"><button class="btn sec chico" type="button" data-cbaddi="${esc(cbLinkReserva)}">Reenviar link de Addi</button></div>`;
+  else h = `${paso(2, `${nom} eligió Addi · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}.${cr.estado === "abandoned" ? " No terminó la solicitud anterior." : ""} Si estás de acuerdo, autoriza y se le envía el link de Addi.</span>
+    <div class="btns"><button class="btn btn-amarillo" type="button" data-cbaddi="${esc(cbLinkReserva)}">Autorizar crédito Addi</button></div>`;
+  el.innerHTML = `<div class="lista" style="gap:8px">${h}</div>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-cbcopiar],[data-cbpagado],[data-cbbreb]"); if (!b || !cbLinkInfo) return;
+  if (b.hasAttribute("data-cbcopiar")) return copiar(cbLinkInfo.texto, "Mensaje con el link copiado");
+  const r = S.reservas?.[cbLinkReserva];
+  if (b.hasAttribute("data-cbpagado")) {
+    if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez para confirmar"; return; }
+    try { await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${cbLinkReserva}.pagado`]: Date.now() }); toast("Marcado como pagado"); } catch (err) { toast(C.mensajeError(err)); }
+    return;
+  }
+  const tel = C.telWhatsApp(r?.confirmacion?.telefono || r?.contacto || cbLinkInfo.tel);
+  const texto = `Hola ${C.primerNombre(cbLinkInfo.nombre)}, Addi no aprobó el crédito esta vez. Puedes pagar ${C.copTxt(r?.confirmacion?.total || 0)} por transferencia Bre-B a la llave ${LLAVE_BREB} a nombre de ${TITULAR_BREB}. Envíanos el comprobante por este medio.`;
+  window.open(tel ? `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+});
 document.addEventListener("click", e => { const b = e.target.closest("[data-cbaddi]"); if (b) autorizarAddi(b.dataset.cbaddi, b); });
 // Crédito Addi: el cliente confirmó con Addi y escribió por WhatsApp; al autorizar se crea la solicitud y se le envía el link
 async function autorizarAddi(id, b) {
@@ -992,7 +1023,7 @@ function pintarReservas() {
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.correo ? ` · ${esc(r.confirmacion.correo)}` : " · <b>sin correo</b>"}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
       ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular<input id="rsEdTel" inputmode="numeric" maxlength="16" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
       <div class="btns"><button class="btn chico" data-rsedguardar="${r.id}">Guardar</button><button class="btn sec chico" data-rsedcancel="1">Cancelar</button></div>` : ""}
-      <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}${r.confirmacion?.metodo === "addi" && !r.pagado ? `<button class="btn chico btn-amarillo" data-rsaddi="${r.id}">${r.credito?.url ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button>${r.credito?.estado ? `<span class="pill${r.credito.estado === "approved" ? " entregada" : ""}">Addi: ${esc({ autorizado: "link enviado", approved: "aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" }[r.credito.estado] || r.credito.estado)}</span>` : ""}` : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+      <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}${r.confirmacion?.metodo === "addi" && !r.pagado ? `${["rejected", "declined"].includes(r.credito?.estado) ? "" : `<button class="btn chico btn-amarillo" data-rsaddi="${r.id}">${r.credito?.url ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button>`}${r.credito?.estado ? `<span class="pill${r.credito.estado === "approved" ? " entregada" : ""}">Addi: ${esc({ autorizado: "link enviado", approved: "aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" }[r.credito.estado] || r.credito.estado)}</span>` : ""}` : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
 $("#rsProd").onchange = pintarReservas;
@@ -1932,7 +1963,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261115e";
+const VERSION_PANEL = "20261115f";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
