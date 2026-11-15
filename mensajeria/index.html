@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114n">
+<link rel="stylesheet" href="estilos.css?v=20261115a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -419,10 +419,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261114n";
-import * as C from "./comun.js?v=20261114n";
-import * as T from "./tarifas-envio.js?v=20261114n";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261114n";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115a";
+import * as C from "./comun.js?v=20261115a";
+import * as T from "./tarifas-envio.js?v=20261115a";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261115a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -923,6 +923,34 @@ const titulo = t => String(t || "").toLowerCase().replace(/(^|\s)\S/g, x => x.to
 const claveProd = t => String(t || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 function estadoReserva(r) { return r.pagado ? "pagado" : r.confirmacion ? "confirmado" : r.cobrado || r.linkEnviado ? "cobrado" : !r.abono ? "sinabono" : "pendiente"; }
 let rsEditando = null;
+// Crédito Addi: el cliente confirmó con Addi y escribió por WhatsApp; al autorizar se crea la solicitud y se le envía el link
+async function autorizarAddi(id, b) {
+  const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
+  const tel = C.telWhatsApp(c.telefono || r.contacto);
+  const enviar = link => {
+    const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, autorizamos tu pedido. Completa tu pago a cuotas con Addi por ${C.copTxt(c.total)} aquí (el link vence en 2 horas):\n${link}`;
+    window.open(tel ? `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+  };
+  // Si el link sigue vigente (menos de 2 horas), solo se reenvía
+  if (r.credito?.url && Date.now() - (r.credito.t || 0) < 1.9 * 3600e3 && r.credito.estado === "autorizado") { enviar(r.credito.url); return; }
+  if (!/^\d{5,13}$/.test(c.cedula || "")) { toast("Falta la cédula del cliente (debe confirmar con Addi en el link de saldo)"); return; }
+  b.disabled = true; b.textContent = "Creando solicitud en Addi…";
+  try {
+    const items = r.items || [{ n: r.producto, q: r.unidades || 1, v: Math.round(((c.total || 0) - (c.envio || 0)) / (r.unidades || 1)) }];
+    // Addi cobra el total que confirmó el cliente (incluye el recargo de Addi): se reparte en los artículos
+    const sumaItems = items.reduce((a, x) => a + x.q * x.v, 0), objetivo = (c.total || 0) - (c.envio || 0);
+    const ajustados = sumaItems > 0 && sumaItems !== objetivo ? items.map((x, i) => ({ ...x, v: i === items.length - 1 ? x.v : Math.round(x.v * objetivo / sumaItems) })) : items;
+    if (ajustados.length) { const resto = objetivo - ajustados.slice(0, -1).reduce((a, x) => a + x.q * x.v, 0); const u = ajustados[ajustados.length - 1]; u.v = Math.round(resto / u.q); }
+    const pedido = { orderId: id + "-" + Date.now().toString(36), reserva: id, total: c.total, envio: c.envio || 0, nombre: titulo(r.nombre), cedula: c.cedula, correo: c.correo, telefono: c.telefono || r.contacto,
+      direccion: [c.direccion, c.complemento].filter(Boolean).join(" "), ciudad: (c.ciudad || "").split(" - ")[0], items: ajustados };
+    const url = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, ""), token = await auth.currentUser.getIdToken();
+    const j = await (await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo: "ADDI_CREAR", pedido }) })).json();
+    if (!j.url) throw new Error(j.error || "Addi no devolvió el link");
+    await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${id}.credito`]: { estado: "autorizado", url: j.url, orden: pedido.orderId, t: Date.now() } });
+    enviar(j.url); toast("Solicitud creada en Addi: envíale el link al cliente");
+  } catch (err) { toast(String(err.message || err).slice(0, 300)); $("#skxRaw") && ($("#skxRaw").textContent = "ADDI_CREAR → " + (err.message || err)); }
+  if (b.isConnected) { b.disabled = false; b.textContent = "Autorizar crédito Addi"; }
+}
 function pintarReservas() {
   const todas = Object.entries(S.reservas || {}).map(([id, r]) => ({ id, ...r }));
   const prods = [...new Set(todas.map(r => r.producto))].sort();
@@ -943,7 +971,7 @@ function pintarReservas() {
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.correo ? ` · ${esc(r.confirmacion.correo)}` : " · <b>sin correo</b>"}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
       ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular<input id="rsEdTel" inputmode="numeric" maxlength="16" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
       <div class="btns"><button class="btn chico" data-rsedguardar="${r.id}">Guardar</button><button class="btn sec chico" data-rsedcancel="1">Cancelar</button></div>` : ""}
-      <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+      <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}${r.confirmacion?.metodo === "addi" && !r.pagado ? `<button class="btn chico btn-amarillo" data-rsaddi="${r.id}">${r.credito?.url ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button>${r.credito?.estado ? `<span class="pill${r.credito.estado === "approved" ? " entregada" : ""}">Addi: ${esc({ autorizado: "link enviado", approved: "aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" }[r.credito.estado] || r.credito.estado)}</span>` : ""}` : ""}<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
 $("#rsProd").onchange = pintarReservas;
@@ -975,6 +1003,7 @@ $("#rsPrecio").addEventListener("change", async () => {
 $("#rsLista").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const ref = doc(db, "usuarios", ADMIN_UID);
+  if (b.dataset.rsaddi) { autorizarAddi(b.dataset.rsaddi, b); return; }
   if (b.dataset.rsedit) { rsEditando = b.dataset.rsedit; pintarReservas(); $("#rsEdNom")?.focus(); return; }
   if (b.dataset.rsedcancel) { rsEditando = null; pintarReservas(); return; }
   if (b.dataset.rsedguardar) {
@@ -1881,7 +1910,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261114n";
+const VERSION_PANEL = "20261115a";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {

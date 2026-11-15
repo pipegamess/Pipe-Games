@@ -8,6 +8,12 @@
 //   FIREBASE_PROJECT        (Text)    mensajeria-prueba-b9198
 //   ADMIN_UID               (Text)    8xMsK91tEja5hzhBtjqDIgCP0423
 //   ORIGEN                  (Text, opcional) https://pipegames.com.co
+//
+// Addi (pago a cuotas), opcional:
+//   ADDI_CLIENT_ID / ADDI_CLIENT_SECRET   (Secret)  credenciales de operación
+//   ADDI_NOTI_USER / ADDI_NOTI_PASS       (Secret)  credenciales de notificación (Basic Auth del aviso de Addi)
+//   ADDI_AMBIENTE                         (Text, opcional) "produccion" (por defecto) o "pruebas"
+//   FIREBASE_SA                           (Secret)  JSON de la cuenta de servicio de Firebase (para marcar pagado)
 //   ANTHROPIC_API_KEY       (Secret)  Clave de la API de Claude (console.anthropic.com) para el generador de publicaciones
 //   ANTHROPIC_MODEL         (Text, opcional) claude-sonnet-5-5
 //
@@ -33,8 +39,11 @@ export default {
     const base = (env.SKYDROPX_BASE || BASE_POR_DEFECTO).replace(/\/+$/, "");
     const url = new URL(req.url);
     if (req.method === "GET" && url.pathname === "/salud") {
-      return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID });
+      return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
+        addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA });
     }
+    // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
+    if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
     if (req.method !== "POST") return responder({ error: "Método no permitido" }, 405);
 
     // 1) Solo la cuenta de despacho (token de Firebase verificado)
@@ -48,6 +57,11 @@ export default {
     // 2) Reenviar a Skydropx
     let pedido;
     try { pedido = await req.json(); } catch { return responder({ error: "Cuerpo inválido" }, 400); }
+    // Crear la solicitud de crédito en Addi (solo desde el panel, después de autorizar por WhatsApp)
+    if (String(pedido.metodo || "").toUpperCase() === "ADDI_CREAR") {
+      try { return responder(await crearAddi(pedido.pedido || {}, env, url)); }
+      catch (e) { return responder({ error: "Addi: " + (e.message || e) }, 400); }
+    }
     // Abrir un link corto de Google Maps (maps.app.goo.gl) para leer las coordenadas del punto
     if (String(pedido.metodo || "").toUpperCase() === "EXPANDIR") {
       try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
@@ -157,4 +171,93 @@ async function expandirMaps(enlace) {
     return u.toString();
   }
   return u.toString();
+}
+
+/* ---------- Addi: pago a cuotas ---------- */
+function addiUrls(env) {
+  const pruebas = String(env.ADDI_AMBIENTE || "").toLowerCase().startsWith("prueba");
+  return {
+    auth: env.ADDI_AUTH_URL || (pruebas ? "https://auth.addi-staging.com/oauth/token" : "https://auth.addi.com/oauth/token"),
+    audience: env.ADDI_AUDIENCE || (pruebas ? "https://api.staging.addi.com" : "https://api.addi.com"),
+    api: env.ADDI_API_URL || (pruebas ? "https://api.addi-staging.com" : "https://api.addi.com")
+  };
+}
+async function crearAddi(p, env, url) {
+  if (!env.ADDI_CLIENT_ID || !env.ADDI_CLIENT_SECRET) throw new Error("faltan ADDI_CLIENT_ID y ADDI_CLIENT_SECRET en el Worker");
+  const u = addiUrls(env);
+  // Token nuevo en cada intento (así lo pide Addi)
+  const rt = await fetch(u.auth, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ audience: u.audience, grant_type: "client_credentials", client_id: env.ADDI_CLIENT_ID, client_secret: env.ADDI_CLIENT_SECRET }) });
+  const jt = await rt.json().catch(() => ({}));
+  if (!rt.ok || !jt.access_token) throw new Error("no entregó token (" + rt.status + "): " + JSON.stringify(jt).slice(0, 200));
+  const limpiar = (t, n) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 #\-.,]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+  const partes = String(p.nombre || "").trim().split(/\s+/);
+  const nombre = partes.length > 2 ? partes.slice(0, partes.length - 2).join(" ") : partes[0] || "";
+  const apellido = partes.length > 2 ? partes.slice(-2).join(" ") : partes.slice(1).join(" ") || partes[0] || "";
+  const total = Math.round(Number(p.total) || 0), envio = Math.round(Number(p.envio) || 0);
+  if (total < 1000) throw new Error("total no válido");
+  const dir = { lineOne: limpiar(p.direccion, 100), city: limpiar(p.ciudad, 50), country: "CO" };
+  const items = (p.items || []).map((x, i) => ({ sku: "PG" + (i + 1), name: limpiar(x.n, 100), quantity: String(x.q || 1), unitPrice: Math.round(x.v || 0), tax: 0, pictureUrl: "https://pipegames.com.co/mensajeria/logo-pipegames.jpg", category: "videojuegos" }));
+  const propio = url.origin;
+  const cuerpo = {
+    orderId: String(p.orderId), totalAmount: String(total), shippingAmount: String(envio), totalTaxesAmount: "0", currency: "COP",
+    items: items.length ? items : [{ sku: "PG1", name: "Pedido Pipe Games", quantity: "1", unitPrice: total - envio, tax: 0, pictureUrl: "https://pipegames.com.co/mensajeria/logo-pipegames.jpg", category: "videojuegos" }],
+    client: { idType: "CC", idNumber: String(p.cedula || "").replace(/\D/g, ""), firstName: limpiar(nombre, 50), lastName: limpiar(apellido, 50), email: String(p.correo || "").trim(),
+      cellphone: String(p.telefono || "").replace(/\D/g, "").slice(-10), cellphoneCountryCode: "+57", address: dir },
+    shippingAddress: dir, billingAddress: dir,
+    allyUrlRedirection: { logoUrl: "https://pipegames.com.co/mensajeria/logo-pipegames.jpg",
+      callbackUrl: propio + "/addi/aviso?r=" + encodeURIComponent(p.reserva || "") + "&o=" + encodeURIComponent(p.orderId),
+      redirectionUrl: "https://pipegames.com.co/mensajeria/saldo.html?addi=1" }
+  };
+  const r = await fetch(u.api + "/v1/online-applications", { method: "POST", redirect: "manual",
+    headers: { Authorization: "Bearer " + jt.access_token, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(cuerpo) });
+  const destino = r.headers.get("location");
+  if ((r.status === 301 || r.status === 302 || r.status === 303) && destino) return { url: destino, orderId: cuerpo.orderId };
+  const txt = await r.text().catch(() => "");
+  throw new Error("respondió " + r.status + ": " + txt.slice(0, 400));
+}
+async function avisoAddi(req, env, url) {
+  const cuerpoTxt = await req.text();
+  const json = (d, st = 200) => new Response(d, { status: st, headers: { "Content-Type": "application/json" } });
+  // Basic Auth con las credenciales de notificación de Addi
+  const esperado = "Basic " + btoa((env.ADDI_NOTI_USER || "") + ":" + (env.ADDI_NOTI_PASS || ""));
+  if (!env.ADDI_NOTI_USER || req.headers.get("Authorization") !== esperado) return json('{"error":"no autorizado"}', 401);
+  let d = {}; try { d = JSON.parse(cuerpoTxt || "{}"); } catch {}
+  const reserva = url.searchParams.get("r") || "";
+  const estado = String(d.status || d.applicationStatus || "").toLowerCase();
+  if (reserva && /^[A-Za-z0-9_-]{1,60}$/.test(reserva) && env.FIREBASE_SA) {
+    const credito = { estado, monto: Number(d.approvedAmount) || 0, orden: String(d.orderId || url.searchParams.get("o") || ""), solicitud: String(d.applicationId || ""), t: Date.now() };
+    const campos = { credito: { mapValue: { fields: aCamposFS(credito) } } };
+    const mascara = ["credito"];
+    if (estado === "approved") { campos.pagado = { integerValue: String(Date.now()) }; mascara.push("pagado"); }
+    try { await escribirReserva(env, reserva, campos, mascara); } catch (e) { return json('{"error":"no se pudo guardar"}', 500); } // Addi reintenta
+  }
+  return json(cuerpoTxt || "{}"); // Addi espera la misma respuesta que envió
+}
+const aCamposFS = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === "number" ? (Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v }) : { stringValue: String(v) }]));
+/* ---------- escritura en Firestore con la cuenta de servicio ---------- */
+let tokenGoogle = { valor: "", vence: 0 };
+async function tokenServicio(env) {
+  if (tokenGoogle.valor && Date.now() < tokenGoogle.vence - 60000) return tokenGoogle.valor;
+  const sa = JSON.parse(env.FIREBASE_SA);
+  const ahora = Math.floor(Date.now() / 1000);
+  const b64 = o => btoa(typeof o === "string" ? o : JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const sinFirma = b64({ alg: "RS256", typ: "JWT" }) + "." + b64({ iss: sa.client_email, scope: "https://www.googleapis.com/auth/datastore", aud: "https://oauth2.googleapis.com/token", iat: ahora, exp: ahora + 3600 });
+  const pem = sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const llave = await crypto.subtle.importKey("pkcs8", Uint8Array.from(atob(pem), c => c.charCodeAt(0)), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const firma = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", llave, new TextEncoder().encode(sinFirma)));
+  const jwt = sinFirma + "." + btoa(String.fromCharCode(...firma)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const r = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }) });
+  const j = await r.json();
+  if (!j.access_token) throw new Error("Google no entregó token");
+  tokenGoogle = { valor: j.access_token, vence: Date.now() + (j.expires_in || 3600) * 1000 };
+  return tokenGoogle.valor;
+}
+async function escribirReserva(env, reserva, campos, mascara) {
+  const tk = await tokenServicio(env);
+  const ruta = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID;
+  const qs = mascara.map(m => "updateMask.fieldPaths=" + encodeURIComponent("reservas.`" + reserva + "`." + m)).join("&");
+  const r = await fetch("https://firestore.googleapis.com/v1/" + ruta + "?" + qs, { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { reservas: { mapValue: { fields: { [reserva]: { mapValue: { fields: campos } } } } } } }) });
+  if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
 }

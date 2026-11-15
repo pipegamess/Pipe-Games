@@ -8,12 +8,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261114n">
+<link rel="stylesheet" href="estilos.css?v=20261115a">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261114n";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261115a";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261114n">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261115a">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -94,9 +94,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261114n";
-import * as C from "./comun.js?v=20261114n";
-import * as T from "./tarifas-envio.js?v=20261114n";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261115a";
+import * as C from "./comun.js?v=20261115a";
+import * as T from "./tarifas-envio.js?v=20261115a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -292,14 +292,14 @@ function confirmado(r) {
   const total = r.total || 0;
   const pasos = r.metodo === "transf" ? `<p style="margin:0">Transfiere <b>${C.cop(total)}</b>${r.envioPorConfirmar ? " (más el envío que te confirmaremos)" : ""} a la llave Bre-B:</p>${bloqueLlave()}<p class="nota" style="margin:0">Luego envíanos el comprobante por WhatsApp.</p>`
     : r.metodo === "tarjeta" ? `<p style="margin:0">Te enviaremos por WhatsApp el link de pago con tarjeta por <b>${C.cop(total)}</b>.</p>`
-    : `<p style="margin:0">Te contactaremos por WhatsApp para tramitar tu crédito con ${r.metodo === "addi" ? "Addi" : "Sistecrédito"} por <b>${C.cop(total)}</b>.</p>`;
-  const texto = `Hola, confirmo mi pedido de ${S?.producto || "mi reserva"}${S?.unidades > 1 ? " (" + S.unidades + " unidades)" : ""}.\nEnvío a: ${r.ciudad || ""}\nPago: ${r.metodoTxt || ""}\nTotal: ${C.copTxt(total)}${r.metodo === "transf" ? "\nAdjunto el comprobante." : ""}`;
+    : `<p style="margin:0">Envíanos tu pedido por WhatsApp para <b>autorizar tu crédito</b> con ${r.metodo === "addi" ? "Addi" : "Sistecrédito"} por <b>${C.cop(total)}</b>. Cuando lo autoricemos te enviaremos el link para completar tu pago a cuotas.</p>`;
+  const texto = `Hola, confirmo mi pedido de ${S?.producto || "mi reserva"}${S?.unidades > 1 ? " (" + S.unidades + " unidades)" : ""}.\nEnvío a: ${r.ciudad || ""}\nPago: ${r.metodoTxt || ""}\nTotal: ${C.copTxt(total)}${r.metodo === "transf" ? "\nAdjunto el comprobante." : r.metodo === "addi" || r.metodo === "siste" ? "\nPor favor autoricen mi crédito." : ""}`;
   $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Listo! Recibimos tu confirmación</div>
     ${r.ciudad ? `<div class="linea"><span>Envío a</span><span>${esc(r.ciudad)}${r.transportadora ? " · " + esc(r.transportadora) : ""}</span></div>` : ""}
     ${r.metodoTxt ? `<div class="linea"><span>Medio de pago</span><span>${esc(r.metodoTxt.split(" · ")[0])}</span></div>` : ""}
     <div class="total"><span>Total a pagar</span><span>${C.cop(total)}</span></div>
     ${pasos}
-    <a class="btn" href="https://wa.me/${WA_TIENDA}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">${r.metodo === "transf" ? "Enviar comprobante por WhatsApp" : "Escribirnos por WhatsApp"}</a></div>`;
+    <a class="btn" href="https://wa.me/${WA_TIENDA}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">${r.metodo === "transf" ? "Enviar comprobante por WhatsApp" : r.metodo === "addi" || r.metodo === "siste" ? "Enviar pedido por WhatsApp para autorizar" : "Escribirnos por WhatsApp"}</a></div>`;
 }
 // Llave + QR (si despacho ya lo adjuntó), con botones para copiar la llave y guardar el QR en la galería
 function bloqueLlave() {
@@ -333,7 +333,8 @@ async function bajarQr(boton) {
 /* ---------- cargar el saldo (al final, cuando todo está definido) ---------- */
 try {
   const s = id && /^[A-Za-z0-9]{12,40}$/.test(id) ? await getDoc(doc(db, "saldos", id)) : null;
-  if (!s || !s.exists()) mensaje("Este enlace no es válido. Escríbenos por WhatsApp y te ayudamos.");
+  if ((!s || !s.exists()) && new URLSearchParams(location.search).has("addi")) mensaje("Gracias. Addi nos confirmará el resultado de tu crédito y te escribiremos por WhatsApp para coordinar el envío.");
+  else if (!s || !s.exists()) mensaje("Este enlace no es válido. Escríbenos por WhatsApp y te ayudamos.");
   else {
     S = s.data();
     if (S.estado !== "enviado") confirmado(S.respuesta || {}); else iniciar();
