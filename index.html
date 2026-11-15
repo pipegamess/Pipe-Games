@@ -6084,6 +6084,29 @@ function aplicarStockExcel() {
     .catch(function () { /* si no hay stock.json se deja el catálogo como está */ });
 }
 window.addEventListener('load', aplicarStockExcel);
+/* ── Link de pedido enviado por Pipe Games (?pedido=...&pago=addi): abre el pedido listo para llenar datos ── */
+function pcAbrirPedidoLink() {
+  const q = new URLSearchParams(location.search), raw = q.get('pedido');
+  if (!raw) return;
+  let lista = [];
+  try { lista = JSON.parse(raw); } catch { return; }
+  if (!Array.isArray(lista)) return;
+  const pago = ['addi', 'siste'].includes(q.get('pago')) ? q.get('pago') : null;
+  const norm = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  const todos = simCatalogo();
+  const ok = lista.map(x => ({ g: todos.find(g => norm(g.name) === norm(x.n) && norm(g.platform) === norm(x.p)), q: Math.min(Math.max(parseInt(x.q) || 1, 1), 10) })).filter(x => x.g);
+  history.replaceState(null, '', location.pathname);
+  if (!ok.length) return;
+  try { closePhysicalModal(); } catch {}
+  cart.length = 0;
+  ok.forEach(x => { for (let i = 0; i < x.q; i++) addToCart(x.g.name, x.g.platform, x.g.price, x.g.img || '', null); });
+  if (typeof ocultarCartToast === 'function') ocultarCartToast();
+  if (pago) simPagoCarrito = pago;
+  openSimulador(true);
+  if (pago) simMetodo = pago;
+  simIrACheckout();
+}
+window.addEventListener('load', () => setTimeout(pcAbrirPedidoLink, 600));
 </script>
 
 <!-- MODAL AÑADIR ARTÍCULO -->
