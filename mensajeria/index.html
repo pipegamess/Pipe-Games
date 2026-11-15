@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115a">
+<link rel="stylesheet" href="estilos.css?v=20261115b">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -419,10 +419,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115a";
-import * as C from "./comun.js?v=20261115a";
-import * as T from "./tarifas-envio.js?v=20261115a";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261115a";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115b";
+import * as C from "./comun.js?v=20261115b";
+import * as T from "./tarifas-envio.js?v=20261115b";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261115b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -927,12 +927,15 @@ let rsEditando = null;
 async function autorizarAddi(id, b) {
   const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
   const tel = C.telWhatsApp(c.telefono || r.contacto);
+  const urlW = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, "");
+  // Link corto (pasa por el intermediario y lleva a la página de Addi)
+  const corto = cr => cr?.codigo ? `${urlW}/addi/ir?c=${id}.${cr.codigo}` : cr?.url;
   const enviar = link => {
     const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, autorizamos tu pedido. Completa tu pago a cuotas con Addi por ${C.copTxt(c.total)} aquí (el link vence en 2 horas):\n${link}`;
     window.open(tel ? `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
   };
   // Si el link sigue vigente (menos de 2 horas), solo se reenvía
-  if (r.credito?.url && Date.now() - (r.credito.t || 0) < 1.9 * 3600e3 && r.credito.estado === "autorizado") { enviar(r.credito.url); return; }
+  if (r.credito?.url && Date.now() - (r.credito.t || 0) < 1.9 * 3600e3 && r.credito.estado === "autorizado") { enviar(corto(r.credito)); return; }
   if (!/^\d{5,13}$/.test(c.cedula || "")) { toast("Falta la cédula del cliente (debe confirmar con Addi en el link de saldo)"); return; }
   b.disabled = true; b.textContent = "Creando solicitud en Addi…";
   try {
@@ -946,8 +949,9 @@ async function autorizarAddi(id, b) {
     const url = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, ""), token = await auth.currentUser.getIdToken();
     const j = await (await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo: "ADDI_CREAR", pedido }) })).json();
     if (!j.url) throw new Error(j.error || "Addi no devolvió el link");
-    await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${id}.credito`]: { estado: "autorizado", url: j.url, orden: pedido.orderId, t: Date.now() } });
-    enviar(j.url); toast("Solicitud creada en Addi: envíale el link al cliente");
+    const cr = { estado: "autorizado", url: j.url, codigo: C.nuevoCodigo() + C.nuevoCodigo(), orden: pedido.orderId, t: Date.now() };
+    await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${id}.credito`]: cr });
+    enviar(corto(cr)); toast("Solicitud creada en Addi: envíale el link al cliente");
   } catch (err) { toast(String(err.message || err).slice(0, 300)); $("#skxRaw") && ($("#skxRaw").textContent = "ADDI_CREAR → " + (err.message || err)); }
   if (b.isConnected) { b.disabled = false; b.textContent = "Autorizar crédito Addi"; }
 }
@@ -1910,7 +1914,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261115a";
+const VERSION_PANEL = "20261115b";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {

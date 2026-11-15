@@ -44,6 +44,8 @@ export default {
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
+    // Link corto para el cliente: /addi/ir?c=<reserva>.<código> → página de Addi
+    if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
     if (req.method !== "POST") return responder({ error: "Método no permitido" }, 405);
 
     // 1) Solo la cuenta de despacho (token de Firebase verificado)
@@ -260,4 +262,20 @@ async function escribirReserva(env, reserva, campos, mascara) {
   const r = await fetch("https://firestore.googleapis.com/v1/" + ruta + "?" + qs, { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
     body: JSON.stringify({ fields: { reservas: { mapValue: { fields: { [reserva]: { mapValue: { fields: campos } } } } } } }) });
   if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
+}
+
+async function irAddi(env, url) {
+  const html = (t) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:24px;text-align:center"><h2>Pipe Games</h2><p>${t}</p></body>`, { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } });
+  const [reserva, codigo] = String(url.searchParams.get("c") || "").split(".");
+  if (!/^[A-Za-z0-9_-]{1,60}$/.test(reserva || "") || !/^[A-Za-z0-9]{8,40}$/.test(codigo || "") || !env.FIREBASE_SA) return html("Este link no es válido.");
+  try {
+    const tk = await tokenServicio(env);
+    const ruta = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID + "?mask.fieldPaths=" + encodeURIComponent("reservas.`" + reserva + "`.credito");
+    const d = await (await fetch("https://firestore.googleapis.com/v1/" + ruta, { headers: { Authorization: "Bearer " + tk } })).json();
+    const c = d?.fields?.reservas?.mapValue?.fields?.[reserva]?.mapValue?.fields?.credito?.mapValue?.fields || {};
+    if (c.codigo?.stringValue !== codigo || !c.url?.stringValue) return html("Este link no es válido. Escríbenos por WhatsApp.");
+    const t = Number(c.t?.integerValue || 0);
+    if (Date.now() - t > 2 * 3600e3) return html("Este link venció (dura 2 horas). Escríbenos por WhatsApp y te enviamos uno nuevo.");
+    return Response.redirect(c.url.stringValue, 302);
+  } catch { return html("No pudimos abrir el pago. Intenta de nuevo en un momento."); }
 }
