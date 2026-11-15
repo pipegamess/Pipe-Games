@@ -1227,6 +1227,16 @@
   .sim-cred input { width:100%; padding:0.55rem 0.7rem; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:0.9rem; font-family:'Barlow',sans-serif; outline:none; }
   .sim-cred input:focus { border-color:var(--acc); }
   .sim-cred input.bad { border-color:#e84040; }
+  .sim-mapa { height:230px; border-radius:10px; border:1px solid var(--border); margin-top:0.5rem; overflow:hidden; background:var(--surface2); }
+  .sim-gps { margin-top:0.2rem; padding:0.5rem 0.8rem; border-radius:8px; border:1px solid var(--acc); background:transparent; color:var(--acc); font-family:'Rajdhani',sans-serif; font-weight:700; font-size:0.9rem; cursor:pointer; }
+  .sim-pin { font-size:0.78rem; color:var(--muted); margin-top:0.4rem; }
+  .sim-pin.ok { color:#00c896; } .sim-pin.mal { color:#e84040; }
+  .sim-chk { display:flex !important; gap:8px; align-items:flex-start; text-transform:none !important; letter-spacing:0 !important; font-family:'Barlow',sans-serif !important; font-weight:500 !important; font-size:0.82rem !important; color:var(--text) !important; margin-top:0.6rem !important; cursor:pointer; }
+  .sim-chk input { width:auto !important; margin-top:2px; }
+  .sim-dir-sug { display:flex; flex-direction:column; gap:4px; margin-top:4px; }
+  .sim-dir-sug button { text-align:left; padding:0.5rem 0.6rem; border-radius:8px; border:1px solid var(--border); background:var(--surface2); color:var(--text); font-size:0.82rem; cursor:pointer; font-family:'Barlow',sans-serif; }
+  .sim-dir-sug button b { color:#fff; }
+  .sim-mk { width:26px; height:26px; border-radius:50% 50% 50% 0; background:#f5c400; border:3px solid #0a0a0f; transform:rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,.5); }
   .sim-cred-err { font-size:0.7rem; color:#ff7a7a; margin-top:0.4rem; min-height:1em; }
   .envio-info { font-size:0.78rem; line-height:1.4; margin:-0.2rem 0 0.6rem; text-align:left; }
   .envio-info:empty { display:none; }
@@ -5315,7 +5325,7 @@ let simPagoItem = null;    // {name, platform, metodo} para pedir un solo artíc
 let simCiudadTxt = '';
 let simCheckout = false;   // true = el cliente está haciendo el pedido (pasos obligatorios)
 let simNombreTxt = '';
-let simDatos = { cedula:'', email:'', tel:'', dir:'', comp:'', barrio:'' }; // pago a cuotas: van en el WhatsApp y en el pedido que llega al panel
+let simDatos = { cedula:'', email:'', tel:'', dir:'', comp:'', barrio:'', lat:null, lng:null, pinCiudad:'', sinUbic:false }; // pago a cuotas: van en el WhatsApp y en el pedido que llega al panel
 function simEsCredito(id) { const m = SIM_METODOS.find(x => x.id === id); return !!(m && m.credito); }
 function simCedulaOk(v) { return /^[0-9]{5,10}$/.test(String(v || '').replace(/[.\s]/g, '')); }
 function simEmailOk(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()); }
@@ -5323,7 +5333,97 @@ function simDatosOk() { return simCedulaOk(simDatos.cedula) && simEmailOk(simDat
 function simTelOk(v) { return /^3\d{9}$/.test(String(v || '').replace(/\D/g, '').replace(/^57(?=3\d{9}$)/, '')); }
 function simDirOk(v) { return String(v || '').trim().length >= 6; }
 function simBarrioOk(v) { return String(v || '').trim().length >= 2; }
-function simEntregaOk() { return simTelOk(simDatos.tel) && simDirOk(simDatos.dir) && simBarrioOk(simDatos.barrio); }
+function simEntregaOk() { return simTelOk(simDatos.tel) && simDirOk(simDatos.dir) && simBarrioOk(simDatos.barrio) && simUbicOk(); }
+/* ── Mapa de entrega (Bogotá, Chía y Soacha) en el pedido a cuotas ── */
+const SIM_LOC = {
+  bogota: { c:[4.6486, -74.1000], q:'Bogotá', bbox:[4.45, -74.25, 4.85, -73.99] },
+  soacha: { c:[4.5794, -74.2168], q:'Soacha, Cundinamarca', bbox:[4.53, -74.32, 4.64, -74.16] },
+  chia:   { c:[4.8619, -74.0587], q:'Chía, Cundinamarca', bbox:[4.81, -74.13, 4.95, -73.98] }
+};
+const SIM_TT = 'goxwKHuXB9HkWJOOg2SieNvEGHsiAk1m'; // clave pública de TomTom (solo funciona en pipegames.com.co)
+function simLocal(txt) {
+  const e = envioDeCiudad(txt == null ? simCiudadTxt : txt);
+  if (e.tipo !== 'local') return '';
+  const k = envNorm(String(e.ciudad || '').split(' - ')[0]);
+  return SIM_LOC[k] ? k : (k.startsWith('bogota') ? 'bogota' : '');
+}
+function simTienePin() { return simDatos.lat != null && simDatos.pinCiudad === simLocal(); }
+function simUbicOk() { return !simLocal() || simTienePin() || simDatos.sinUbic; }
+let simMapa = null, simMarca = null, simLeafletP = null, simTDir = null;
+function simLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (simLeafletP) return simLeafletP;
+  simLeafletP = new Promise((ok, mal) => {
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; js.onload = ok; js.onerror = () => { simLeafletP = null; mal(); }; document.head.appendChild(js);
+  });
+  return simLeafletP;
+}
+function simEstadoPin(t, c) { const el = document.getElementById('simPin'); if (el) { el.textContent = t; el.className = 'sim-pin' + (c ? ' ' + c : ''); } }
+async function simMapaIniciar() {
+  const box = document.getElementById('simMapa'); const k = simLocal();
+  if (!box || !k) return;
+  try { await simLeaflet(); } catch { simEstadoPin('No se pudo cargar el mapa. Marca la casilla de abajo y continúa.', 'mal'); return; }
+  if (!document.body.contains(box)) return;
+  if (simMapa) { simMapa.remove(); simMapa = null; simMarca = null; }
+  simMapa = L.map(box, { zoomControl:true, attributionControl:true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(simMapa);
+  simMapa.attributionControl.setPrefix(false);
+  simMapa.on('click', e => simPonerPin(e.latlng.lat, e.latlng.lng, 'Punto marcado. Puedes arrastrarlo si hace falta.'));
+  if (simTienePin()) simPonerPin(simDatos.lat, simDatos.lng, 'Tu ubicación está marcada. Puedes moverla si hace falta.', true);
+  else simMapa.setView(SIM_LOC[k].c, 12);
+  setTimeout(() => simMapa && simMapa.invalidateSize(), 80);
+}
+function simPonerPin(lat, lng, texto, sinZoom) {
+  simDatos.lat = +(+lat).toFixed(6); simDatos.lng = +(+lng).toFixed(6); simDatos.pinCiudad = simLocal(); simDatos.sinUbic = false;
+  const chk = document.getElementById('simSinUbic'); if (chk) chk.checked = false;
+  if (simMapa) {
+    const ic = L.divIcon({ className:'', html:'<div class="sim-mk"></div>', iconSize:[26, 26], iconAnchor:[13, 26] });
+    if (!simMarca) { simMarca = L.marker([simDatos.lat, simDatos.lng], { draggable:true, icon:ic }).addTo(simMapa);
+      simMarca.on('dragend', () => { const ll = simMarca.getLatLng(); simDatos.lat = +ll.lat.toFixed(6); simDatos.lng = +ll.lng.toFixed(6); simEstadoPin('Punto ajustado.', 'ok'); }); }
+    else simMarca.setLatLng([simDatos.lat, simDatos.lng]);
+    simMapa.setView([simDatos.lat, simDatos.lng], sinZoom ? Math.max(simMapa.getZoom() || 16, 16) : 17);
+  }
+  simEstadoPin(texto, 'ok');
+  simActualizarBotones();
+}
+function simGps() {
+  if (!navigator.geolocation) { simEstadoPin('Tu navegador no permite compartir la ubicación. Toca el mapa en tu casa.', 'mal'); return; }
+  simEstadoPin('Buscando tu ubicación…');
+  navigator.geolocation.getCurrentPosition(p => simPonerPin(p.coords.latitude, p.coords.longitude, `Ubicación tomada del celular (precisión ${Math.round(p.coords.accuracy)} m). Revisa el punto.`),
+    () => simEstadoPin('No pudimos leer tu ubicación. Toca el mapa en tu casa.', 'mal'), { enableHighAccuracy:true, timeout:15000 });
+}
+function simSinUbicCambio(el) { simDatos.sinUbic = el.checked; simActualizarBotones(); }
+function simDirBuscar() {
+  clearTimeout(simTDir);
+  simTDir = setTimeout(async () => {
+    const box = document.getElementById('simDirSug'), k = simLocal(), t = simDatos.dir.trim();
+    if (!box) return;
+    if (!k || t.length < 5) { box.innerHTML = ''; return; }
+    const c = SIM_LOC[k], [bs, bw, bn, be] = c.bbox;
+    const q = t.replace(/\s*#\s*/, ' ').replace(/\s+(n[°ºo]\.?|no\.)\s*/i, ' ') + ', ' + c.q;
+    let l = [];
+    try {
+      const r = await fetch(`https://api.tomtom.com/search/2/search/${encodeURIComponent(q)}.json?key=${SIM_TT}&countrySet=CO&language=es-419&limit=5&typeahead=true&lat=${c.c[0]}&lon=${c.c[1]}&topLeft=${bn},${bw}&btmRight=${bs},${be}&idxSet=Addr,Str,PAD,POI,Geo`);
+      if (r.ok) l = ((await r.json()).results || []).filter(x => x.position).map(x => ({ lat:x.position.lat, lng:x.position.lon,
+        t1:x.poi?.name || (x.address?.freeformAddress || '').replace(/,\s*(Bogotá|Bogota|Soacha|Chía|Chia)(,.*)?$/i, ''), t2:[x.address?.municipalitySubdivision, x.address?.municipality].filter(Boolean).join(', ') }));
+    } catch {}
+    if (simDatos.dir.trim() !== t) return;
+    window._simDirSug = l;
+    box.innerHTML = l.map((x, i) => `<button type="button" onpointerdown="event.preventDefault()" onclick="simDirElegir(${i})">📍 <b>${simEsc(x.t1)}</b>${x.t2 ? ' · ' + simEsc(x.t2) : ''}</button>`).join('')
+      + `<button type="button" onpointerdown="event.preventDefault()" onclick="simDirManual()">📍 <b>No aparece mi dirección:</b> la marco en el mapa</button>`;
+  }, 600);
+}
+function simDirElegir(i) {
+  const x = (window._simDirSug || [])[i]; if (!x) return;
+  document.getElementById('simDirSug').innerHTML = '';
+  simPonerPin(x.lat, x.lng, 'Revisa que el punto quede en tu casa. Si no, arrástralo o toca el mapa.');
+}
+function simDirManual() {
+  document.getElementById('simDirSug').innerHTML = '';
+  simEstadoPin('Toca el mapa en tu casa o usa "Usar mi ubicación".');
+  document.getElementById('simMapa')?.scrollIntoView({ block:'center', behavior:'smooth' });
+}
 function simDato(campo, el) {
   simDatos[campo] = el.value;
   const val = { cedula:simCedulaOk, email:simEmailOk, tel:simTelOk, dir:simDirOk, barrio:simBarrioOk }[campo];
@@ -5345,7 +5445,8 @@ function simActualizarBotones() {
   const credMal = simEsCredito(simMetodo) && !simDatosOk();
   const err = document.getElementById('simCredErr');
   const entMal = simCheckout && simEsCredito(simMetodo) && !credMal && !simEntregaOk();
-  if (err) err.textContent = credMal ? 'Ingresa tu número de cédula y un correo válido para continuar.' : entMal ? 'Escribe tu celular (10 dígitos), dirección y barrio para enviar tu pedido.' : '';
+  const ubicMal = entMal && simTelOk(simDatos.tel) && simDirOk(simDatos.dir) && simBarrioOk(simDatos.barrio) && !simUbicOk();
+  if (err) err.textContent = credMal ? 'Ingresa tu número de cédula y un correo válido para continuar.' : ubicMal ? 'Marca tu casa en el mapa (o la casilla si no logras ubicarla) para enviar tu pedido.' : entMal ? 'Escribe tu celular (10 dígitos), dirección y barrio para enviar tu pedido.' : '';
   const faltan = simCheckout ? simFaltantes() : [];
   const bloquear = simCheckout ? faltan.length > 0 : credMal;
   document.querySelectorAll('#simActions button').forEach(b => b.disabled = bloquear);
@@ -5539,7 +5640,13 @@ function simRender() {
         <label for="simTel">Celular</label>
         <input id="simTel" type="tel" inputmode="numeric" maxlength="13" placeholder="3001234567" value="${simEsc(simDatos.tel)}" oninput="simDato('tel',this)">
         <label for="simDir">Dirección</label>
-        <input id="simDir" type="text" maxlength="100" placeholder="Ej: Calle 26 # 68-10" value="${simEsc(simDatos.dir)}" oninput="simDato('dir',this)">
+        <input id="simDir" type="text" maxlength="100" autocomplete="off" placeholder="Ej: Calle 26 # 68-10" value="${simEsc(simDatos.dir)}" oninput="simDato('dir',this);simDirBuscar()">
+        ${simLocal() ? `<div class="sim-dir-sug" id="simDirSug"></div>
+        <label>Ubicación de tu casa</label>
+        <button type="button" class="sim-gps" onclick="simGps()">📍 Usar mi ubicación</button>
+        <div class="sim-mapa" id="simMapa"></div>
+        <div class="sim-pin${simTienePin() ? ' ok' : ''}" id="simPin">${simTienePin() ? 'Tu ubicación está marcada. Puedes moverla si hace falta.' : 'Elige tu dirección en la lista, usa tu ubicación o toca el mapa en tu casa.'}</div>
+        <label class="sim-chk"><input type="checkbox" id="simSinUbic" ${simDatos.sinUbic && !simTienePin() ? 'checked' : ''} onchange="simSinUbicCambio(this)"> No logro ubicar mi dirección en el mapa</label>` : ''}
         <label for="simComp">Apto, torre o casa (opcional)</label>
         <input id="simComp" type="text" maxlength="80" placeholder="Ej: Torre 2 apto 301" value="${simEsc(simDatos.comp)}" oninput="simDato('comp',this)">
         <label for="simBarrio">Barrio</label>
@@ -5547,6 +5654,7 @@ function simRender() {
         <div class="sim-cred-err" id="simCredErr"></div>
       </div>`
     : '';
+  if (m && m.credito && simCheckout && simLocal()) setTimeout(simMapaIniciar, 0); else if (simMapa) { simMapa.remove(); simMapa = null; simMarca = null; }
   document.getElementById('simActions').innerHTML = simCheckout
     ? `<button class="sim-btn-wa" onclick="simEnviarPedido()"><svg viewBox="0 0 24 24" width="17" height="17" fill="#fff" style="vertical-align:-3px;margin-right:6px"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Enviar pedido por WhatsApp</button>`
     : (simItem.tipo === 'cart'
@@ -5716,7 +5824,7 @@ function pedidoCuotasPosible(ciudad, items, metodo) {
 function pcValor(v) {
   if (Array.isArray(v)) return { arrayValue: { values: v.map(pcValor) } };
   if (typeof v === 'boolean') return { booleanValue: v };
-  if (typeof v === 'number') return { integerValue: String(Math.round(v)) };
+  if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
   if (v && typeof v === 'object') return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, pcValor(x)])) } };
   return { stringValue: String(v == null ? '' : v) };
 }
@@ -5735,7 +5843,8 @@ async function crearPedidoCuotas(token, nombre, ciudad, items, metodo) {
     transportadora: env.tipo === 'nacional' ? ((ENVIO_TRANSP.find(t => t.id === env.transp) || {}).n || '') : '',
     envio, envioFijo: false, envioPorConfirmar: env.tipo === 'otro', metodo, metodoTxt: m.t, recargo: tot - (total + envio), total: tot, saldo: total,
     direccion: simDatos.dir.trim().slice(0, 100), complemento: simDatos.comp.trim().slice(0, 80), barrio: simDatos.barrio.trim().slice(0, 60), telefono: tel,
-    sinUbicacion: !!ciudadLocal, cedula: simDatos.cedula.replace(/\D/g, ''), correo: simDatos.email.trim().toLowerCase()
+    ...(ciudadLocal ? (simTienePin() ? { lat: simDatos.lat, lng: simDatos.lng, sinUbicacion: false } : { lat: SIM_LOC[ciudadLocal].c[0], lng: SIM_LOC[ciudadLocal].c[1], sinUbicacion: true }) : { sinUbicacion: false }),
+    cedula: simDatos.cedula.replace(/\D/g, ''), correo: simDatos.email.trim().toLowerCase()
   };
   const datos = {
     nombre: (nombre || 'Cliente').slice(0, 80),
