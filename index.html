@@ -5800,9 +5800,9 @@ function enviarPedidoWA() {
     metodo = simPagoCarrito;
   }
   simPagoItem = null;
-  pendingWAMessage = waArmarPedido(nombre, ciudad, items, metodo);
-  // Pago a cuotas: se crea el pedido en el panel y el cliente completa su dirección en su link
+  // Pago a cuotas: el pedido llega al panel con sus datos; el WhatsApp solo trae el pedido (sin cédula, correo, celular ni dirección)
   const token = pedidoCuotasPosible(ciudad, items, metodo) ? pcToken() : '';
+  pendingWAMessage = waArmarPedido(nombre, ciudad, items, metodo, !!token);
   enviarPorLinea('573118836995');
   if (token) crearPedidoCuotas(token, nombre, ciudad, items, metodo);
 }
@@ -5870,7 +5870,7 @@ function pcAvisoListo(metodo) {
 }
 
 /* Mensaje de pedido para WhatsApp: sin emojis (los enlaces de WhatsApp los dañan y llegan como "�") */
-function waArmarPedido(nombre, ciudad, items, metodo) {
+function waArmarPedido(nombre, ciudad, items, metodo, sinDatos) {
   let msg = nombre
     ? `Hola, soy *${nombre}*${ciudad ? ` desde *${ciudad}*` : ''}.\nQuiero hacer este pedido en *Pipe Games*:\n\n`
     : `Hola${ciudad ? `, escribo desde *${ciudad}*` : ''}.\nQuiero hacer este pedido en *Pipe Games*:\n\n`;
@@ -5897,8 +5897,8 @@ function waArmarPedido(nombre, ciudad, items, metodo) {
   msg += `\n*TOTAL A PAGAR: ${numToPrice(total)}*` + (env.local ? '' : (env.escrito ? ' (sin envío)' : ''));
   if (m) {
     msg += `\n\n*Medio de pago:* ${m.t.replace(' · ', ' - ')}`;
-    if (m.credito && simDatosOk()) msg += `\n*Cédula:* ${simDatos.cedula.replace(/[.\s]/g, '')}\n*Correo:* ${simDatos.email.trim()}`;
-    if (m.credito && simEntregaOk()) msg += `\n*Celular:* ${simDatos.tel.replace(/\D/g, '').slice(-10)}\n*Dirección:* ${simDatos.dir.trim()}${simDatos.comp.trim() ? ', ' + simDatos.comp.trim() : ''} · Barrio ${simDatos.barrio.trim()}`;
+    if (m.credito && simDatosOk() && !sinDatos) msg += `\n*Cédula:* ${simDatos.cedula.replace(/[.\s]/g, '')}\n*Correo:* ${simDatos.email.trim()}`;
+    if (m.credito && simEntregaOk() && !sinDatos) msg += `\n*Celular:* ${simDatos.tel.replace(/\D/g, '').slice(-10)}\n*Dirección:* ${simDatos.dir.trim()}${simDatos.comp.trim() ? ', ' + simDatos.comp.trim() : ''} · Barrio ${simDatos.barrio.trim()}`;
   }
   msg += `\n\n¿Está disponible?`;
   return msg;
