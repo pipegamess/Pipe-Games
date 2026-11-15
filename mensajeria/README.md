@@ -5,6 +5,7 @@ Plataforma de mensajería de Pipe Games: guías con número, rastreo en vivo y a
 | Parte | Dirección | Archivo |
 | --- | --- | --- |
 | Panel de despacho | https://pipegames.com.co/mensajeria/ | `mensajeria/index.html` |
+| Generador de publicaciones | https://pipegames.com.co/mensajeria/publicaciones.html | `mensajeria/publicaciones.html` |
 | Rastreo para clientes | https://pipegames.com.co/mensajeria/rastreo.html | `mensajeria/rastreo.html` |
 | App del mensajero (Android) | Releases del repositorio (`mensajeria-prueba.apk`) | `mensajeria/app/` |
 | Reglas de seguridad | Firebase > Firestore > Reglas | `mensajeria/firestore.rules` |

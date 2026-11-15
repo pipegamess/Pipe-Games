@@ -8,6 +8,8 @@
 //   FIREBASE_PROJECT        (Text)    mensajeria-prueba-b9198
 //   ADMIN_UID               (Text)    8xMsK91tEja5hzhBtjqDIgCP0423
 //   ORIGEN                  (Text, opcional) https://pipegames.com.co
+//   ANTHROPIC_API_KEY       (Secret)  Clave de la API de Claude (console.anthropic.com) para el generador de publicaciones
+//   ANTHROPIC_MODEL         (Text, opcional) claude-sonnet-5-5
 //
 // El panel le envía { metodo, ruta, cuerpo } y el Worker lo reenvía a Skydropx con su token.
 
@@ -50,6 +52,24 @@ export default {
     if (String(pedido.metodo || "").toUpperCase() === "EXPANDIR") {
       try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
       catch (e) { return responder({ error: "No se pudo abrir el link: " + (e.message || e) }, 400); }
+    }
+    // Generador de publicaciones: Claude redacta el texto (publicaciones.html)
+    if (String(pedido.metodo || "").toUpperCase() === "REDACTAR") {
+      if (!env.ANTHROPIC_API_KEY) return responder({ error: "Falta ANTHROPIC_API_KEY en el Worker" }, 500);
+      const texto = String(pedido.prompt || "").slice(0, 12000);
+      if (!texto) return responder({ error: "Falta el texto" }, 400);
+      try {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 2000, messages: [{ role: "user", content: texto }] })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) return responder({ error: "Claude respondió " + r.status + ": " + ((j.error && j.error.message) || "") }, 502);
+        return responder({ texto: (j.content || []).filter(c => c.type === "text").map(c => c.text).join("") });
+      } catch (e) {
+        return responder({ error: "No se pudo hablar con Claude: " + (e.message || e) }, 502);
+      }
     }
     const metodo = String(pedido.metodo || "GET").toUpperCase();
     const ruta = String(pedido.ruta || "");

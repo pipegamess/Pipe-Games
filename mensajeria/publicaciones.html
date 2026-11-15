@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Publicaciones · Pipe Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Layout: una columna en el celular (datos → publicaciones); en pantalla ancha, datos a la izquierda y las dos publicaciones a la derecha.
+   Identidad: la misma de pipegames.com.co (fondo casi negro, amarillo Pipe Games, Rajdhani + Barlow). Tema oscuro fijo por marca. */
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface2: #1a1a26;
+  --line: rgba(255,255,255,0.09);
+  --text: #e8e8f0;
+  --muted: #8a8aa8;
+  --acc: #f5c400;
+  --acc-ink: #141000;
+  --ml: #ffe600;
+  --ig: #e1306c;
+  --ok: #3ecf8e;
+  --err: #ff7b7b;
+  --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif;
+  --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--text); }
+body {
+  font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 6vw, 34px); letter-spacing: 0.02em; margin: 0; line-height: 1.05; text-wrap: balance; }
+h1 span { color: var(--acc); }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
+.grid { display: grid; gap: 20px; grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 900px) { .grid { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.panel h2 { font-family: var(--display); font-size: 18px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0; display: flex; align-items: center; gap: 10px; }
+.tag { font-family: var(--body); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; }
+.tag.ml { background: var(--ml); color: #1d1a00; }
+.tag.ig { background: var(--ig); color: #fff; }
+.tag.ej { background: var(--surface2); color: var(--muted); border: 1px solid var(--line); }
+label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+input, select, textarea {
+  font: inherit; font-size: 15px; letter-spacing: normal; text-transform: none; color: var(--text);
+  background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; min-width: 0;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { font: 600 14px/1 var(--display); letter-spacing: 0.05em; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface2); color: var(--text); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--acc); color: var(--acc-ink); border-color: var(--acc); }
+button.primary { font: 700 17px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; background: var(--acc); color: var(--acc-ink); border: 0; border-radius: 10px; padding: 14px; cursor: pointer; }
+button.primary:disabled { opacity: 0.55; cursor: progress; }
+button.ghost { font: 600 13px/1 var(--body); background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+.status { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.status.err { color: var(--err); }
+.status.ok { color: var(--ok); }
+.outs { display: grid; gap: 20px; min-width: 0; }
+.out textarea { font-family: var(--mono); font-size: 13.5px; line-height: 1.55; min-height: 300px; resize: vertical; white-space: pre-wrap; }
+.out .bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+details { border-top: 1px solid var(--line); padding-top: 12px; }
+summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
+.hist { display: flex; flex-wrap: wrap; gap: 8px; }
+.hist button { font: 500 12.5px/1.2 var(--body); background: var(--surface2); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; cursor: pointer; }
+.note { font-size: 12.5px; color: var(--muted); margin: 0; }
+@media (prefers-reduced-motion: no-preference) { button { transition: transform .08s ease; } button:active { transform: scale(0.98); } }
+.login { max-width: 400px; margin: 8vh auto 0; }
+.top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.top a { color: var(--muted); font-size: 13px; text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+</style>
+</head>
+<body>
+
+<form class="panel login" id="vLogin" hidden>
+  <h2>Publicaciones · Pipe Games</h2>
+  <p class="note">Entra con la misma cuenta del panel de despacho.</p>
+  <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
+  <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit" id="lEntrar">Entrar</button>
+  <div class="status err" id="lError" role="alert"></div>
+</form>
+
+<div class="wrap" id="vApp" hidden>
+  <header>
+    <div>
+      <h1>Generador de publicaciones <span>Pipe Games</span></h1>
+      <p class="sub">Escribe el juego y se arman la descripción para marketplaces y el texto para Instagram.</p>
+    </div>
+    <div class="top"><a href="./">Panel de despacho</a><button class="ghost" type="button" id="salir">Salir</button></div>
+  </header>
+
+  <div class="grid">
+    <form class="panel" id="form" autocomplete="off">
+      <h2>Datos del juego</h2>
+      <label>Juego
+        <input id="juego" required placeholder="Ej. Tekken 8" value="Tekken 8">
+      </label>
+      <div class="row2">
+        <label>Versión
+          <input id="version" list="versiones" value="ESTANDAR">
+          <datalist id="versiones">
+            <option value="ESTANDAR"></option><option value="DELUXE"></option><option value="LAUNCH EDITION"></option>
+            <option value="DAY ONE"></option><option value="GOTY"></option><option value="COLLECTOR'S EDITION"></option>
+            <option value="CÓDIGO EN CAJA"></option>
+          </datalist>
+        </label>
+        <label>Precio (Instagram)
+          <input id="precio" inputmode="numeric" placeholder="185000" value="185000">
+        </label>
+      </div>
+      <div style="display:grid;gap:6px">
+        <span class="note" style="font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:12px">Consola</span>
+        <div class="chips" id="consolas" role="group" aria-label="Consola"></div>
+      </div>
+      <div style="display:grid;gap:6px">
+        <span class="note" style="font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:12px">Publicar en</span>
+        <div class="chips" id="plats" role="group" aria-label="Plataformas"></div>
+      </div>
+      <div class="row2">
+        <label>Estado
+          <select id="estado">
+            <option>NUEVO Y SELLADO</option><option>OPEN BOX</option><option>USADO</option>
+          </select>
+        </label>
+        <label>Disponibilidad
+          <select id="dispo">
+            <option value="inmediata">Entrega inmediata</option>
+            <option value="preventa">Preventa</option>
+            <option value="importacion">En camino (importación)</option>
+          </select>
+        </label>
+      </div>
+      <label>Notas (opcional)
+        <input id="notas" placeholder="Ej. incluye código de bonus, edición latinoamericana">
+      </label>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
+        <button class="primary" id="generar" type="submit">Generar publicaciones</button>
+        <button class="ghost" type="button" id="limpiar" style="padding:0 16px">Limpiar datos</button>
+      </div>
+      <div class="status" id="status" role="status"></div>
+
+      <details>
+        <summary>Cierre de Instagram (contacto, pagos y envíos)</summary>
+        <p class="note" style="margin-top:8px">Se agrega al final de cada texto de Instagram. Lo que cambies aquí queda guardado en este navegador.</p>
+        <textarea id="cierre" aria-label="Cierre de Instagram"></textarea>
+        <button class="ghost" type="button" id="restaurarCierre" style="margin-top:8px">Restaurar el cierre original</button>
+      </details>
+
+      <details id="histBox" hidden>
+        <summary>Generados recientemente</summary>
+        <div class="hist" id="hist" style="margin-top:10px"></div>
+      </details>
+    </form>
+
+    <div class="outs">
+      <section class="panel out" id="boxMk" aria-labelledby="t-mk">
+        <div class="bar">
+          <h2 id="t-mk"><span class="tag ml" id="tagMk">Mercado Libre · Falabella · Éxito</span><span class="tag ej" id="ejMk">Ejemplo</span></h2>
+          <button class="ghost" type="button" data-copy="salidaMk">Copiar</button>
+        </div>
+        <div class="facts">
+          <label>Nombre en la publicación<input id="fNombre"></label>
+          <label>Género<input id="fGenero"></label>
+          <label>Fecha de lanzamiento<input id="fFecha" placeholder="Déjalo vacío si no la sabes"></label>
+        </div>
+        <textarea id="salidaMk" aria-label="Texto para marketplaces"></textarea>
+        <div class="bar">
+          <p class="note">Sin precio, sin contacto y sin emojis. Si cambias nombre, género o fecha, el texto se vuelve a armar.</p>
+          <span class="count" id="cMk"></span>
+        </div>
+      </section>
+
+      <section class="panel out" id="boxIg" aria-labelledby="t-ig">
+        <div class="bar">
+          <h2 id="t-ig"><span class="tag ig">Instagram</span><span class="tag ej" id="ejIg">Ejemplo</span></h2>
+          <button class="ghost" type="button" data-copy="salidaIg">Copiar</button>
+        </div>
+        <textarea id="salidaIg" aria-label="Texto para Instagram"></textarea>
+        <div class="bar">
+          <p class="note">Primera línea con consola, estado y precio; al final, el cierre de la tienda. Instagram permite hasta 2.200 caracteres.</p>
+          <span class="count" id="cIg"></span>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "./config.js?v=20261114n";
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
+const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
+const auth = getAuth(initializeApp(firebaseConfig));
+const CONSOLAS = [
+  { k: "PS5", nombre: "PLAYSTATION 5" },
+  { k: "PS4", nombre: "PLAYSTATION 4" },
+  { k: "SWITCH", nombre: "NINTENDO SWITCH" },
+  { k: "SWITCH 2", nombre: "NINTENDO SWITCH 2" },
+  { k: "XBOX", nombre: "XBOX SERIES X|S" }
+];
+const CIERRE_BASE = () => "🕹Videojuegos, Consolas, Libros de Arte y accesorios. Compra fácil y recibe en cualquier parte del país.🕹 📍Tienda Virtual en Bogotá✌🏻 💳Pagos vía Transferencia vía Nequi o Llave Bre-B, pagos con Tarjeta de crédito (3.59%+$900), con Addi🔵 (+7.7%), con Sistecrédito🟢(+5%). 📲WhatsApp 311 8836995📱\n👉🏻Visita nuestro catálogo actualizado en pipegames.com.co👈🏻";
+
+const $ = (id) => document.getElementById(id);
+let consola = "PS5";
+let estadoGen = {
+  descripcion: "Tekken 8 lleva la legendaria saga de lucha de Bandai Namco a una nueva generación con gráficos creados en Unreal Engine 5, escenarios destructibles y un sistema de combate más agresivo gracias a la mecánica Heat, que premia la iniciativa y castiga a quien se queda esperando.\n\nIncluye 32 personajes jugables entre leyendas de la saga y nuevas incorporaciones, el modo historia The Dark Awakens que continúa la rivalidad de la familia Mishima, el modo Arcade Quest para aprender jugando y combates en línea con tus amigos y jugadores de todo el mundo.",
+  instagram: "¡La saga de lucha más icónica regresa con más fuerza que nunca! 🥊🔥\n📦Gráficos en Unreal Engine 5 y el combate más agresivo de la saga. 😤🎮\n\n👊 32 peleadores entre leyendas de siempre y nuevas incorporaciones, con la mecánica Heat que premia a quien toma la iniciativa y castiga a quien se queda esperando. 💥⚡\n\n📖 El modo historia The Dark Awakens continúa la rivalidad de la familia Mishima, y Arcade Quest te enseña a jugar mientras avanzas. 🏆🎯\n\n🌐 Combates en línea con amigos y jugadores de todo el mundo, escenarios destructibles y repeticiones con consejos para mejorar en cada partida. 🌍🕹\nPara los fanáticos de los juegos de pelea y para quienes buscan un reto competitivo. 🙌🔥",
+  hashtags: []
+};
+
+function fmtPrecio(n) { return n > 0 ? "$" + Math.round(n).toLocaleString("es-CO").replace(/,/g, ".") : ""; }
+function precioNum() { return Number(String($("precio").value).replace(/[^\d]/g, "")) || 0; }
+function consolaNombre() { return (CONSOLAS.find(c => c.k === consola) || {}).nombre || consola; }
+
+function leerCierre() {
+  try { const v = localStorage.getItem("pg_cierre2"); if (v) return v; } catch (e) {}
+  return null;
+}
+function guardarCierre(v) { try { localStorage.setItem("pg_cierre2", v); } catch (e) {} }
+
+function armarMk() {
+  const nombre = ($("fNombre").value || $("juego").value).trim().toUpperCase();
+  const version = ($("version").value || "ESTANDAR").trim().toUpperCase();
+  const lineas = [
+    nombre + " - " + version,
+    "CONSOLA: " + consolaNombre(),
+    "ESTADO: " + $("estado").value
+  ];
+  const genero = $("fGenero").value.trim();
+  const fecha = $("fFecha").value.trim();
+  if (genero) lineas.push("GÉNERO: " + genero.toUpperCase());
+  if (fecha) lineas.push("FECHA DE LANZAMIENTO: " + fecha.toUpperCase());
+  return lineas.join("\n") + (estadoGen.descripcion ? "\n\n" + estadoGen.descripcion.trim() : "");
+}
+const ESTADO_CORTO = { "NUEVO Y SELLADO": "NUEVO", "OPEN BOX": "OPEN BOX", "USADO": "USADO" };
+function armarIg() {
+  if (!estadoGen.instagram.trim()) return "";
+  const nombre = ($("fNombre").value || $("juego").value).trim().toUpperCase();
+  const ver = ($("version").value || "ESTANDAR").trim().toUpperCase();
+  const p = fmtPrecio(precioNum());
+  const cab = nombre + (ver && ver !== "ESTANDAR" ? " " + ver : "") + " " + consola + " - " +
+    (ESTADO_CORTO[$("estado").value] || $("estado").value) + "🕹" + (p ? " Precio: " + p + "💰" : "");
+  return [cab, estadoGen.instagram.trim(), $("cierre").value.trim()].filter(Boolean).join("\n\n");
+}
+function contar() {
+  $("cMk").textContent = $("salidaMk").value.length.toLocaleString("es-CO") + " caracteres";
+  const n = $("salidaIg").value.length;
+  $("cIg").textContent = n.toLocaleString("es-CO") + " / 2.200";
+  $("cIg").style.color = n > 2200 ? "var(--err)" : "";
+}
+function pintar() {
+  $("salidaMk").value = armarMk();
+  $("salidaIg").value = armarIg();
+  contar();
+}
+
+function dibujarConsolas() {
+  const box = $("consolas"); box.textContent = "";
+  CONSOLAS.forEach(c => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = c.k;
+    b.setAttribute("aria-pressed", String(c.k === consola));
+    b.onclick = () => { consola = c.k; dibujarConsolas(); pintar(); };
+    box.append(b);
+  });
+}
+
+// Plataformas donde se publicará (se recuerda en este navegador)
+const PLATS = ["Mercado Libre", "Falabella", "Éxito", "Instagram"];
+let plats = (() => { try { const v = JSON.parse(localStorage.getItem("pg_plats") || "null"); if (Array.isArray(v) && v.length) return v.filter(p => PLATS.includes(p)); } catch (e) {} return PLATS.slice(); })();
+function dibujarPlats() {
+  const box = $("plats"); box.textContent = "";
+  PLATS.forEach(p => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = p;
+    b.setAttribute("aria-pressed", String(plats.includes(p)));
+    b.onclick = () => {
+      if (plats.includes(p)) { if (plats.length === 1) return; plats = plats.filter(x => x !== p); }
+      else plats = PLATS.filter(x => x === p || plats.includes(x));
+      try { localStorage.setItem("pg_plats", JSON.stringify(plats)); } catch (e) {}
+      dibujarPlats();
+    };
+    box.append(b);
+  });
+  const mk = plats.filter(p => p !== "Instagram");
+  $("boxMk").hidden = mk.length === 0;
+  $("tagMk").textContent = mk.join(" · ");
+  $("boxIg").hidden = !plats.includes("Instagram");
+  $("precio").closest("label").style.opacity = plats.includes("Instagram") ? "" : "0.45";
+}
+
+// Historial (solo en este navegador)
+function leerHist() { try { return JSON.parse(localStorage.getItem("pg_hist") || "[]"); } catch (e) { return []; } }
+function guardarHist(item) {
+  const h = leerHist().filter(x => !(x.juego === item.juego && x.consola === item.consola && x.version === item.version));
+  h.unshift(item);
+  try { localStorage.setItem("pg_hist", JSON.stringify(h.slice(0, 12))); } catch (e) {}
+  dibujarHist();
+}
+function dibujarHist() {
+  const h = leerHist(); const box = $("hist"); box.textContent = "";
+  $("histBox").hidden = h.length === 0;
+  h.forEach(x => {
+    const b = document.createElement("button"); b.type = "button";
+    b.textContent = x.fNombre + " · " + x.consola;
+    b.onclick = () => {
+      $("juego").value = x.juego; $("version").value = x.version; $("precio").value = x.precio;
+      $("estado").value = x.estado; $("dispo").value = x.dispo; $("notas").value = x.notas || "";
+      consola = x.consola; dibujarConsolas();
+      $("fNombre").value = x.fNombre; $("fGenero").value = x.fGenero; $("fFecha").value = x.fFecha;
+      estadoGen = x.gen; $("ejMk").hidden = true; $("ejIg").hidden = true; pintar();
+      setStatus("Recuperado: " + x.fNombre, "ok");
+    };
+    box.append(b);
+  });
+}
+
+function setStatus(t, cls) { const s = $("status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
+
+const DISPO = {
+  inmediata: "disponible para entrega inmediata",
+  preventa: "en preventa (se reserva con abono)",
+  importacion: "en camino: llega en los próximos días, se puede apartar"
+};
+
+function prompt() {
+  const hoy = new Date().toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" });
+  return `Eres el redactor de PIPE GAMES, tienda de videojuegos en Bogotá, Colombia. Escribe en español neutro (nada de voseo argentino).
+
+Producto:
+- Juego (como lo escribió el vendedor): ${$("juego").value.trim()}
+- Versión: ${$("version").value.trim() || "ESTANDAR"}
+- Consola: ${consolaNombre()}
+- Estado: ${$("estado").value}
+- Disponibilidad: ${DISPO[$("dispo").value]}
+- Precio: ${fmtPrecio(precioNum()) || "sin precio"}
+- Notas del vendedor: ${$("notas").value.trim() || "ninguna"}
+- Fecha de hoy: ${hoy}
+
+Devuelve SOLO un objeto JSON con estas claves:
+{"nombre_oficial": "nombre oficial del juego en MAYÚSCULAS, sin la consola ni la versión",
+ "genero": "género principal en 1 a 3 palabras, en español",
+ "fecha_lanzamiento": "fecha de lanzamiento original en la consola indicada, formato '26 de enero de 2024'; cadena vacía si no estás seguro",
+ "descripcion": "texto para Mercado Libre/Falabella",
+ "instagram": "cuerpo del texto para Instagram (ver reglas)"}
+
+Reglas para "descripcion": 2 o 3 párrafos de prosa (90 a 160 palabras en total) sobre de qué trata el juego y qué ofrece (modos, jugabilidad, contenido). Sin emojis, sin HTML, sin viñetas, sin precios, sin datos de contacto, sin enlaces y sin mencionar el nombre de la tienda (Pipe Games) ni otras tiendas o canales. No repitas el encabezado (nombre, consola, estado, género, fecha): eso ya lo pone la app.
+
+Reglas para "instagram": la app ya pone la primera línea (nombre, consola, estado y precio) y el cierre con contacto y pagos; tú escribes SOLO el cuerpo, con esta estructura exacta:
+1. Una línea gancho entre signos de exclamación que termina con 2 emojis.
+2. En la línea siguiente (sin línea en blanco), una línea que empieza con 📦 (pegado al texto) y termina con 2 emojis.
+3. Línea en blanco y luego 3 párrafos separados por línea en blanco. Cada párrafo empieza con un emoji temático y un espacio, tiene 1 a 3 oraciones con datos concretos del juego (historia y personajes, mundo o modos, jugabilidad y contenido) y termina con 2 emojis.
+4. Justo debajo del último párrafo (sin línea en blanco), una línea "Para ..." que dice para quién es el juego y termina con 2 emojis.
+No pongas precio, nombre de la consola al inicio, teléfono, pagos, envíos ni hashtags. Si la disponibilidad es preventa o en camino, dilo en la línea 📦.
+Ejemplo de cuerpo (para Assassin's Creed Origins):
+¡Viaja al Antiguo Egipto y descubre el origen de la Hermandad de los Asesinos! 🏜️🔥
+📦Un título que cambió la saga con una propuesta de rol y mundo abierto. 😤🎮
+
+🦅 Encarna a Bayek de Siwa, un Medjay, guardián y protector de su pueblo, que emprende un viaje de venganza en los últimos años de la dinastía ptolemaica. En su camino se cruzará con figuras históricas como Cleopatra y Julio César. 👑⚔️
+
+🗺️ Uno de los mapas más grandes y variados de la saga: el río Nilo, desiertos, ciudades como Alejandría y Menfis, pirámides, templos y tumbas para explorar a tu ritmo. Cuentas con Senu, tu águila compañera, para reconocer el terreno desde el aire y marcar enemigos y objetivos. 🏛️🌅
+
+⚔️ Combate renovado con armas, escudos y arcos, y un sistema de progresión por niveles, equipo y habilidades. Misiones principales y secundarias, cacería y exploración libre en una ambientación histórica muy cuidada. 🏹🎯
+Para los fanáticos de la saga, para los amantes de la historia y para quienes disfrutan los mundos abiertos. 🙌🐪
+
+Para ambos: no uses la palabra "ninja". Si el juego salió hace más de 3 meses respecto a la fecha de hoy, no lo presentes como lanzamiento ni novedad. No inventes datos: si no conoces bien el juego, describe con lo que es seguro y deja "fecha_lanzamiento" vacía. Si las notas del vendedor aportan algo (por ejemplo un código de bonus), inclúyelo en ambos textos.`;
+}
+
+let ctl = null;
+
+// Claude redacta a través del Worker de Pipe Games (la clave de la API vive allá, no en esta página)
+async function redactar(texto, signal) {
+  const token = await auth.currentUser.getIdToken();
+  const r = await fetch(SKYDROPX_URL.replace(/\/+$/, ""), {
+    method: "POST", signal,
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ metodo: "REDACTAR", prompt: texto })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw { code: r.status === 401 ? "auth" : "server", message: j.error || ("HTTP " + r.status) };
+  const t = String(j.texto || "");
+  const i = t.indexOf("{"), k = t.lastIndexOf("}");
+  try { return JSON.parse(t.slice(i, k + 1)); } catch (e) { throw { code: "invalid_json" }; }
+}
+
+async function generar(ev) {
+  ev.preventDefault();
+  if (!$("juego").value.trim()) { setStatus("Escribe el nombre del juego.", "err"); return; }
+  const btn = $("generar"); btn.disabled = true; btn.textContent = "Redactando…";
+  setStatus("Claude está escribiendo las dos publicaciones. Tarda unos segundos.");
+  ctl = new AbortController();
+  try {
+    const r = await redactar(prompt(), ctl.signal);
+    if (!r || typeof r !== "object" || !r.descripcion || !r.instagram) throw { code: "invalid_json" };
+    estadoGen = {
+      descripcion: String(r.descripcion),
+      instagram: String(r.instagram),
+      hashtags: Array.isArray(r.hashtags) ? r.hashtags.map(String) : []
+    };
+    $("fNombre").value = String(r.nombre_oficial || $("juego").value).toUpperCase();
+    $("fGenero").value = String(r.genero || "");
+    $("fFecha").value = String(r.fecha_lanzamiento || "");
+    $("ejMk").hidden = true; $("ejIg").hidden = true;
+    pintar();
+    setStatus(r.fecha_lanzamiento ? "Listo. Revisa los textos antes de publicar." : "Listo. No se encontró la fecha de lanzamiento con seguridad: complétala si la sabes.", "ok");
+    guardarHist({ juego: $("juego").value, version: $("version").value, precio: $("precio").value, estado: $("estado").value,
+      dispo: $("dispo").value, notas: $("notas").value, consola, fNombre: $("fNombre").value, fGenero: $("fGenero").value,
+      fFecha: $("fFecha").value, gen: estadoGen });
+  } catch (e) {
+    const c = e && e.code;
+    const msg = {
+      auth: "La sesión venció. Sal y vuelve a entrar.",
+      server: "No se pudo redactar: " + (e && e.message),
+      invalid_json: "La respuesta llegó incompleta. Presiona de nuevo Generar publicaciones."
+    }[c] || (e && e.name === "AbortError" ? "Se canceló la redacción." : "No se pudo conectar con Claude. Revisa tu conexión e intenta de nuevo.");
+    setStatus(msg, "err");
+  } finally {
+    btn.disabled = false; btn.textContent = "Generar publicaciones";
+  }
+}
+
+async function copiar(id, btn) {
+  const t = $(id);
+  try { await navigator.clipboard.writeText(t.value); btn.textContent = "Copiado"; }
+  catch (e) { t.focus(); t.select(); btn.textContent = "Seleccionado: usa ⌘C"; }
+  setTimeout(() => { btn.textContent = "Copiar"; }, 1800);
+}
+
+// Arranque
+$("cierre").value = leerCierre() || CIERRE_BASE(precioNum());
+dibujarConsolas();
+dibujarPlats();
+$("fNombre").value = "TEKKEN 8"; $("fGenero").value = "Lucha"; $("fFecha").value = "26 de enero de 2024";
+pintar();
+dibujarHist();
+
+$("form").addEventListener("submit", generar);
+$("limpiar").onclick = () => {
+  if (ctl) { try { ctl.abort(); } catch (e) {} }
+  ["juego", "precio", "notas", "fNombre", "fGenero", "fFecha", "salidaMk", "salidaIg"].forEach(id => { $(id).value = ""; });
+  $("version").value = "ESTANDAR"; $("estado").selectedIndex = 0; $("dispo").selectedIndex = 0;
+  consola = "PS5"; dibujarConsolas();
+  estadoGen = { descripcion: "", instagram: "", hashtags: [] };
+  $("ejMk").hidden = true; $("ejIg").hidden = true;
+  if (!leerCierre()) $("cierre").value = CIERRE_BASE(0);
+  contar(); setStatus("");
+  $("juego").focus();
+};
+["fNombre", "fGenero", "fFecha", "version", "estado"].forEach(id => $(id).addEventListener("input", pintar));
+$("cierre").addEventListener("input", () => { guardarCierre($("cierre").value); $("salidaIg").value = armarIg(); contar(); });
+$("precio").addEventListener("input", () => { $("salidaIg").value = armarIg(); contar(); });
+$("restaurarCierre").onclick = () => { try { localStorage.removeItem("pg_cierre2"); } catch (e) {} $("cierre").value = CIERRE_BASE(precioNum()); $("salidaIg").value = armarIg(); contar(); };
+["salidaMk", "salidaIg"].forEach(id => $(id).addEventListener("input", contar));
+document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => copiar(b.dataset.copy, b)));
+
+// Acceso: solo la cuenta de despacho
+$("vLogin").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); $("lError").textContent = ""; $("lEntrar").disabled = true;
+  try { await signInWithEmailAndPassword(auth, $("lCorreo").value.trim(), $("lClave").value); }
+  catch (e) { $("lError").textContent = "Correo o contraseña incorrectos."; }
+  $("lEntrar").disabled = false;
+});
+$("salir").onclick = () => signOut(auth);
+onAuthStateChanged(auth, async (u) => {
+  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta página es solo para la cuenta de despacho."; return; }
+  $("vLogin").hidden = !!u; $("vApp").hidden = !u;
+  if (!u) $("lCorreo").focus();
+});
+</script>
+</body>
+</html>
