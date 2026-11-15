@@ -5315,14 +5315,19 @@ let simPagoItem = null;    // {name, platform, metodo} para pedir un solo artíc
 let simCiudadTxt = '';
 let simCheckout = false;   // true = el cliente está haciendo el pedido (pasos obligatorios)
 let simNombreTxt = '';
-let simDatos = { cedula:'', email:'' }; // se envían en el mensaje de WhatsApp y en el pedido a cuotas (link de saldo)
+let simDatos = { cedula:'', email:'', tel:'', dir:'', comp:'', barrio:'' }; // pago a cuotas: van en el WhatsApp y en el pedido que llega al panel
 function simEsCredito(id) { const m = SIM_METODOS.find(x => x.id === id); return !!(m && m.credito); }
 function simCedulaOk(v) { return /^[0-9]{5,10}$/.test(String(v || '').replace(/[.\s]/g, '')); }
 function simEmailOk(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()); }
 function simDatosOk() { return simCedulaOk(simDatos.cedula) && simEmailOk(simDatos.email); }
+function simTelOk(v) { return /^3\d{9}$/.test(String(v || '').replace(/\D/g, '').replace(/^57(?=3\d{9}$)/, '')); }
+function simDirOk(v) { return String(v || '').trim().length >= 6; }
+function simBarrioOk(v) { return String(v || '').trim().length >= 2; }
+function simEntregaOk() { return simTelOk(simDatos.tel) && simDirOk(simDatos.dir) && simBarrioOk(simDatos.barrio); }
 function simDato(campo, el) {
   simDatos[campo] = el.value;
-  const ok = campo === 'cedula' ? simCedulaOk(el.value) : simEmailOk(el.value);
+  const val = { cedula:simCedulaOk, email:simEmailOk, tel:simTelOk, dir:simDirOk, barrio:simBarrioOk }[campo];
+  const ok = val ? val(el.value) : true;
   el.classList.toggle('bad', !!el.value && !ok);
   simActualizarBotones();
 }
@@ -5332,13 +5337,15 @@ function simFaltantes() {
   if (envF.tipo === 'vacio' || envF.tipo === 'invalido') f.push('tu municipio (elígelo de la lista)');
   if (!simMetodo) f.push('el medio de pago');
   else if (simEsCredito(simMetodo) && !simDatosOk()) f.push('tu cédula/correo');
+  else if (simCheckout && simEsCredito(simMetodo) && !simEntregaOk()) f.push('tus datos de entrega');
   if (simCheckout && simNombreTxt.trim().length < 2) f.push('tu nombre');
   return f;
 }
 function simActualizarBotones() {
   const credMal = simEsCredito(simMetodo) && !simDatosOk();
   const err = document.getElementById('simCredErr');
-  if (err) err.textContent = credMal ? 'Ingresa tu número de cédula y un correo válido para continuar.' : '';
+  const entMal = simCheckout && simEsCredito(simMetodo) && !credMal && !simEntregaOk();
+  if (err) err.textContent = credMal ? 'Ingresa tu número de cédula y un correo válido para continuar.' : entMal ? 'Escribe tu celular (10 dígitos), dirección y barrio para enviar tu pedido.' : '';
   const faltan = simCheckout ? simFaltantes() : [];
   const bloquear = simCheckout ? faltan.length > 0 : credMal;
   document.querySelectorAll('#simActions button').forEach(b => b.disabled = bloquear);
@@ -5528,6 +5535,15 @@ function simRender() {
         <input id="simCedula" type="text" inputmode="numeric" maxlength="13" placeholder="Ej: 1012345678" value="${simEsc(simDatos.cedula)}" oninput="simDato('cedula',this)">
         <label for="simEmail">Correo electrónico</label>
         <input id="simEmail" type="email" inputmode="email" maxlength="80" placeholder="tucorreo@ejemplo.com" value="${simEsc(simDatos.email)}" oninput="simDato('email',this)">
+        ${simCheckout ? `<div class="sim-cred-t" style="margin-top:0.8rem">📦 Datos de entrega</div>
+        <label for="simTel">Celular</label>
+        <input id="simTel" type="tel" inputmode="numeric" maxlength="13" placeholder="3001234567" value="${simEsc(simDatos.tel)}" oninput="simDato('tel',this)">
+        <label for="simDir">Dirección</label>
+        <input id="simDir" type="text" maxlength="100" placeholder="Ej: Calle 26 # 68-10" value="${simEsc(simDatos.dir)}" oninput="simDato('dir',this)">
+        <label for="simComp">Apto, torre o casa (opcional)</label>
+        <input id="simComp" type="text" maxlength="80" placeholder="Ej: Torre 2 apto 301" value="${simEsc(simDatos.comp)}" oninput="simDato('comp',this)">
+        <label for="simBarrio">Barrio</label>
+        <input id="simBarrio" type="text" maxlength="60" placeholder="Ej: Modelia" value="${simEsc(simDatos.barrio)}" oninput="simDato('barrio',this)">` : ''}
         <div class="sim-cred-err" id="simCredErr"></div>
       </div>`
     : '';
@@ -5679,7 +5695,6 @@ function enviarPedidoWA() {
   pendingWAMessage = waArmarPedido(nombre, ciudad, items, metodo);
   // Pago a cuotas: se crea el pedido en el panel y el cliente completa su dirección en su link
   const token = pedidoCuotasPosible(ciudad, items, metodo) ? pcToken() : '';
-  if (token) pendingWAMessage += `\n\nLink de mi pedido: ${PC_URL_SALDO}?c=${token}`;
   enviarPorLinea('573118836995');
   if (token) crearPedidoCuotas(token, nombre, ciudad, items, metodo);
 }
@@ -5694,9 +5709,9 @@ function pcToken() {
   return Array.from(r, x => a[x % a.length]).join('');
 }
 function pedidoCuotasPosible(ciudad, items, metodo) {
-  if (!['addi', 'siste'].includes(metodo) || !simDatosOk() || !items.length) return false;
+  if (!['addi', 'siste'].includes(metodo) || !simDatosOk() || !simEntregaOk() || !items.length) return false;
   const env = envioPedido(ciudad, items);
-  return env.tipo !== 'oculto' && env.tipo !== 'invalido';
+  return ['local', 'nacional', 'otro'].includes(env.tipo);
 }
 function pcValor(v) {
   if (Array.isArray(v)) return { arrayValue: { values: v.map(pcValor) } };
@@ -5709,27 +5724,39 @@ async function crearPedidoCuotas(token, nombre, ciudad, items, metodo) {
   const its = items.map(it => ({ n: (it.name + (it.platform ? ' · ' + it.platform : '')).slice(0, 120), q: it.qty || 1, v: priceToNum(it.price) }));
   const total = its.reduce((a, i) => a + i.q * i.v, 0);
   const env = envioPedido(ciudad, items);
+  const m = simMetodosPermitidos(total).find(x => x.id === metodo);
+  if (!m) return;
+  const envio = env.local ? env.valor : 0, tot = m.calc(total + envio);
+  const kLoc = env.tipo === 'local' ? envNorm(String(env.ciudad || '').split(' - ')[0]) : '';
+  const ciudadLocal = ['bogota', 'chia', 'soacha'].includes(kLoc) ? kLoc : (kLoc.startsWith('bogota') ? 'bogota' : '');
+  const tel = simDatos.tel.replace(/\D/g, '').slice(-10);
+  const respuesta = {
+    ciudad: String(env.ciudad || ciudad || ''), tipoEnvio: env.tipo, ciudadLocal,
+    transportadora: env.tipo === 'nacional' ? ((ENVIO_TRANSP.find(t => t.id === env.transp) || {}).n || '') : '',
+    envio, envioFijo: false, envioPorConfirmar: env.tipo === 'otro', metodo, metodoTxt: m.t, recargo: tot - (total + envio), total: tot, saldo: total,
+    direccion: simDatos.dir.trim().slice(0, 100), complemento: simDatos.comp.trim().slice(0, 80), barrio: simDatos.barrio.trim().slice(0, 60), telefono: tel,
+    sinUbicacion: !!ciudadLocal, cedula: simDatos.cedula.replace(/\D/g, ''), correo: simDatos.email.trim().toLowerCase()
+  };
   const datos = {
     nombre: (nombre || 'Cliente').slice(0, 80),
     producto: (its[0].n + (its.length > 1 ? ` y ${its.length - 1} artículo${its.length > 2 ? 's' : ''} más` : '')).slice(0, 300),
-    items: its, unidades: 1, unitario: total, abono: 0, abonos: [], venta: true, estado: 'enviado',
-    creado: Date.now(), origen: 'catalogo', ciudadSugerida: String(env.ciudad || ciudad || '').slice(0, 80),
+    items: its, unidades: 1, unitario: total, abono: 0, abonos: [], venta: true, estado: 'confirmado',
+    creado: Date.now(), confirmado: Date.now(), respuesta, origen: 'catalogo', ciudadSugerida: String(env.ciudad || ciudad || '').slice(0, 80),
     pre: { metodo, cedula: simDatos.cedula.replace(/\D/g, ''), correo: simDatos.email.trim().toLowerCase(), transp: env.tipo === 'nacional' ? (env.transp || '') : '' }
   };
   try {
     const r = await fetch(`${PC_FIRESTORE}?documentId=${token}&key=${PC_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fields: Object.fromEntries(Object.entries(datos).map(([k, x]) => [k, pcValor(x)])) }) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    pcAvisoListo(`${PC_URL_SALDO}?c=${token}`, metodo);
+    pcAvisoListo(metodo);
   } catch (e) { console.warn('pedido a cuotas', e); }
 }
-function pcAvisoListo(link, metodo) {
+function pcAvisoListo(metodo) {
   let m = document.getElementById('pcModal');
   if (!m) { m = document.createElement('div'); m.id = 'pcModal'; m.className = 'pc-modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="name-modal-box"><h3>Tu pedido quedó registrado</h3>
-    <p>Para tramitar tu crédito con ${metodo === 'addi' ? 'Addi' : 'Sistecrédito'}, completa tu dirección de envío. Cuando confirmes, revisamos tu pedido y te enviamos por WhatsApp el link para hacer la solicitud.</p>
-    <div class="name-modal-btns"><button type="button" class="btn-name-cancel" onclick="document.getElementById('pcModal').classList.remove('open')">Después</button>
-    <a class="btn-name-send pc-ir" href="${link}">Completar mi dirección</a></div></div>`;
+    <p>Revisamos tu pedido y te enviamos por WhatsApp el link de ${metodo === 'addi' ? 'Addi' : 'Sistecrédito'} para que hagas tu solicitud de crédito.</p>
+    <div class="name-modal-btns"><button type="button" class="btn-name-send pc-ir" onclick="document.getElementById('pcModal').classList.remove('open')">Entendido</button></div></div>`;
   m.classList.add('open');
 }
 
@@ -5762,6 +5789,7 @@ function waArmarPedido(nombre, ciudad, items, metodo) {
   if (m) {
     msg += `\n\n*Medio de pago:* ${m.t.replace(' · ', ' - ')}`;
     if (m.credito && simDatosOk()) msg += `\n*Cédula:* ${simDatos.cedula.replace(/[.\s]/g, '')}\n*Correo:* ${simDatos.email.trim()}`;
+    if (m.credito && simEntregaOk()) msg += `\n*Celular:* ${simDatos.tel.replace(/\D/g, '').slice(-10)}\n*Dirección:* ${simDatos.dir.trim()}${simDatos.comp.trim() ? ', ' + simDatos.comp.trim() : ''} · Barrio ${simDatos.barrio.trim()}`;
   }
   msg += `\n\n¿Está disponible?`;
   return msg;

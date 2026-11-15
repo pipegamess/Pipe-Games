@@ -137,12 +137,15 @@ service cloud.firestore {
     match /saldos/{id} {
       allow get: if true;
       allow list, delete: if esAdmin();
-      // El catálogo crea el pedido cuando el cliente elige pago a cuotas (Addi o Sistecrédito)
+      // El catálogo crea el pedido ya confirmado (con dirección) cuando el cliente elige pago a cuotas (Addi o Sistecrédito)
       allow create: if esAdmin() || (
         id.matches('^[A-Z0-9]{18}$')
-        && request.resource.data.keys().hasOnly(['nombre', 'producto', 'items', 'unidades', 'unitario', 'abono', 'abonos', 'venta', 'estado', 'creado', 'origen', 'ciudadSugerida', 'pre'])
+        && request.resource.data.keys().hasOnly(['nombre', 'producto', 'items', 'unidades', 'unitario', 'abono', 'abonos', 'venta', 'estado', 'creado', 'origen', 'ciudadSugerida', 'pre', 'respuesta', 'confirmado'])
         && request.resource.data.origen == 'catalogo'
-        && request.resource.data.estado == 'enviado'
+        && request.resource.data.estado == 'confirmado'
+        && request.resource.data.respuesta is map && request.resource.data.respuesta.size() <= 25
+        && request.resource.data.respuesta.metodo in ['addi', 'siste']
+        && request.resource.data.confirmado is int
         && request.resource.data.venta == true
         && request.resource.data.abono == 0
         && request.resource.data.abonos.size() == 0
