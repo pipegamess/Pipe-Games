@@ -35,7 +35,7 @@ const PLAT = {
 
 // ── Lectura de la pregunta ──
 const PLATAF = [["switch2", /\b(switch ?2|sw2|ns2)\b/], ["ps5", /\bps ?5\b|play ?5|playstation ?5/], ["ps4", /\bps ?4\b|play ?4|playstation ?4/], ["switch", /\b(switch|nintendo|sw|ns)\b/]];
-const VACIAS = new Set("el la los las de del y o a en para por con que cual cuanto cuanta cuantos vale cuesta precio precios hay tienes tiene tenemos disponible disponibles stock juego juegos me un una dame dime quiero saber sobre envio envios domicilio flete costo valor al lo le se es mi su sus ps4 ps5 switch nintendo play playstation sw ns ns2 sw2 addi siste sistecredito tarjeta credito cuotas bold cobrar cobro total con mercado libre falabella exito ml publicar publico recibir neto ciudad municipio llega llegan enviar mandan mandar hacia hasta".split(" "));
+const VACIAS = new Set("el la los las de del y o a en para por con que cual cuanto cuanta cuantos vale cuesta precio precios hay tienes tiene tenemos disponible disponibles stock juego juegos me un una dame dime quiero saber sobre envio envios domicilio flete costo valor al lo le se es mi su sus ps4 ps5 switch nintendo play playstation sw ns ns2 sw2 addi siste sistecredito tarjeta credito cuotas bold cobrar cobro total con mercado libre falabella exito ml publicar publico recibir neto ciudad municipio llega llegan enviar mandan mandar hacia hasta todos todo toda todas lista catalogo tienen tienes venden manejan videojuegos videojuego titulos ver muestrame mostrar".split(" "));
 function leer(q) {
   const n = norm(q), r = { n };
   r.plat = (PLATAF.find(([, rx]) => rx.test(n)) || [])[0] || null;
@@ -45,6 +45,7 @@ function leer(q) {
   r.monto = montos[0] || null;
   r.ciudad = ciudadEn(n, q);
   r.envio = /envi|domicil|flete|llega|mandan|despach|transportadora/.test(n);
+  r.fisica = /tienda fisica|local fisico|punto fisico|tienen (tienda|local)|donde (estan|quedan|queda|se ubican|los encuentro|estan ubicados)|ubicad|direccion de (la )?tienda|recog|retir|punto de (retiro|venta|entrega)|visitar|ir a la tienda|pasar por|ir personalmente/.test(n);
   r.tema = /horario|hora |atienden|abren/.test(n) ? "horario" : /metodo|medios de pago|formas de pago|como pag/.test(n) ? "pagos" : /cuanto (se )?demora|tiempo de entrega|cuando llega|dias/.test(n) ? "tiempos" : /\bguia|rastre/.test(n) ? "rastreo" : /contacto|whatsapp|telefono|correo/.test(n) ? "contacto" : null;
   // Un número suelto cuenta (UFC 6, Mario Kart 8), salvo el 2 de "Switch 2"
   const tokens = n.split(" ").filter(w => (w.length >= 2 || /^\d$/.test(w)) && !VACIAS.has(w) && (!/^\d{4,}$/.test(w) || /^(19[89]\d|20\d\d)$/.test(w)) && !(w === "2" && r.plat === "switch2"));
@@ -117,8 +118,16 @@ const WA = "https://wa.me/573118836995";
 function responder(q, opts = {}) {
   const cli = opts.modo === "cliente";
   const r = leer(q), partes = [];
+  if (r.fisica) return `<h3>Somos una tienda 100% virtual 🎮</h3><p>Estamos ubicados en <b>Bogotá</b>, pero no tenemos tienda física ni punto de retiro.</p><p>Entregamos a domicilio en Bogotá, Chía y Soacha (mismo día si compras antes de las 3:00 p. m.) y hacemos envíos a todo el país por Envía e Interrapidísimo.</p>${cli ? `<p class="nota">Pregúntame el envío a tu ciudad, por ejemplo: <i>envío a Medellín</i>.</p>` : ""}`;
   if (cli) {
     r.mk = null; // los precios de otras plataformas son internos
+    // "juegos de ps5": en vez de una lista larga, la sección del catálogo de esa consola
+    const SECC = { ps4: ["ps4", "PS4"], ps5: ["ps5", "PS5"], switch: ["switch", "Nintendo Switch"], switch2: ["switch", "Nintendo Switch 2"] };
+    const generico = !r.tokens.length || r.tokens.every(w => /^(consolas?|accesorios?|controles?|mandos?)$/.test(w));
+    if (generico && !r.ciudad && !r.monto && !r.tema && (r.plat || r.tokens.length)) {
+      const [tab, nom] = r.plat && !r.tokens.length ? SECC[r.plat] : ["acc", "consolas y accesorios"];
+      return `<h3>${tab === "acc" ? "Consolas y accesorios" : "Videojuegos de " + esc(nom)}</h3><p>Aquí puedes consultar todo lo que tenemos disponible ${tab === "acc" ? "en consolas y accesorios" : "para " + esc(nom)}, con precios al día.</p><p><button type="button" class="pb-cta" data-seccion="${tab}">Ver ${tab === "acc" ? "consolas y accesorios" : "juegos de " + esc(nom)} →</button></p><p class="nota">O escríbeme el nombre de un juego y te doy su precio y disponibilidad.</p>`;
+    }
     if (/^\s*(pipe|asesor|humano|persona|felipe|hablar con alguien)\s*$/i.test(q) || /\b(asesor|humano|hablar con)\b/.test(r.n))
       return `<h3>¡Claro!</h3><p>Escríbenos por WhatsApp y te atendemos personalmente.</p><p><a class="pb-cta" href="${WA}" target="_blank" rel="noopener">Hablar por WhatsApp · 311 883 6995</a></p><p class="nota">Lunes a sábado de 9:30 a. m. a 7:00 p. m.</p>`;
   }

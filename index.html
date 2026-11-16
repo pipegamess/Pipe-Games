@@ -6111,6 +6111,11 @@ function pcAbrirPedidoLink() {
 }
 window.addEventListener('load', () => setTimeout(pcAbrirPedidoLink, 600));
 /* Pipe Bot (asistente/widget.js): compra guiada desde el chat */
+window.pbIrSeccion = function (tab) {
+  try { closePhysicalModal(); } catch {}
+  const t = document.querySelector('.tab[data-tab="' + tab + '"]');
+  if (t) { t.click(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+};
 function pbBuscar(n, p) {
   const norm = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
   return simCatalogo().find(x => norm(x.name) === norm(n) && norm(x.platform) === norm(p));

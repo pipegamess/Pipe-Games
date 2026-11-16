@@ -96,7 +96,7 @@ const css = `
 @media (max-width: 520px) { .pb-panel { right: 8px; left: 8px; width: auto; height: min(640px, calc(100vh - 120px)); } }
 `;
 
-const SUG = CLI ? ["mario kart switch", "juegos de ps5", "envío a Medellín", "¿cómo puedo pagar?", "¿cuánto se demora?", "hablar con un asesor"]
+const SUG = CLI ? ["mario kart switch", "juegos de ps5", "envío a Medellín", "¿cómo puedo pagar?", "¿tienen tienda física?", "hablar con un asesor"]
   : ["mario kart switch", "envío a Medellín", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "horario"];
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
@@ -156,6 +156,7 @@ chat.addEventListener("click", e => {
   // Compra guiada (solo en el catálogo)
   const pd = e.target.closest("[data-pedir]"); if (pd) return agregar(pd.dataset.pedir);
   const ac = e.target.closest("[data-accion]"); if (ac) return accion(ac.dataset.accion, ac);
+  const sc = e.target.closest("[data-seccion]"); if (sc && typeof window.pbIrSeccion === "function") { cerrar(); window.pbIrSeccion(sc.dataset.seccion); }
 });
 
 /* ══ Compra guiada: producto → ¿otro o continuar? → ciudad → pago → datos → WhatsApp ══ */
