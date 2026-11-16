@@ -69,27 +69,35 @@ export default {
       try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
       catch (e) { return responder({ error: "No se pudo abrir el link: " + (e.message || e) }, 400); }
     }
-    // Generador de publicaciones: Claude redacta el texto (pipegames.com.co/publicaciones/)
+    // Redactar textos y leer fotos de etiquetas con IA (Publicaciones, Pipe Bot y el panel de despacho).
+    // Usa Claude si hay ANTHROPIC_API_KEY; si no, la IA gratuita de Cloudflare (binding "AI", cupo diario gratis).
     if (String(pedido.metodo || "").toUpperCase() === "REDACTAR") {
-      if (!env.ANTHROPIC_API_KEY) return responder({ error: "Falta ANTHROPIC_API_KEY en el Worker" }, 500);
       const texto = String(pedido.prompt || "").slice(0, 12000);
       if (!texto) return responder({ error: "Falta el texto" }, 400);
       // Fotos opcionales (etiquetas de Mercado Libre / Falabella): hasta 4 JPEG o PNG en base64, máx. ~1,5 MB cada una
       const fotos = (Array.isArray(pedido.imagenes) ? pedido.imagenes : []).slice(0, 4)
-        .filter(f => f && /^image\/(jpeg|png|webp)$/.test(f.tipo) && typeof f.datos === "string" && f.datos.length < 2100000)
-        .map(f => ({ type: "image", source: { type: "base64", media_type: f.tipo, data: f.datos } }));
-      const contenido = fotos.length ? [...fotos, { type: "text", text: texto }] : texto;
+        .filter(f => f && /^image\/(jpeg|png|webp)$/.test(f.tipo) && typeof f.datos === "string" && f.datos.length < 2100000);
+      if (env.ANTHROPIC_API_KEY) {
+        const contenido = fotos.length ? [...fotos.map(f => ({ type: "image", source: { type: "base64", media_type: f.tipo, data: f.datos } })), { type: "text", text: texto }] : texto;
+        try {
+          const r = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 2000, messages: [{ role: "user", content: contenido }] })
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) return responder({ error: "Claude respondió " + r.status + ": " + ((j.error && j.error.message) || "") }, 502);
+          return responder({ texto: (j.content || []).filter(c => c.type === "text").map(c => c.text).join(""), ia: "claude" });
+        } catch (e) {
+          return responder({ error: "No se pudo hablar con Claude: " + (e.message || e) }, 502);
+        }
+      }
+      if (!env.AI) return responder({ error: "Falta conectar la IA de Cloudflare al Worker (Settings → Bindings → Workers AI, nombre AI)" }, 500);
       try {
-        const r = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 2000, messages: [{ role: "user", content: contenido }] })
-        });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) return responder({ error: "Claude respondió " + r.status + ": " + ((j.error && j.error.message) || "") }, 502);
-        return responder({ texto: (j.content || []).filter(c => c.type === "text").map(c => c.text).join("") });
+        return responder({ texto: await iaCloudflare(env, texto, fotos[0]), ia: "cloudflare" });
       } catch (e) {
-        return responder({ error: "No se pudo hablar con Claude: " + (e.message || e) }, 502);
+        const m = String(e.message || e);
+        return responder({ error: /neuron|quota|limit|429|capacity/i.test(m) ? "Se acabó el cupo gratis de IA de hoy; mañana se renueva" : "IA de Cloudflare: " + m }, 502);
       }
     }
     const metodo = String(pedido.metodo || "GET").toUpperCase();
@@ -110,6 +118,24 @@ export default {
     }
   }
 };
+
+// IA gratuita de Cloudflare (Workers AI). Con foto: modelo de visión; sin foto: modelo de texto.
+const MODELO_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
+const MODELO_TEXTO = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+async function iaCloudflare(env, texto, foto) {
+  const correr = () => foto
+    ? env.AI.run(MODELO_VISION, { messages: [{ role: "user", content: texto }], image: "data:" + foto.tipo + ";base64," + foto.datos, max_tokens: 900, temperature: 0.1 })
+    : env.AI.run(MODELO_TEXTO, { messages: [{ role: "user", content: texto }], max_tokens: 2000, temperature: 0.6 });
+  let r;
+  try { r = await correr(); }
+  catch (e) {
+    // El modelo de visión de Meta pide aceptar su licencia una sola vez
+    if (foto && /agree|licen/i.test(String(e.message || e))) { await env.AI.run(MODELO_VISION, { prompt: "agree" }).catch(() => {}); r = await correr(); }
+    else throw e;
+  }
+  const t = r && (r.response ?? r.result?.response ?? r.text);
+  return typeof t === "string" ? t : JSON.stringify(t ?? "");
+}
 
 function llamar(base, ruta, metodo, cuerpo, token) {
   return fetch(base + ruta, {
