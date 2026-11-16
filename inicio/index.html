@@ -25,7 +25,7 @@
 }
 * { box-sizing: border-box; }
 html, body { background: var(--bg); color: var(--text); margin: 0; }
-body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: max(24px, env(safe-area-inset-top, 0px)) 48px;
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: max(24px, env(safe-area-inset-top, 0px)) 120px;
   background: radial-gradient(120% 60% at 50% -10%, #2a2a2f 0%, var(--bg) 60%) fixed, var(--bg); }
 .wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 28px; }
 header { display: flex; align-items: center; gap: 16px; }
@@ -68,7 +68,6 @@ h2 img.tt { height: 15px; width: auto; flex: none; }
   <section>
     <h2><img class="tt" src="titulos/para-trabajar.png" alt="Para trabajar" width="168" height="19"></h2>
     <div class="grid">
-      <a class="item" href="../asistente/"><span class="ico">🤖</span><b><img class="tt" src="titulos/pipebot.png" alt="Pipe Bot" width="110" height="37"></b><small>Pregunta rápido: juegos, precios, stock, envíos, cuotas y plataformas</small></a>
       <a class="item" href="../mensajeria/"><span class="ico">📦</span><b><img class="tt" src="titulos/panel.png" alt="Panel de despacho" width="245" height="37"></b><small>Guías, mensajeros, reservas, cobros, Addi, Sistecrédito y Skydropx</small></a>
       <a class="item" href="../calculadoras/"><span class="ico">🧮</span><b><img class="tt" src="titulos/calculadoras.png" alt="Calculadoras" width="172" height="37"></b><small>Precios para Mercado Libre, Falabella, Éxito, Addi y Sistecrédito</small></a>
       <a class="item" href="../publicaciones/"><span class="ico">✍️</span><b><img class="tt" src="titulos/publicaciones.png" alt="Publicaciones" width="180" height="37"></b><small>Descripción para marketplaces y texto para Instagram</small></a>
@@ -117,5 +116,6 @@ document.addEventListener("click", async e => {
   setTimeout(() => { b.textContent = t; b.classList.remove("ok"); }, 1800);
 });
 </script>
+<script type="module" src="../asistente/widget.js"></script>
 </body>
 </html>
