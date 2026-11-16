@@ -29,9 +29,9 @@ body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left
   background: radial-gradient(120% 60% at 50% -10%, #2a2a2f 0%, var(--bg) 60%) fixed, var(--bg); }
 .wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 28px; }
 header { display: flex; align-items: center; gap: 16px; }
-header img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 2px var(--line2), 0 6px 24px rgba(0,0,0,.6); }
+header > img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 2px var(--line2), 0 6px 24px rgba(0,0,0,.6); }
 h1 { font-family: var(--display); font-weight: 400; font-size: clamp(30px, 8vw, 44px); letter-spacing: 0.01em; margin: 0; line-height: 1; text-wrap: balance;
-  background: linear-gradient(180deg, #ffffff 30%, #a9a9b0 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  color: var(--text); }
 .sub { color: var(--muted); margin: 6px 0 0; font-size: 14px; }
 h2 { font-family: var(--display); font-weight: 400; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--plata); margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
 h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line2), transparent); }
@@ -48,6 +48,11 @@ a.item:hover, a.item:focus-visible { border-color: var(--plata); outline: none; 
 .acciones button.ok { color: var(--ok); border-color: var(--ok); }
 .nota { color: var(--muted); font-size: 13px; margin: 0; }
 @media (prefers-reduced-motion: no-preference) { .item { transition: border-color .15s ease; } }
+/* Títulos en la letra del logo (Adumu), como imágenes */
+img.tt { display: block; max-width: 100%; height: auto; }
+h1 img.tt { width: min(100%, 360px); }
+h2 img.tt { height: 15px; width: auto; flex: none; }
+.item b img.tt { height: 25px; width: auto; }
 </style>
 </head>
 <body>
@@ -55,46 +60,46 @@ a.item:hover, a.item:focus-visible { border-color: var(--plata); outline: none; 
   <header>
     <img src="../mensajeria/logo-pipegames.jpg" alt="Pipe Games">
     <div>
-      <h1>Centro de Mando</h1>
+      <h1><img class="tt" src="titulos/centro-de-mando.png" alt="Centro de Mando" width="512" height="51"></h1>
       <p class="sub">Pipe Games · todas las herramientas en un solo lugar.</p>
     </div>
   </header>
 
   <section>
-    <h2>Para trabajar</h2>
+    <h2><img class="tt" src="titulos/para-trabajar.png" alt="Para trabajar" width="168" height="19"></h2>
     <div class="grid">
-      <a class="item" href="../mensajeria/"><span class="ico">📦</span><b>Panel de despacho</b><small>Guías, mensajeros, reservas, cobros, Addi, Sistecrédito y Skydropx</small></a>
-      <a class="item" href="../calculadoras/"><span class="ico">🧮</span><b>Calculadoras</b><small>Precios para Mercado Libre, Falabella, Éxito, Addi y Sistecrédito</small></a>
-      <a class="item" href="../publicaciones/"><span class="ico">✍️</span><b>Publicaciones</b><small>Descripción para marketplaces y texto para Instagram</small></a>
-      <a class="item" href="../certificados/"><span class="ico">🧾</span><b>Generador facturas Éxito</b><small>Certificado de garantía en PDF para pedidos de Éxito</small></a>
+      <a class="item" href="../mensajeria/"><span class="ico">📦</span><b><img class="tt" src="titulos/panel.png" alt="Panel de despacho" width="245" height="37"></b><small>Guías, mensajeros, reservas, cobros, Addi, Sistecrédito y Skydropx</small></a>
+      <a class="item" href="../calculadoras/"><span class="ico">🧮</span><b><img class="tt" src="titulos/calculadoras.png" alt="Calculadoras" width="172" height="37"></b><small>Precios para Mercado Libre, Falabella, Éxito, Addi y Sistecrédito</small></a>
+      <a class="item" href="../publicaciones/"><span class="ico">✍️</span><b><img class="tt" src="titulos/publicaciones.png" alt="Publicaciones" width="180" height="37"></b><small>Descripción para marketplaces y texto para Instagram</small></a>
+      <a class="item" href="../certificados/"><span class="ico">🧾</span><b><img class="tt" src="titulos/facturas.png" alt="Generador facturas Éxito" width="344" height="37"></b><small>Certificado de garantía en PDF para pedidos de Éxito</small></a>
     </div>
   </section>
 
   <section>
-    <h2>Plataformas</h2>
+    <h2><img class="tt" src="titulos/plataformas.png" alt="Plataformas" width="146" height="19"></h2>
     <div class="grid">
-      <a class="item" href="https://vendedores.mercadolibre.com.co/resumen" target="_blank" rel="noopener"><span class="ico">🤝</span><b>Mercado Libre</b><small>Resumen de vendedores</small></a>
-      <a class="item" href="https://sellercenter.falabella.com/" target="_blank" rel="noopener"><span class="ico">🛍️</span><b>Falabella</b><small>Seller Center</small></a>
-      <a class="item" href="https://sellercenter.exito.com/" target="_blank" rel="noopener"><span class="ico">🏬</span><b>Éxito</b><small>Seller Center</small></a>
-      <a class="item" href="https://app.skydropx.com/es-CO" target="_blank" rel="noopener"><span class="ico">🚚</span><b>Skydropx</b><small>Órdenes y guías nacionales</small></a>
-      <a class="item" href="https://login.addi.com/?redirect_url=https%3A%2F%2Faliados.addi.com%2F" target="_blank" rel="noopener"><span class="ico">💳</span><b>Addi</b><small>Portal de aliados</small></a>
-      <a class="item" href="https://siste.credinet.co/login" target="_blank" rel="noopener"><span class="ico">🧾</span><b>Sistecrédito</b><small>Portal de aliados (cédula y cuotas)</small></a>
+      <a class="item" href="https://vendedores.mercadolibre.com.co/resumen" target="_blank" rel="noopener"><span class="ico">🤝</span><b><img class="tt" src="titulos/mercadolibre.png" alt="Mercado Libre" width="189" height="37"></b><small>Resumen de vendedores</small></a>
+      <a class="item" href="https://sellercenter.falabella.com/" target="_blank" rel="noopener"><span class="ico">🛍️</span><b><img class="tt" src="titulos/falabella.png" alt="Falabella" width="113" height="37"></b><small>Seller Center</small></a>
+      <a class="item" href="https://sellercenter.exito.com/" target="_blank" rel="noopener"><span class="ico">🏬</span><b><img class="tt" src="titulos/exito.png" alt="Éxito" width="68" height="37"></b><small>Seller Center</small></a>
+      <a class="item" href="https://app.skydropx.com/es-CO" target="_blank" rel="noopener"><span class="ico">🚚</span><b><img class="tt" src="titulos/skydropx.png" alt="Skydropx" width="126" height="37"></b><small>Órdenes y guías nacionales</small></a>
+      <a class="item" href="https://login.addi.com/?redirect_url=https%3A%2F%2Faliados.addi.com%2F" target="_blank" rel="noopener"><span class="ico">💳</span><b><img class="tt" src="titulos/addi.png" alt="Addi" width="56" height="37"></b><small>Portal de aliados</small></a>
+      <a class="item" href="https://siste.credinet.co/login" target="_blank" rel="noopener"><span class="ico">🧾</span><b><img class="tt" src="titulos/sistecredito.png" alt="Sistecrédito" width="170" height="37"></b><small>Portal de aliados (cédula y cuotas)</small></a>
     </div>
   </section>
 
   <section>
-    <h2>Para compartir con clientes</h2>
+    <h2><img class="tt" src="titulos/compartir.png" alt="Para compartir con clientes" width="327" height="19"></h2>
     <div class="grid">
       <div class="compartir">
-        <a class="item" href="../"><span class="ico">🎮</span><b>Catálogo</b><small>Juegos, consolas y accesorios con stock al día</small></a>
+        <a class="item" href="../"><span class="ico">🎮</span><b><img class="tt" src="titulos/catalogo.png" alt="Catálogo" width="119" height="37"></b><small>Juegos, consolas y accesorios con stock al día</small></a>
         <div class="acciones"><button type="button" data-copiar="https://pipegames.com.co/">Copiar link</button></div>
       </div>
       <div class="compartir">
-        <a class="item" href="../mensajeria/envio.html"><span class="ico">📝</span><b>Datos de envío</b><small>Formulario para que el cliente deje su dirección</small></a>
+        <a class="item" href="../mensajeria/envio.html"><span class="ico">📝</span><b><img class="tt" src="titulos/envio.png" alt="Datos de envío" width="197" height="37"></b><small>Formulario para que el cliente deje su dirección</small></a>
         <div class="acciones"><button type="button" data-copiar="https://pipegames.com.co/mensajeria/envio.html">Copiar link</button></div>
       </div>
       <div class="compartir">
-        <a class="item" href="../mensajeria/rastreo.html"><span class="ico">📍</span><b>Rastreo</b><small>El cliente consulta su pedido con el número de guía</small></a>
+        <a class="item" href="../mensajeria/rastreo.html"><span class="ico">📍</span><b><img class="tt" src="titulos/rastreo.png" alt="Rastreo" width="109" height="37"></b><small>El cliente consulta su pedido con el número de guía</small></a>
         <div class="acciones"><button type="button" data-copiar="https://pipegames.com.co/mensajeria/rastreo.html">Copiar link</button></div>
       </div>
     </div>
