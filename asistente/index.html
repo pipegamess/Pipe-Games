@@ -42,6 +42,9 @@ header a, header button { white-space: nowrap; font: 600 13px/1 var(--body); col
 .bot .nota { color: var(--muted); font-size: 13px; }
 .prod { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 0; border-top: 1px solid var(--line); }
 .prod:first-of-type { border-top: 0; }
+.prod[data-ver] { cursor: pointer; border-radius: 8px; margin: 0 -6px; padding: 8px 6px; }
+.prod[data-ver]:hover { background: rgba(255,255,255,.07); }
+.prod[data-ver] b::after { content: " ›"; color: var(--muted); }
 .prod b { font-weight: 700; }
 .prod .pr { font-family: var(--display); font-size: 17px; text-align: right; font-variant-numeric: tabular-nums; }
 .prod .sub { color: var(--muted); font-size: 13px; grid-column: 1 / -1; }
@@ -92,7 +95,7 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--plata); out
 
 <script type="module">
 import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION } from "../mensajeria/config.js";
-import { cargar as cargarMotor, responder, desactualizado, disponibles } from "./motor.js";
+import { cargar as cargarMotor, responder, verProducto, desactualizado, disponibles } from "./motor.js";
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
@@ -113,7 +116,10 @@ async function preguntar(q) {
   poner(responder(q), "bot");
 }
 $("f").addEventListener("submit", e => { e.preventDefault(); const q = $("q").value; $("q").value = ""; preguntar(q); });
-$("chat").addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (b) preguntar(b.dataset.s); });
+$("chat").addEventListener("click", e => {
+  const b = e.target.closest("[data-s]"); if (b) return preguntar(b.dataset.s);
+  const v = e.target.closest("[data-ver]"); if (v) { const [n, p] = v.dataset.ver.split("|"); poner(esc(n + " · " + p), "yo"); poner(verProducto(n, p), "bot"); }
+});
 window.__pipeBot = { responder, cargar };
 
 // ── Acceso: solo la cuenta de administrador ──

@@ -1,6 +1,6 @@
 // Pipe Bot: asistente flotante (abajo a la derecha). Se carga con <script type="module" src="../asistente/widget.js"></script>
 // Usa el motor de asistente/motor.js: catálogo con stock en vivo, tarifas de envío y fórmulas de pago y plataformas.
-import { cargar, responder, desactualizado, disponibles } from "./motor.js";
+import { cargar, responder, verProducto, desactualizado, disponibles } from "./motor.js";
 
 const BASE = new URL(".", import.meta.url).href; // carpeta asistente/
 // ?modo=cliente: versión del catálogo (solo precios, disponibilidad, envíos, pagos, horario y contacto)
@@ -58,6 +58,9 @@ const css = `
 .pb-bot p { margin: 0; } .pb-bot .nota { color: #9a9aa2; font-size: 12.5px; } .pb-bot a { color: #d6d6da; }
 .pb-bot .prod { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 7px 0; border-top: 1px solid rgba(255,255,255,.1); }
 .pb-bot .prod:first-of-type { border-top: 0; }
+.pb-bot .prod[data-ver] { cursor: pointer; border-radius: 8px; margin: 0 -6px; padding: 7px 6px; }
+.pb-bot .prod[data-ver]:hover, .pb-bot .prod[data-ver]:focus-visible { background: rgba(255,255,255,.07); outline: none; }
+.pb-bot .prod[data-ver] b::after { content: " ›"; color: #9a9aa2; }
 .pb-bot .pr { font: 400 15px 'Russo One', sans-serif; text-align: right; }
 .pb-bot .sub { color: #9a9aa2; font-size: 12.5px; grid-column: 1 / -1; }
 .pb-bot .chip { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: 1px; }
@@ -131,11 +134,19 @@ async function preguntar(q) {
   try { if (desactualizado()) await cargar(); } catch {}
   setTimeout(() => { pensando.innerHTML = responder(q, { modo: CLI ? "cliente" : "" }); chat.scrollTop = chat.scrollHeight; }, 350);
 }
+// Elegir un producto de una lista: muestra su ficha completa (con "Pedir este producto" en el catálogo)
+function elegir(dato) {
+  const [n, p] = dato.split("|");
+  poner(esc(n + " · " + p), "yo");
+  poner(verProducto(n, p, { modo: CLI ? "cliente" : "" }), "bot");
+}
+chat.addEventListener("keydown", e => { const v = e.target.closest("[data-ver]"); if (v && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); elegir(v.dataset.ver); } });
 boton.addEventListener("click", () => panel.hidden ? abrir() : cerrar());
 panel.querySelector(".pb-cerrar").addEventListener("click", cerrar);
 panel.querySelector("form").addEventListener("submit", e => { e.preventDefault(); const q = input.value; input.value = ""; preguntar(q); });
 chat.addEventListener("click", e => {
   const b = e.target.closest("[data-s]"); if (b) return preguntar(b.dataset.s);
+  const v = e.target.closest("[data-ver]"); if (v) return elegir(v.dataset.ver);
   // En el catálogo: "Pedir este producto" lo agrega al pedido y abre el formulario de compra
   const pd = e.target.closest("[data-pedir]");
   if (pd && typeof window.pbPedir === "function") { const [n, p] = pd.dataset.pedir.split("|"); cerrar(); window.pbPedir(n, p); }
