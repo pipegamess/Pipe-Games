@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pipe Games">
+<link rel="apple-touch-icon" href="../mensajeria/logo-pipegames.jpg">
+<link rel="icon" href="../mensajeria/logo-pipegames.jpg">
+<title>Pipe Games · Inicio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Inicio: acceso a todas las herramientas de Pipe Games. Dos grupos: lo que usas tú (con contraseña) y lo que compartes con clientes.
+   Identidad de pipegames.com.co: fondo casi negro, amarillo Pipe Games, Rajdhani + Barlow. Tema oscuro fijo por marca. */
+:root {
+  --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --line: rgba(255,255,255,0.09);
+  --text: #e8e8f0; --muted: #8a8aa8; --acc: #f5c400; --acc-ink: #141000; --ok: #3ecf8e;
+  --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: max(24px, env(safe-area-inset-top, 0px)) 48px; }
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: flex; align-items: center; gap: 14px; }
+header img { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; flex: none; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 7vw, 38px); letter-spacing: 0.02em; margin: 0; line-height: 1; }
+h1 span { color: var(--acc); }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
+h2 { font-family: var(--display); font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; font-weight: 700; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+.item { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 4px 14px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; color: inherit; text-decoration: none; min-width: 0; }
+a.item:hover, a.item:focus-visible { border-color: var(--acc); outline: none; }
+.ico { grid-row: span 2; width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: grid; place-items: center; font-size: 24px; }
+.item b { font-family: var(--display); font-size: 21px; letter-spacing: 0.03em; line-height: 1.1; }
+.item small { color: var(--muted); font-size: 13.5px; line-height: 1.35; }
+.compartir { display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.compartir .item { border: 0; border-radius: 0; background: transparent; }
+.acciones { display: flex; gap: 8px; padding: 0 16px 16px 78px; flex-wrap: wrap; }
+.acciones a, .acciones button { font: 600 13px/1 var(--body); color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; cursor: pointer; text-decoration: none; }
+.acciones button.ok { color: var(--ok); border-color: var(--ok); }
+.url { font-size: 12.5px; color: var(--muted); padding: 0 16px 10px 78px; word-break: break-all; }
+.nota { color: var(--muted); font-size: 13px; margin: 0; }
+@media (prefers-reduced-motion: no-preference) { .item { transition: border-color .15s ease; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="../mensajeria/logo-pipegames.jpg" alt="Pipe Games">
+    <div>
+      <h1>Pipe <span>Games</span></h1>
+      <p class="sub">Todas las herramientas en un solo lugar.</p>
+    </div>
+  </header>
+
+  <section>
+    <h2>Para trabajar</h2>
+    <div class="grid">
+      <a class="item" href="../mensajeria/"><span class="ico">📦</span><b>Panel de despacho</b><small>Guías, mensajeros, reservas, cobros, Addi, Sistecrédito y Skydropx</small></a>
+      <a class="item" href="../calculadoras/"><span class="ico">🧮</span><b>Calculadoras</b><small>Precios para Mercado Libre, Falabella, Éxito, Addi y Sistecrédito</small></a>
+      <a class="item" href="../publicaciones/"><span class="ico">✍️</span><b>Publicaciones</b><small>Descripción para marketplaces y texto para Instagram</small></a>
+    </div>
+  </section>
+
+  <section>
+    <h2>Para compartir con clientes</h2>
+    <div class="grid">
+      <div class="compartir">
+        <a class="item" href="../"><span class="ico">🎮</span><b>Catálogo</b><small>Juegos, consolas y accesorios con stock al día</small></a>
+        <div class="acciones"><button type="button" data-copiar="https://pipegames.com.co/">Copiar link</button></div>
+      </div>
+      <div class="compartir">
+        <a class="item" href="../mensajeria/envio.html"><span class="ico">📝</span><b>Datos de envío</b><small>Formulario para que el cliente deje su dirección</small></a>
+        <div class="acciones"><button type="button" data-copiar="https://pipegames.com.co/mensajeria/envio.html">Copiar link</button></div>
+      </div>
+      <div class="compartir">
+        <a class="item" href="../mensajeria/rastreo.html"><span class="ico">📍</span><b>Rastreo</b><small>El cliente consulta su pedido con el número de guía</small></a>
+        <div class="acciones"><button type="button" data-copiar="https://pipegames.com.co/mensajeria/rastreo.html">Copiar link</button></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="nota">Consejo: en el celular o el iPad, abre esta página en Safari o Chrome y elige "Agregar a pantalla de inicio" para tenerla como una app.</p>
+</div>
+<script>
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-copiar]"); if (!b) return;
+  const t = b.textContent;
+  try { await navigator.clipboard.writeText(b.dataset.copiar); b.textContent = "Copiado ✓"; b.classList.add("ok"); }
+  catch { b.textContent = b.dataset.copiar; }
+  setTimeout(() => { b.textContent = t; b.classList.remove("ok"); }, 1800);
+});
+</script>
+</body>
+</html>
