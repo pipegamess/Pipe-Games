@@ -112,17 +112,16 @@ const auth = getAuth(initializeApp(firebaseConfig));
 const $ = id => document.getElementById(id);
 const cop = n => "$ " + Math.round(n).toLocaleString("es-CO");
 const num = t => parseInt(String(t || "").replace(/\D/g, ""), 10) || 0;
-// Precio sugerido: el siguiente valor terminado en 990 (ej. 184.990)
-const sug990 = p => { const m = Math.ceil((p + 10) / 1000) * 1000 - 10; return m < p ? m + 1000 : m; };
+
 
 // Plataformas: fórmulas del Excel CALCULADORAS_PRECIOS. p = parámetros ajustables.
 // neto(P) = lo que te queda de un precio publicado P; precio(N) = precio exacto para que te quede N.
 const PLATAFORMAS = [
   { id: "ml", nombre: "Mercado Libre", c: "var(--ml)",
-    p: { com: 16, rete: 15, envio: 9600 },
-    etiquetas: { com: "Comisión %", rete: "Rete IVA % de la comisión", envio: "Envío $" },
+    p: { com: 16, rete: 15, reteP: 2, envio: 9600 },
+    etiquetas: { com: "Comisión %", rete: "Rete IVA % de la comisión", reteP: "Rete IVA % (fórmula neto deseado)", envio: "Envío $" },
     desglose: (P, p) => { const com = P * p.com / 100, rete = com * p.rete / 100; return [["Comisión " + p.com + "%", com], ["Rete IVA (" + p.rete + "% de la comisión)", rete], ["Envío", p.envio]]; },
-    precio: (N, p) => (N + p.envio) / (1 - p.com / 100 * (1 + p.rete / 100)) },
+    precio: (N, p) => (N + p.envio) / (1 - (p.com + p.reteP) / 100) }, // Excel: =(B2+9600)/0.82
   { id: "fa", nombre: "Falabella", c: "var(--fa)",
     p: { imp: 2, com: 15, envio: 8800 },
     etiquetas: { imp: "Impuesto %", com: "Comisión %", envio: "Envío $" },
@@ -156,10 +155,9 @@ function tarjeta(pl, V) {
   let cuerpo;
   if (!V) cuerpo = `<p class="vacio">Escribe un valor arriba.</p>`;
   else if (modo === "neto") {
-    const P = pl.precio(V, pl.p), S = sug990(P), nS = neto(pl, S);
+    const P = pl.precio(V, pl.p), S = P, nS = neto(pl, S);
     const filas = pl.desglose(S, pl.p);
-    cuerpo = `<div class="res"><span class="k">Publica a</span><span class="v">${cop(S)}</span>
-      <span class="s">Exacto: <b>${cop(P)}</b> · con ${cop(S)} te quedan <b>${cop(nS)}</b></span></div>
+    cuerpo = `<div class="res"><span class="k">${pl.id === "addi" || pl.id === "siste" ? "Valor de venta" : "Precio de publicación"}</span><span class="v">${cop(S)}</span></div>
       <button class="copiar" type="button" data-copiar="${Math.round(S)}">Copiar ${cop(S)}</button>
       <table><tr><td>Precio publicado</td><td>${cop(S)}</td></tr>${filas.map(([k, v]) => `<tr class="menos"><td>${k}</td><td>− ${cop(v)}</td></tr>`).join("")}
       <tr class="total"><td>Te queda</td><td>${cop(nS)}</td></tr></table>`;
@@ -182,7 +180,7 @@ function pintar() {
   const V = num($("valor").value);
   document.querySelectorAll("[data-modo]").forEach(b => b.setAttribute("aria-pressed", b.dataset.modo === modo));
   $("lValor").firstChild.textContent = modo === "neto" ? "Valor neto que quiero recibir" : "Precio al que voy a publicar";
-  $("explica").textContent = modo === "neto" ? "Escribe lo que quieres que te quede limpio y te digo a cuánto publicar en cada plataforma (redondeado a …990)." : "Escribe el precio de la publicación y te digo cuánto te queda en cada plataforma después de comisiones y envío.";
+  $("explica").textContent = modo === "neto" ? "Escribe lo que quieres que te quede limpio y te digo a cuánto publicar en cada plataforma ." : "Escribe el precio de la publicación y te digo cuánto te queda en cada plataforma después de comisiones y envío.";
   const abiertos = new Set([...document.querySelectorAll(".card details[open]")].map(d => d.closest(".card").querySelector("[data-restaurar]").dataset.restaurar));
   $("cards").innerHTML = PLATAFORMAS.map(pl => tarjeta(pl, V)).join("");
   abiertos.forEach(id => { const d = document.querySelector(`[data-restaurar="${id}"]`)?.closest("details"); if (d) d.open = true; });
@@ -201,7 +199,7 @@ $("cards").addEventListener("click", async e => {
   if (c) { try { await navigator.clipboard.writeText(c.dataset.copiar); c.textContent = "Copiado ✓"; } catch { c.textContent = c.dataset.copiar; } }
 });
 // Valores originales del Excel (para restaurar)
-const BASE_EXCEL = { ml: { com: 16, rete: 15, envio: 9600 }, fa: { imp: 2, com: 15, envio: 8800 }, ex: { desc: 10, iva: 19 }, addi: { factor: 0.92265 }, siste: { desc: 5 } };
+const BASE_EXCEL = { ml: { com: 16, rete: 15, reteP: 2, envio: 9600 }, fa: { imp: 2, com: 15, envio: 8800 }, ex: { desc: 10, iva: 19 }, addi: { factor: 0.92265 }, siste: { desc: 5 } };
 
 // Acceso: solo la cuenta de administrador
 $("vLogin").addEventListener("submit", async (ev) => {
