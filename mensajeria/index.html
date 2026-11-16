@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261116b">
+<link rel="stylesheet" href="estilos.css?v=20261116c">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261116b";
-import * as C from "./comun.js?v=20261116b";
-import * as T from "./tarifas-envio.js?v=20261116b";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261116b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261116c";
+import * as C from "./comun.js?v=20261116c";
+import * as T from "./tarifas-envio.js?v=20261116c";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261116c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -466,20 +466,32 @@ function listaNotis() {
   if (esMaestro()) (S.prepSol || []).forEach(x => l.push({ g: { numero: x.municipio || "Otra ciudad", cliente: titulo(x.nombre) + (x.transportadora ? " · " + nombreTransp(x.transportadora) : "") }, e: { estado: "preparar", t: x.creado }, k: "sol|" + x.id, sol: x.id }));
   return l.sort((a, b) => b.e.t - a.e.t).slice(0, 40);
 }
+// Avisos leídos uno por uno (al tocarlos). Se guardan en la cuenta y en este equipo.
+let notiLeidasLocal = []; try { notiLeidasLocal = JSON.parse(localStorage.getItem("pg_noti_leidas") || "[]"); } catch {}
+const notiLeida = k => (S.notiLeidas || []).includes(k) || notiLeidasLocal.includes(k);
+async function marcarNotiLeida(k) {
+  if (!k || notiLeida(k)) return;
+  notiLeidasLocal = [...notiLeidasLocal, k].slice(-200);
+  try { localStorage.setItem("pg_noti_leidas", JSON.stringify(notiLeidasLocal)); } catch {}
+  S.notiLeidas = [...(S.notiLeidas || []), k].slice(-200); pintarNotis();
+  try { await setDoc(refYo(), { notiLeidas: S.notiLeidas }, { merge: true }); } catch {}
+}
 function pintarNotis() {
   const l = listaNotis(), visto = S.notiVisto || 0;
-  const nuevas = l.filter(x => x.e.t > visto).length;
+  const esNueva = x => x.e.t > visto && !notiLeida(x.k);
+  const nuevas = l.filter(esNueva).length;
   $("#cuentaNoti").hidden = !nuevas; $("#cuentaNoti").textContent = nuevas > 9 ? "9+" : nuevas;
   document.title = (nuevas ? `(${nuevas}) ` : "") + document.title.replace(/^\(\d+\+?\) /, "");
   const el = $("#listaNoti");
   if (el.hidden) return;
   el.innerHTML = `<div class="cab-noti"><b>Notificaciones</b>${nuevas ? `<button class="btn sec chico" id="notiLeidas">Marcar todas como leídas</button>` : ""}</div>`
-    + (l.length ? l.map(({ g, e, res, sol }) => `<button class="noti${e.t > visto ? " nueva" : ""}" data-noti="${esc(g.numero)}"${res ? ` data-notires="${res}"` : ""}${sol ? ` data-notisol="${esc(sol)}"` : ""}><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por && e.por !== "Formulario web" ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`).join("")
+    + (l.length ? l.map(x => { const { g, e, res, sol } = x; return `<button class="noti${esNueva(x) ? " nueva" : ""}" data-k="${esc(x.k)}" data-noti="${esc(g.numero)}"${res ? ` data-notires="${res}"` : ""}${sol ? ` data-notisol="${esc(sol)}"` : ""}><span class="ic">${TIPOS_NOTI[e.estado].ic}</span><span><b>${esc(g.numero)}</b> ${TIPOS_NOTI[e.estado].txt}<small>${esc(g.cliente || "")}${e.por && e.por !== "Formulario web" ? " · por " + esc(C.primerNombre(e.por)) : ""}${e.estado === "entregada" && g.recaudo?.valor ? " · cobró " + C.cop(g.recaudo.valor) + (g.recaudo.medio === "nequi" ? " (Nequi)" : "") : ""}${e.estado === "novedad" && e.nota ? " · " + esc(e.nota) : ""}</small><small>${C.hace(e.t)} · ${C.fecha(e.t)}</small></span></button>`; }).join("")
       : `<div class="vacio" style="margin:12px">Aquí aparecerán las entregas y novedades que marquen los mensajeros.</div>`);
 }
 async function marcarNotisLeidas() {
-  S.notiVisto = Date.now(); pintarNotis();
-  try { await setDoc(refYo(), { notiVisto: S.notiVisto }, { merge: true }); } catch {}
+  S.notiVisto = Date.now(); S.notiLeidas = []; notiLeidasLocal = []; try { localStorage.removeItem("pg_noti_leidas"); } catch {}
+  pintarNotis();
+  try { await setDoc(refYo(), { notiVisto: S.notiVisto, notiLeidas: [] }, { merge: true }); } catch {}
 }
 function sonido() {
   try {
@@ -495,7 +507,7 @@ function revisarNotis() {
     nuevas.slice(0, 3).forEach(({ g, e }) => {
       if (e.estado !== "disponible") toast(`${TIPOS_NOTI[e.estado].ic} ${g.numero} ${TIPOS_NOTI[e.estado].txt}${e.por ? " por " + C.primerNombre(e.por) : ""}`);
       if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-        try { const n = new Notification("Mensajería · " + (e.estado === "entregada" ? "Pedido entregado" : "Novedad"), { body: `${g.numero} · ${g.cliente || ""}`, tag: g.numero + e.estado }); n.onclick = () => { focus(); abrirDetalle(g.numero); n.close(); }; } catch {}
+        try { const n = new Notification("Mensajería · " + (e.estado === "entregada" ? "Pedido entregado" : "Novedad"), { body: `${g.numero} · ${g.cliente || ""}`, tag: g.numero + e.estado }); n.onclick = () => { focus(); marcarNotiLeida(g.numero + "|" + e.estado + "|" + e.t); abrirDetalle(g.numero); n.close(); }; } catch {}
       }
     });
     if (nuevas.length) sonido();
@@ -515,6 +527,7 @@ $("#listaNoti").addEventListener("click", e => {
   if (e.target.closest("#notiLeidas")) return marcarNotisLeidas();
   const b = e.target.closest("[data-noti]"); if (!b) return;
   $("#listaNoti").hidden = true;
+  marcarNotiLeida(b.dataset.k);
   if (b.dataset.notisol) { prepararOrden("sol", b.dataset.notisol); return; }
   if (b.dataset.notires && S.reservas?.[b.dataset.notires]?.venta && S.reservas[b.dataset.notires].saldoToken) { abrirLinkReserva(b.dataset.notires); return; }
   if (b.dataset.notires) { irA("cobros"); const r = S.reservas?.[b.dataset.notires]; if (r) { $("#rsProd").value = r.producto; $("#rsFiltro").value = "confirmado"; $("#rsBuscar").value = titulo(r.nombre); pintarReservas(); $("#plReservas").open = true; setTimeout(() => $("#rsCaja").scrollIntoView({ behavior: "smooth" }), 50); } return; }
@@ -2103,7 +2116,7 @@ function escuchar() {
     if (!esMaestro()) { S.mens = {}; Object.entries(S.ubicRaw).forEach(([id, u]) => S.mens[id] = { nombre: u.nombre || "Mensajero", activo: true, placa: "", telefono: "", email: "", cedula: "" }); }
     aplicarDesconexiones(); pintar(); }, err));
   if (!esMaestro()) {
-    subs.push(onSnapshot(doc(db, "empresas", YO), s => { const d = s.exists() ? s.data() : {}; EMPRESA = d; S.recogida = d.recogida || null; S.notiVisto = d.notiVisto || 0; aplicarModo(); pintarNotis(); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
+    subs.push(onSnapshot(doc(db, "empresas", YO), s => { const d = s.exists() ? s.data() : {}; EMPRESA = d; S.recogida = d.recogida || null; S.notiVisto = d.notiVisto || 0; S.notiLeidas = d.notiLeidas || []; aplicarModo(); pintarNotis(); pintarRecogida(); if (S.tab === "nueva") pintarMapa(); }, err));
     return;
   }
   subs.push(onSnapshot(query(collection(db, "usuarios"), where("rol", "==", "mensajero")), s => { S.mens = {}; s.forEach(d => S.mens[d.id] = d.data()); aplicarDesconexiones(); pintar(); }, err));
@@ -2129,7 +2142,7 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); pintarEstadoLink(); if (S.tab === "nueva") pintarMapa();
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; S.notiLeidas = s.exists() ? s.data().notiLeidas || [] : []; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); pintarEstadoLink(); if (S.tab === "nueva") pintarMapa();
     if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.orden && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida && !r.skydropx?.error && !(r.skydropx?.enviando && Date.now() - r.skydropx.enviando < 120000)).forEach(([id]) => enviarOrdenReserva(id, true));
     // Pedido del catálogo en Bogotá, Chía o Soacha: al quedar pagado se crea la guía sola
     if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => (r.red === "Catálogo" || ["addi", "siste"].includes(r.confirmacion?.metodo)) && r.pagado && r.confirmacion?.ciudadLocal && !r.confirmacion.guia).forEach(([id]) => crearGuiaPagada(id));
@@ -2137,7 +2150,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261116b";
+const VERSION_PANEL = "20261116c";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
