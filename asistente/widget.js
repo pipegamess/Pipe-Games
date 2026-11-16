@@ -103,7 +103,7 @@ const css = `
 @media (max-width: 520px) { .pb-panel { right: 8px; left: 8px; width: auto; height: min(640px, calc(100vh - 120px)); } }
 `;
 
-const SUG = CLI ? ["¿Cómo puedo pagar?", "¿Pagan contra entrega?", "¿Hacen envíos a todo el país?", "¿Los juegos son físicos y nuevos?", "¿Tienen tienda física?", "Juegos de PS5", "Hablar con un asesor"]
+const SUG = CLI ? ["¿Cómo puedo pagar?", "¿Manejan pago contra entrega?", "¿Hacen envíos a todo el país?", "¿Los juegos son físicos y nuevos?", "¿Tienen tienda física?", "Juegos de PS5", "Hablar con un asesor"]
   : ["Descripción de Mario Kart 8 Deluxe", "Factura de Éxito", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "¿Qué garantía tienen las consolas?"];
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
