@@ -5864,7 +5864,7 @@ function pcAvisoListo(metodo) {
   let m = document.getElementById('pcModal');
   if (!m) { m = document.createElement('div'); m.id = 'pcModal'; m.className = 'pc-modal'; document.body.appendChild(m); }
   m.innerHTML = `<div class="name-modal-box"><h3>Tu pedido quedó registrado</h3>
-    <p>Revisamos tu pedido y te enviamos por WhatsApp el link de ${metodo === 'addi' ? 'Addi' : 'Sistecrédito'} para que hagas tu solicitud de crédito.</p>
+    <p>${metodo === 'addi' ? 'Revisamos tu pedido y te enviamos por WhatsApp el link de Addi para que hagas tu solicitud de crédito.' : 'Revisamos tu pedido con Sistecrédito y te escribimos por WhatsApp con las opciones de cuotas que te aprueban.'}</p>
     <div class="name-modal-btns"><button type="button" class="btn-name-send pc-ir" onclick="document.getElementById('pcModal').classList.remove('open')">Entendido</button></div></div>`;
   m.classList.add('open');
 }

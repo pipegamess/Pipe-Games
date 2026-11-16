@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115n">
+<link rel="stylesheet" href="estilos.css?v=20261115o">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -424,10 +424,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115n";
-import * as C from "./comun.js?v=20261115n";
-import * as T from "./tarifas-envio.js?v=20261115n";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261115n";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115o";
+import * as C from "./comun.js?v=20261115o";
+import * as T from "./tarifas-envio.js?v=20261115o";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261115o";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -995,6 +995,14 @@ function pintarEstadoLink() {
   if (r.pagado) h = `${paso(3, "✅ Pagado")}<span class="nota">${cr.estado === "approved" ? "Addi aprobó el crédito." : "Pago registrado."}${c?.guia ? ` Ya puedes despachar la guía ${esc(c.guia)}.` : c?.ciudadLocal ? " Creando la guía…" : c ? " Revisa la orden en Skydropx para despachar." : ""}</span>${c?.guia ? `<div class="btns"><button class="btn sec chico" type="button" data-cbverguia="${esc(c.guia)}">Ver guía ${esc(c.guia)}</button></div>` : ""}`;
   else if (!c) h = `${paso(1, `Envíale el link a ${nom}`)}<span class="nota">${nom} elige ciudad, medio de pago y deja sus datos. Esto se actualiza solo cuando confirme.</span>
     <div class="btns"><a class="btn" href="${esc(i.url)}" target="_blank" rel="noopener">Enviar link por WhatsApp${i.tel ? "" : " (escoge el chat)"}</a></div>${chicos}`;
+  else if (c.metodo === "siste" && (cr.estado === "rejected" || cr.estado === "declined")) h = `${paso(2, "❌ Sistecrédito no aprobó el crédito")}<span class="nota">Ofrécele a ${nom} pagar por Bre-B. Si paga, márcalo pagado${c.guia ? `; si no compra, borra la guía ${esc(c.guia)}` : ""}.</span>
+    <div class="btns"><button class="btn" type="button" data-cbbreb>Enviar datos de Bre-B por WhatsApp</button><button class="btn sec chico" type="button" data-cbpagado>Marcar pagado</button></div>`;
+  else if (c.metodo === "siste" && cr.estado === "opciones") h = `${paso(2, `⏳ Esperando que ${nom} elija sus cuotas`)}<span class="nota">Cuando te responda, regístralo en el portal de Sistecrédito. Al quedar aprobado, márcalo pagado.</span>
+    <div class="aviso" style="margin:0">Cédula: <b>${esc(c.cedula || "")}</b> <button class="btn sec chico" type="button" data-cbcedula>Copiar</button></div>
+    <div class="btns"><button class="btn" type="button" data-cbpagado>Sistecrédito aprobó · Marcar pagado</button><button class="btn sec chico" type="button" data-cbsistenoap>No aprobó</button><button class="btn sec chico" type="button" data-cbsisteopc>Reenviar mensaje</button></div>`;
+  else if (c.metodo === "siste") h = `${paso(2, `${nom} eligió Sistecrédito · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}. 1) Ingresa la cédula en el portal de Sistecrédito. 2) Envíale por WhatsApp las opciones de cuotas que te muestre (puedes adjuntar la captura).</span>
+    <div class="aviso" style="margin:0">Cédula: <b>${esc(c.cedula || "")}</b> <button class="btn sec chico" type="button" data-cbcedula>Copiar</button></div>
+    <div class="btns"><button class="btn btn-amarillo" type="button" data-cbsisteopc>Enviar opciones de cuotas por WhatsApp</button></div>`;
   else if (c.metodo !== "addi") h = `${paso(2, `${nom} confirmó: ${esc(c.metodoTxt?.split(" · ")[0] || c.metodo)} · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}. Cuando recibas el pago, márcalo.</span>
     <div class="btns"><button class="btn" type="button" data-cbpagado>Marcar pagado</button></div>`;
   else if (cr.estado === "rejected" || cr.estado === "declined") h = `${paso(2, "❌ Addi no aprobó el crédito")}<span class="nota">Ofrécele a ${nom} pagar por Bre-B. Si paga, márcalo pagado${c.guia ? `; si no compra, borra la guía ${esc(c.guia)}` : ""}.</span>
@@ -1008,7 +1016,22 @@ function pintarEstadoLink() {
   el.innerHTML = `<div class="lista" style="gap:8px">${origen}${alerta}${h}</div>`;
 }
 document.addEventListener("click", async e => {
-  const b = e.target.closest("[data-cbcopiar],[data-cbpagado],[data-cbbreb],[data-cbguia],[data-cbverguia]"); if (!b || !cbLinkInfo) return;
+  const b = e.target.closest("[data-cbcopiar],[data-cbpagado],[data-cbbreb],[data-cbguia],[data-cbverguia],[data-cbcedula],[data-cbsisteopc],[data-cbsistenoap]"); if (!b || !cbLinkInfo) return;
+  const rs = S.reservas?.[cbLinkReserva], cs = rs?.confirmacion || {};
+  if (b.hasAttribute("data-cbcedula")) return copiar(cs.cedula || "", "Cédula copiada");
+  if (b.hasAttribute("data-cbsisteopc")) {
+    const telS = C.telWhatsApp(cs.telefono || rs?.contacto || cbLinkInfo.tel);
+    const resumen = (rs?.items || []).map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") || rs?.detalle || rs?.producto || "tu pedido";
+    const texto = `Hola ${C.primerNombre(cbLinkInfo.nombre)}, ya revisamos tu pedido de ${resumen} por ${C.copTxt(cs.total || 0)} con Sistecrédito. Te envío las opciones de cuotas que te aprueba Sistecrédito. Dime cuál prefieres (mensual o quincenal y número de cuotas) y lo dejamos registrado:`;
+    window.open(telS ? `https://api.whatsapp.com/send?phone=${telS}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+    try { await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${cbLinkReserva}.credito`]: { estado: "opciones", t: Date.now() } }); } catch (err) { toast(C.mensajeError(err)); }
+    return;
+  }
+  if (b.hasAttribute("data-cbsistenoap")) {
+    if (b.dataset.confirmar !== "1") { b.dataset.confirmar = "1"; b.textContent = "Toca otra vez: no aprobó"; return; }
+    try { await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${cbLinkReserva}.credito`]: { estado: "rejected", t: Date.now() } }); } catch (err) { toast(C.mensajeError(err)); }
+    return;
+  }
   if (b.hasAttribute("data-cbguia")) return guiaDesdeReserva(cbLinkReserva);
   if (b.dataset.cbverguia) { if (S.guias[b.dataset.cbverguia]) abrirDetalle(b.dataset.cbverguia); else toast("La guía aún no ha cargado"); return; }
   if (b.hasAttribute("data-cbcopiar")) return copiar(cbLinkInfo.texto, "Mensaje con el link copiado");
@@ -1019,7 +1042,7 @@ document.addEventListener("click", async e => {
     return;
   }
   const tel = C.telWhatsApp(r?.confirmacion?.telefono || r?.contacto || cbLinkInfo.tel);
-  const texto = `Hola ${C.primerNombre(cbLinkInfo.nombre)}, Addi no aprobó el crédito esta vez. Puedes pagar ${C.copTxt(r?.confirmacion?.total || 0)} por transferencia Bre-B a la llave ${LLAVE_BREB} a nombre de ${TITULAR_BREB}. Envíanos el comprobante por este medio.`;
+  const texto = `Hola ${C.primerNombre(cbLinkInfo.nombre)}, ${r?.confirmacion?.metodo === "siste" ? "Sistecrédito" : "Addi"} no aprobó el crédito esta vez. Puedes pagar ${C.copTxt(r?.confirmacion?.total || 0)} por transferencia Bre-B a la llave ${LLAVE_BREB} a nombre de ${TITULAR_BREB}. Envíanos el comprobante por este medio.`;
   window.open(tel ? `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
 });
 document.addEventListener("click", e => { const b = e.target.closest("[data-cbaddi]"); if (b) autorizarAddi(b.dataset.cbaddi, b); });
@@ -1076,7 +1099,7 @@ function pintarReservas() {
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.correo ? ` · ${esc(r.confirmacion.correo)}` : " · <b>sin correo</b>"}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
       ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular<input id="rsEdTel" inputmode="numeric" maxlength="16" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
       <div class="btns"><button class="btn chico" data-rsedguardar="${r.id}">Guardar</button><button class="btn sec chico" data-rsedcancel="1">Cancelar</button></div>` : ""}
-      <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}${r.confirmacion?.metodo === "addi" && !r.pagado ? `${["rejected", "declined"].includes(r.credito?.estado) ? "" : `<button class="btn chico btn-amarillo" data-rsaddi="${r.id}">${r.credito?.url ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button>`}${r.credito?.estado ? `<span class="pill${r.credito.estado === "approved" ? " entregada" : ""}">Addi: ${esc({ autorizado: "link enviado", approved: "aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" }[r.credito.estado] || r.credito.estado)}</span>` : ""}` : ""}${r.venta && r.saldoToken ? `<button class="btn sec chico" data-rsseguir="${r.id}">Ver paso a paso</button>` : `<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>`}${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}${["cobrado", "linkEnviado", "saldoToken", "confirmacion", "credito", "pagado", "skydropx"].some(k => r[k]) ? `<button class="btn sec chico" data-rsreset="${r.id}">Restablecer</button>` : ""}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
+      <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}${r.confirmacion?.metodo === "addi" && !r.pagado ? `${["rejected", "declined"].includes(r.credito?.estado) ? "" : `<button class="btn chico btn-amarillo" data-rsaddi="${r.id}">${r.credito?.url ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button>`}${r.credito?.estado ? `<span class="pill${r.credito.estado === "approved" ? " entregada" : ""}">Addi: ${esc({ autorizado: "link enviado", approved: "aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" }[r.credito.estado] || r.credito.estado)}</span>` : ""}` : ""}${r.saldoToken && (r.venta || ["addi", "siste"].includes(r.confirmacion?.metodo)) ? `<button class="btn sec chico" data-rsseguir="${r.id}">Ver paso a paso</button>` : `<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>`}${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}${["cobrado", "linkEnviado", "saldoToken", "confirmacion", "credito", "pagado", "skydropx"].some(k => r[k]) ? `<button class="btn sec chico" data-rsreset="${r.id}">Restablecer</button>` : ""}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
 }
 $("#rsProd").onchange = pintarReservas;
@@ -2103,7 +2126,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261115n";
+const VERSION_PANEL = "20261115o";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
