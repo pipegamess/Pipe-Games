@@ -41,13 +41,13 @@ function leer(q) {
   r.plat = (PLATAF.find(([, rx]) => rx.test(n)) || [])[0] || null;
   if (/\baddi\b/.test(n)) r.metodo = "addi"; else if (/siste/.test(n)) r.metodo = "siste"; else if (/tarjeta|bold|credito/.test(n)) r.metodo = "tarjeta";
   if (/mercado ?libre|\bml\b/.test(n)) r.mk = "ml"; else if (/falabella/.test(n)) r.mk = "fa"; else if (/\bexito\b/.test(n)) r.mk = "ex";
-  const montos = (q.match(/\$?\s?\d{1,3}(?:[.,]\d{3})+|\$?\s?\d{4,}/g) || []).map(x => parseInt(x.replace(/\D/g, ""), 10)).filter(v => v >= 1000);
+  const montos = (q.match(/\$?\s?\d{1,3}(?:[.,]\d{3})+|\$?\s?\d{4,}/g) || []).map(x => parseInt(x.replace(/\D/g, ""), 10)).filter(v => v >= 1000 && !(v >= 1980 && v <= 2099)); // un año (God of War 2018) no es un valor
   r.monto = montos[0] || null;
   r.ciudad = ciudadEn(n, q);
   r.envio = /envi|domicil|flete|llega|mandan|despach|transportadora/.test(n);
   r.tema = /horario|hora |atienden|abren/.test(n) ? "horario" : /metodo|medios de pago|formas de pago|como pag/.test(n) ? "pagos" : /cuanto (se )?demora|tiempo de entrega|cuando llega|dias/.test(n) ? "tiempos" : /\bguia|rastre/.test(n) ? "rastreo" : /contacto|whatsapp|telefono|correo/.test(n) ? "contacto" : null;
   // Un número suelto cuenta (UFC 6, Mario Kart 8), salvo el 2 de "Switch 2"
-  const tokens = n.split(" ").filter(w => (w.length >= 2 || /^\d$/.test(w)) && !VACIAS.has(w) && !/^\d{4,}$/.test(w) && !(w === "2" && r.plat === "switch2"));
+  const tokens = n.split(" ").filter(w => (w.length >= 2 || /^\d$/.test(w)) && !VACIAS.has(w) && (!/^\d{4,}$/.test(w) || /^(19[89]\d|20\d\d)$/.test(w)) && !(w === "2" && r.plat === "switch2"));
   r.tokens = tokens.filter(w => !(r.ciudad && r.ciudad.palabras.includes(w)));
   return r;
 }
@@ -85,6 +85,8 @@ function buscarProductos(r) {
   if (r.plat) l = l.filter(x => x.p.tp.replace(/\s/g, "") === r.plat || (r.plat === "switch" && x.p.tp === "switch"));
   if (!l.length) return [];
   const max = Math.max(...l.map(x => x.s));
+  // Si algún producto tiene todas las palabras escritas, solo esos
+  if (max >= 2 * r.tokens.length) l = l.filter(x => x.s >= max);
   return l.filter(x => x.s >= Math.max(max * 0.75, r.tokens.length >= 2 ? 2 : 1)).sort((a, b) => b.s - a.s || (b.p.disp - a.p.disp) || a.p.v - b.p.v).slice(0, 6).map(x => x.p);
 }
 
@@ -105,6 +107,8 @@ function envioTexto(m, esGrande, cli) {
 }
 // Ficha de un producto: precio con cada medio de pago y, para clientes, el botón para pedirlo
 function ficha(p, cli) {
+  // Al cliente no se le muestra precio de lo agotado
+  if (cli && !p.disp) return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip no">AGOTADO</span></h3><p>Actualmente está agotado. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>`;
   return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></h3>
       <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">Pedir este producto</button></p>` : ""}${cli && !p.disp ? `<p class="nota">Está agotado por ahora. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>` : ""}`;
 }
@@ -132,7 +136,7 @@ function responder(q, opts = {}) {
   if (prods.length === 1) {
     partes.push(ficha(prods[0], cli));
   } else if (prods.length > 1) {
-    partes.push(`<h3>Encontré ${prods.length}${prods.length === 6 ? " o más" : ""}</h3>` + prods.map(p => `<div class="prod" role="button" tabindex="0" data-ver="${esc(p.n)}|${esc(p.p)}"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></b><span class="pr">${cop(p.v)}</span><span class="sub">Addi ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.addi.calc(p.v))} · Sistecrédito ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.siste.calc(p.v))} · Tarjeta ${cop(MET.tarjeta.calc(p.v))}</span></div>`).join("")
+    partes.push(`<h3>Encontré ${prods.length}${prods.length === 6 ? " o más" : ""}</h3>` + prods.map(p => (cli && !p.disp) ? `<div class="prod"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip no">AGOTADO</span></b><span class="sub">Actualmente está agotado.</span></div>` : `<div class="prod" role="button" tabindex="0" data-ver="${esc(p.n)}|${esc(p.p)}"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></b><span class="pr">${cop(p.v)}</span><span class="sub">Addi ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.addi.calc(p.v))} · Sistecrédito ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.siste.calc(p.v))} · Tarjeta ${cop(MET.tarjeta.calc(p.v))}</span></div>`).join("")
       + `<p class="nota">Toca uno para ver todos sus precios${cli ? " y pedirlo" : ""}.</p>`);
   }
 
@@ -149,7 +153,7 @@ function responder(q, opts = {}) {
   }
 
   // Total del pedido con envío y medio de pago
-  const base = prods.length === 1 ? prods[0].v : (r.monto && !r.mk ? r.monto : null);
+  const base = prods.length === 1 ? ((cli && !prods[0].disp) ? null : prods[0].v) : (r.monto && !r.mk ? r.monto : null);
   if (base && (r.metodo || (env && env.valor))) {
     const envio = env?.valor || 0, m = MET[r.metodo || "transf"];
     const tot = (m.credito && base >= TOPE_CUOTAS) ? null : m.calc(base + envio);
