@@ -35,7 +35,7 @@ const PLAT = {
 
 // ── Lectura de la pregunta ──
 const PLATAF = [["switch2", /\b(switch ?2|sw2|ns2)\b/], ["ps5", /\bps ?5\b|play ?5|playstation ?5/], ["ps4", /\bps ?4\b|play ?4|playstation ?4/], ["switch", /\b(switch|nintendo|sw|ns)\b/]];
-const VACIAS = new Set("el la los las de del y o a en para por con que cual cuanto cuanta cuantos vale cuesta precio precios hay tienes tiene tenemos disponible disponibles stock juego juegos me un una dame dime quiero saber sobre envio envios domicilio flete costo valor al lo le se es mi su sus ps4 ps5 switch nintendo play playstation sw ns ns2 sw2 addi siste sistecredito tarjeta credito cuotas bold cobrar cobro total con mercado libre falabella exito ml publicar publico recibir neto ciudad municipio llega llegan enviar mandan mandar hacia hasta todos todo toda todas lista catalogo tienen tienes venden manejan videojuegos videojuego titulos ver muestrame mostrar".split(" "));
+const VACIAS = new Set("el la los las de del y o a en para por con que cual cuanto cuanta cuantos vale cuesta precio precios hay tienes tiene tenemos disponible disponibles stock juego juegos me un una dame dime quiero saber sobre envio envios domicilio flete costo valor al lo le se es mi su sus ps4 ps5 switch nintendo play playstation sw ns ns2 sw2 addi siste sistecredito tarjeta credito cuotas bold cobrar cobro total con mercado libre falabella exito ml publicar publico recibir neto ciudad municipio llega llegan enviar mandan mandar hacia hasta todos todo toda todas lista catalogo tienen tienes venden manejan videojuegos videojuego titulos ver muestrame mostrar pagar pago pagos pagan medios medio formas forma metodos aceptan reciben puedo puede puedes como hora horas horario horarios atienden atencion abren cierran domingo domingos festivo festivos sabado sabados demora demoran tarda tardan tiempo tiempos entrega entregas llega llegaria cuando habiles dias mismo hoy guia guias rastreo rastrear seguimiento estado pedido pedidos contacto telefono celular correo numero llamar escribir garantia original originales nuevo nuevos nueva nuevas sellado sellados usado usados transferencia nequi daviplata efectivo contraentrega contra bancolombia pse tienen tiene es son".split(" "));
 function leer(q) {
   const n = norm(q), r = { n };
   r.plat = (PLATAF.find(([, rx]) => rx.test(n)) || [])[0] || null;
@@ -46,9 +46,21 @@ function leer(q) {
   r.ciudad = ciudadEn(n, q);
   r.envio = /envi|domicil|flete|llega|mandan|despach|transportadora/.test(n);
   r.fisica = /tienda fisica|local fisico|punto fisico|tienen (tienda|local)|donde (estan|quedan|queda|se ubican|los encuentro|estan ubicados)|ubicad|direccion de (la )?tienda|recog|retir|punto de (retiro|venta|entrega)|visitar|ir a la tienda|pasar por|ir personalmente/.test(n);
-  r.tema = /horario|hora |atienden|abren/.test(n) ? "horario" : /metodo|medios de pago|formas de pago|como pag/.test(n) ? "pagos" : /cuanto (se )?demora|tiempo de entrega|cuando llega|dias/.test(n) ? "tiempos" : /\bguia|rastre/.test(n) ? "rastreo" : /contacto|whatsapp|telefono|correo/.test(n) ? "contacto" : null;
+  // Temas: varias formas de preguntar lo mismo
+  const TEMAS = [
+    ["pagos", /\bpag(o|os|ar|an|ue|aria)\b|medios? de pago|formas? de pago|metodos? de pago|aceptan|reciben|transferencia|nequi|daviplata|\bbre ?b\b|\bllave\b|efectivo|contra ?entrega|\bpse\b|bancolombia|a cuotas|financ/],
+    ["horario", /horario|\bhoras?\b|atienden|atencion|abren|cierran|domingos?|festivos?|sabados?/],
+    ["tiempos", /demora|tarda|tiempo de entrega|cuando (me )?llega|en cuanto tiempo|dias habiles|mismo dia|hoy mismo|cuanto se demora/],
+    ["rastreo", /\bguias?\b|rastre|seguimiento|(donde|como) (va|esta|veo) mi pedido|estado de(l| mi) pedido/],
+    ["garantia", /garantia|originales?|nuevos?|sellados?|usados?|piratas?|genericos?/],
+    ["contacto", /contacto|whatsapp|telefono|\bcelular\b|correo|numero|llamar|escribirles|hablar/]
+  ];
+  r.tema = (TEMAS.find(([, rx]) => rx.test(n)) || [])[0] || null;
+
   // Un número suelto cuenta (UFC 6, Mario Kart 8), salvo el 2 de "Switch 2"
   const tokens = n.split(" ").filter(w => (w.length >= 2 || /^\d$/.test(w)) && !VACIAS.has(w) && (!/^\d{4,}$/.test(w) || /^(19[89]\d|20\d\d)$/.test(w)) && !(w === "2" && r.plat === "switch2"));
+  // "addi 180000" o "mario kart con addi" no son preguntas de medios de pago
+  if (r.tema === "pagos" && (r.monto || tokens.some(w => !(r.ciudad && r.ciudad.palabras.includes(w))))) r.tema = null;
   r.tokens = tokens.filter(w => !(r.ciudad && r.ciudad.palabras.includes(w)));
   return r;
 }
@@ -133,14 +145,15 @@ function responder(q, opts = {}) {
   }
   // Temas generales
   if (r.tema === "horario") partes.push(`<h3>Horario</h3><p>Lunes a sábado de 9:30 a. m. a 7:00 p. m. Domingos y festivos no hay atención.</p>`);
-  if (r.tema === "pagos") partes.push(`<h3>Medios de pago</h3><table>${METODOS.map(m => fila(esc(m.t), esc(m.d))).join("")}</table><p class="nota">Addi y Sistecrédito no aplican desde $1.000.000.</p>`);
+  if (r.tema === "pagos") partes.push(`<h3>Medios de pago</h3><table>${METODOS.map(m => fila(esc(m.t), esc(m.d))).join("")}</table>${cli ? `<p>Con la llave Bre-B puedes pagar desde Nequi, Daviplata o cualquier banco. No manejamos pago contra entrega.</p>` : ""}<p class="nota">Addi y Sistecrédito no aplican desde $1.000.000.</p>`);
   if (r.tema === "tiempos") partes.push(`<h3>Tiempos de entrega</h3><p>Bogotá, Chía y Soacha: mismo día si compra antes de las 3:00 p. m. Otras ciudades: 1 a 3 días hábiles por Envía o Interrapidísimo.</p>`);
   if (r.tema === "rastreo" && cli) partes.push(`<h3>Rastreo de tu pedido</h3><p>Consulta tu pedido con tu número de guía en <a href="https://pipegames.com.co/mensajeria/rastreo.html" target="_blank" rel="noopener">pipegames.com.co/mensajeria/rastreo.html</a>. Si tu envío es fuera de Bogotá, usa el número de guía de la transportadora que te enviamos.</p>`);
   else if (r.tema === "rastreo") partes.push(`<h3>Rastreo</h3><p>El cliente consulta su guía en <a href="https://pipegames.com.co/mensajeria/rastreo.html" target="_blank" rel="noopener">pipegames.com.co/mensajeria/rastreo.html</a>. Las guías nacionales se ven en Skydropx.</p>`);
+  if (r.tema === "garantia") partes.push(`<h3>Productos originales</h3><p>Todos nuestros productos son <b>nuevos, originales y sellados de fábrica</b>, con garantía de 1 mes por defectos de fábrica.</p>`);
   if (r.tema === "contacto") partes.push(cli ? `<h3>Contacto</h3><p><a class="pb-cta" href="${WA}" target="_blank" rel="noopener">WhatsApp 311 883 6995</a></p><p class="nota">Somos tienda 100% virtual: entregamos a domicilio en Bogotá, Chía y Soacha y enviamos a todo el país.</p>` : `<h3>Contacto</h3><p>WhatsApp 311 883 6995 · ventas@pipegames.com · Catálogo: <a href="https://pipegames.com.co/" target="_blank" rel="noopener">pipegames.com.co</a></p>`);
 
   // Productos
-  const prods = r.tema ? [] : buscarProductos(r);
+  const prods = (r.tema && !r.tokens.length) ? [] : buscarProductos(r);
   const grande = prods.some(p => /\b(consola|parlante|ipad)\b/.test(p.t));
   if (prods.length === 1) {
     partes.push(ficha(prods[0], cli));
