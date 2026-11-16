@@ -96,7 +96,7 @@ const css = `
 @media (max-width: 520px) { .pb-panel { right: 8px; left: 8px; width: auto; height: min(640px, calc(100vh - 120px)); } }
 `;
 
-const SUG = CLI ? ["mario kart switch", "juegos de ps5", "envío a Medellín", "¿cómo puedo pagar?", "¿tienen tienda física?", "hablar con un asesor"]
+const SUG = CLI ? ["¿Cómo puedo pagar?", "¿Pagan contra entrega?", "¿Hacen envíos a todo el país?", "¿Los juegos son físicos y nuevos?", "¿Tienen tienda física?", "Juegos de PS5", "Hablar con un asesor"]
   : ["mario kart switch", "envío a Medellín", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "horario"];
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
