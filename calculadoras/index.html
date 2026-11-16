@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Calculadoras · Pipe Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Calculadoras de precios por plataforma (Mercado Libre, Falabella, Éxito, Addi, Sistecrédito).
+   Fórmulas tomadas del Excel CALCULADORAS_PRECIOS. Identidad de pipegames.com.co, tema oscuro fijo. */
+:root {
+  --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --line: rgba(255,255,255,0.09);
+  --text: #e8e8f0; --muted: #8a8aa8; --acc: #f5c400; --acc-ink: #141000; --ok: #3ecf8e; --err: #ff7b7b;
+  --ml: #ffe600; --fa: #aad500; --ex: #ffd200; --addi: #3a7bfd; --siste: #e30613;
+  --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 6vw, 34px); letter-spacing: 0.02em; margin: 0; line-height: 1.05; text-wrap: balance; }
+h1 span { color: var(--acc); }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
+.top { display: flex; gap: 8px; flex-wrap: wrap; }
+.top a, button.ghost { font: 600 13px/1 var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; text-decoration: none; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.entrada { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .entrada { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; } }
+.modo { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 4px; gap: 4px; }
+.modo button { font: 700 15px/1.1 var(--display); letter-spacing: 0.04em; padding: 11px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.modo button[aria-pressed="true"] { background: var(--acc); color: var(--acc-ink); }
+label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+input { font: inherit; letter-spacing: normal; text-transform: none; color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; min-width: 0; font-size: 15px; }
+input.grande { font: 700 30px/1.1 var(--display); padding: 10px 14px; font-variant-numeric: tabular-nums; }
+input:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; min-width: 0; border-top: 4px solid var(--c, var(--acc)); }
+.card h2 { font-family: var(--display); font-size: 20px; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card h2 small { font: 500 12px/1 var(--body); letter-spacing: 0.02em; text-transform: none; color: var(--muted); }
+.res { display: grid; gap: 2px; }
+.res .k { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.res .v { font: 700 34px/1.05 var(--display); font-variant-numeric: tabular-nums; color: var(--acc); }
+.res .s { font-size: 13px; color: var(--muted); }
+.res .s b { color: var(--text); font-variant-numeric: tabular-nums; }
+.copiar { justify-self: start; font: 600 12.5px/1 var(--body); color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; cursor: pointer; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+td { padding: 5px 0; border-top: 1px solid var(--line); }
+td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.menos td:last-child { color: var(--err); }
+tr.total td { font-weight: 700; color: var(--text); }
+tr.total td:last-child { color: var(--ok); }
+details { border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.ajustes { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 10px; }
+.ajustes label { font-size: 11px; }
+.ajustes input { font-size: 14px; padding: 8px 10px; }
+.note { font-size: 12.5px; color: var(--muted); margin: 0; }
+.aviso { font-size: 12.5px; color: var(--muted); background: var(--surface2); border-radius: 8px; padding: 8px 10px; margin: 0; }
+.login { max-width: 400px; margin: 8vh auto 0; }
+button.primary { font: 700 17px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; background: var(--acc); color: var(--acc-ink); border: 0; border-radius: 10px; padding: 14px; cursor: pointer; }
+.status { font-size: 13px; min-height: 1.2em; } .status.err { color: var(--err); }
+.vacio { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<form class="panel login" id="vLogin" hidden>
+  <h2 style="font-family:var(--display);margin:0">Calculadoras · Pipe Games</h2>
+  <p class="note">Entra con tu correo y contraseña de administrador de Pipe Games.</p>
+  <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
+  <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit" id="lEntrar">Entrar</button>
+  <div class="status err" id="lError" role="alert"></div>
+</form>
+
+<div class="wrap" id="vApp" hidden>
+  <header>
+    <div>
+      <h1>Calculadoras de precios <span>Pipe Games</span></h1>
+      <p class="sub">Cuánto publicar en cada plataforma para recibir lo que quieres, o cuánto te queda de un precio publicado.</p>
+    </div>
+    <div class="top"><a href="../publicaciones/">Publicaciones</a><a href="../mensajeria/">Panel de despacho</a><button class="ghost" type="button" id="salir">Salir</button></div>
+  </header>
+
+  <section class="panel">
+    <div class="entrada">
+      <div class="modo" role="group" aria-label="Qué quieres calcular">
+        <button type="button" data-modo="neto" aria-pressed="true">Quiero recibir</button>
+        <button type="button" data-modo="precio" aria-pressed="false">Voy a publicar a</button>
+      </div>
+      <label id="lValor">Valor neto que quiero recibir
+        <input class="grande" id="valor" inputmode="numeric" autocomplete="off" placeholder="$ 0">
+      </label>
+    </div>
+    <p class="note" id="explica">Escribe lo que quieres que te quede limpio y te digo a cuánto publicar en cada plataforma.</p>
+  </section>
+
+  <div class="cards" id="cards"></div>
+  <p class="note">Los porcentajes y costos de envío de cada plataforma se pueden ajustar en "Ajustes" de cada tarjeta; se guardan en este equipo.</p>
+</div>
+
+<script type="module">
+import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION } from "../mensajeria/config.js";
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
+const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
+const auth = getAuth(initializeApp(firebaseConfig));
+const $ = id => document.getElementById(id);
+const cop = n => "$ " + Math.round(n).toLocaleString("es-CO");
+const num = t => parseInt(String(t || "").replace(/\D/g, ""), 10) || 0;
+// Precio sugerido: el siguiente valor terminado en 990 (ej. 184.990)
+const sug990 = p => { const m = Math.ceil((p + 10) / 1000) * 1000 - 10; return m < p ? m + 1000 : m; };
+
+// Plataformas: fórmulas del Excel CALCULADORAS_PRECIOS. p = parámetros ajustables.
+// neto(P) = lo que te queda de un precio publicado P; precio(N) = precio exacto para que te quede N.
+const PLATAFORMAS = [
+  { id: "ml", nombre: "Mercado Libre", c: "var(--ml)",
+    p: { com: 16, rete: 15, envio: 9600 },
+    etiquetas: { com: "Comisión %", rete: "Rete IVA % de la comisión", envio: "Envío $" },
+    desglose: (P, p) => { const com = P * p.com / 100, rete = com * p.rete / 100; return [["Comisión " + p.com + "%", com], ["Rete IVA (" + p.rete + "% de la comisión)", rete], ["Envío", p.envio]]; },
+    precio: (N, p) => (N + p.envio) / (1 - p.com / 100 * (1 + p.rete / 100)) },
+  { id: "fa", nombre: "Falabella", c: "var(--fa)",
+    p: { imp: 2, com: 15, envio: 8800 },
+    etiquetas: { imp: "Impuesto %", com: "Comisión %", envio: "Envío $" },
+    desglose: (P, p) => [["Impuesto " + p.imp + "%", P * p.imp / 100], ["Comisión " + p.com + "%", P * p.com / 100], ["Envío", p.envio]],
+    precio: (N, p) => (N + p.envio) / (1 - (p.imp + p.com) / 100) },
+  { id: "ex", nombre: "Éxito", c: "var(--ex)",
+    p: { desc: 10, iva: 19 },
+    etiquetas: { desc: "Descuento %", iva: "IVA % del descuento" },
+    desglose: (P, p) => { const d = P * p.desc / 100; return [["Descuento " + p.desc + "%", d], ["IVA " + p.iva + "% del descuento", d * p.iva / 100]]; },
+    precio: (N, p) => N / (1 - p.desc / 100 * (1 + p.iva / 100)) },
+  { id: "addi", nombre: "Addi", c: "var(--addi)",
+    p: { factor: 0.92265 },
+    etiquetas: { factor: "Factor (neto = venta × factor)" },
+    desglose: (P, p) => [["Descuento Addi", P - P * p.factor]],
+    precio: (N, p) => N / p.factor },
+  { id: "siste", nombre: "Sistecrédito", c: "var(--siste)",
+    p: { desc: 5 },
+    etiquetas: { desc: "Descuento %" },
+    desglose: (P, p) => [["Descuento plataforma " + p.desc + "%", P * p.desc / 100]],
+    precio: (N, p) => Math.ceil(N / (1 - p.desc / 100)) }
+];
+const neto = (pl, P) => P - pl.desglose(P, pl.p).reduce((a, [, v]) => a + v, 0);
+// Ajustes guardados en este equipo
+try { const g = JSON.parse(localStorage.getItem("pg_calc_ajustes") || "{}"); PLATAFORMAS.forEach(pl => Object.assign(pl.p, g[pl.id] || {})); } catch {}
+const guardar = () => { try { localStorage.setItem("pg_calc_ajustes", JSON.stringify(Object.fromEntries(PLATAFORMAS.map(pl => [pl.id, pl.p])))); } catch {} };
+
+let modo = "neto";
+try { modo = localStorage.getItem("pg_calc_modo") === "precio" ? "precio" : "neto"; } catch {}
+
+function tarjeta(pl, V) {
+  let cuerpo;
+  if (!V) cuerpo = `<p class="vacio">Escribe un valor arriba.</p>`;
+  else if (modo === "neto") {
+    const P = pl.precio(V, pl.p), S = sug990(P), nS = neto(pl, S);
+    const filas = pl.desglose(S, pl.p);
+    cuerpo = `<div class="res"><span class="k">Publica a</span><span class="v">${cop(S)}</span>
+      <span class="s">Exacto: <b>${cop(P)}</b> · con ${cop(S)} te quedan <b>${cop(nS)}</b></span></div>
+      <button class="copiar" type="button" data-copiar="${Math.round(S)}">Copiar ${cop(S)}</button>
+      <table><tr><td>Precio publicado</td><td>${cop(S)}</td></tr>${filas.map(([k, v]) => `<tr class="menos"><td>${k}</td><td>− ${cop(v)}</td></tr>`).join("")}
+      <tr class="total"><td>Te queda</td><td>${cop(nS)}</td></tr></table>`;
+  } else {
+    const n = neto(pl, V), filas = pl.desglose(V, pl.p);
+    cuerpo = `<div class="res"><span class="k">Te queda</span><span class="v" style="color:${n < 0 ? "var(--err)" : "var(--ok)"}">${cop(n)}</span>
+      <span class="s">Descuentos: <b>${cop(V - n)}</b> (${(100 * (V - n) / V).toFixed(1)}% del precio)</span></div>
+      <table><tr><td>Precio publicado</td><td>${cop(V)}</td></tr>${filas.map(([k, v]) => `<tr class="menos"><td>${k}</td><td>− ${cop(v)}</td></tr>`).join("")}
+      <tr class="total"><td>Te queda</td><td>${cop(n)}</td></tr></table>`;
+  }
+  const aj = Object.keys(pl.p).map(k => `<label>${pl.etiquetas[k]}<input data-pl="${pl.id}" data-k="${k}" inputmode="decimal" value="${pl.p[k]}"></label>`).join("");
+  return `<article class="card" style="--c:${pl.c}"><h2>${pl.nombre}<small>${resumen(pl)}</small></h2>${cuerpo}
+    <details><summary>Ajustes</summary><div class="ajustes">${aj}</div><button class="copiar" type="button" data-restaurar="${pl.id}" style="margin-top:10px">Volver a los valores del Excel</button></details></article>`;
+}
+function resumen(pl) {
+  const p = pl.p;
+  return { ml: `${p.com}% + rete + envío ${cop(p.envio)}`, fa: `${p.imp + p.com}% + envío ${cop(p.envio)}`, ex: `${(p.desc * (1 + p.iva / 100)).toFixed(1)}%`, addi: `÷ ${p.factor}`, siste: `${p.desc}%` }[pl.id];
+}
+function pintar() {
+  const V = num($("valor").value);
+  document.querySelectorAll("[data-modo]").forEach(b => b.setAttribute("aria-pressed", b.dataset.modo === modo));
+  $("lValor").firstChild.textContent = modo === "neto" ? "Valor neto que quiero recibir" : "Precio al que voy a publicar";
+  $("explica").textContent = modo === "neto" ? "Escribe lo que quieres que te quede limpio y te digo a cuánto publicar en cada plataforma (redondeado a …990)." : "Escribe el precio de la publicación y te digo cuánto te queda en cada plataforma después de comisiones y envío.";
+  const abiertos = new Set([...document.querySelectorAll(".card details[open]")].map(d => d.closest(".card").querySelector("[data-restaurar]").dataset.restaurar));
+  $("cards").innerHTML = PLATAFORMAS.map(pl => tarjeta(pl, V)).join("");
+  abiertos.forEach(id => { const d = document.querySelector(`[data-restaurar="${id}"]`)?.closest("details"); if (d) d.open = true; });
+}
+$("valor").addEventListener("input", e => { const n = num(e.target.value); e.target.value = n ? "$ " + n.toLocaleString("es-CO") : ""; pintar(); });
+document.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => { modo = b.dataset.modo; try { localStorage.setItem("pg_calc_modo", modo); } catch {} pintar(); $("valor").focus(); });
+$("cards").addEventListener("change", e => {
+  const i = e.target.closest("[data-pl]"); if (!i) return;
+  const pl = PLATAFORMAS.find(x => x.id === i.dataset.pl), v = parseFloat(String(i.value).replace(",", "."));
+  if (!isNaN(v) && v >= 0) { pl.p[i.dataset.k] = v; guardar(); }
+  pintar();
+});
+$("cards").addEventListener("click", async e => {
+  const c = e.target.closest("[data-copiar]"), r = e.target.closest("[data-restaurar]");
+  if (r) { const pl = PLATAFORMAS.find(x => x.id === r.dataset.restaurar); Object.assign(pl.p, BASE_EXCEL[pl.id]); guardar(); pintar(); }
+  if (c) { try { await navigator.clipboard.writeText(c.dataset.copiar); c.textContent = "Copiado ✓"; } catch { c.textContent = c.dataset.copiar; } }
+});
+// Valores originales del Excel (para restaurar)
+const BASE_EXCEL = { ml: { com: 16, rete: 15, envio: 9600 }, fa: { imp: 2, com: 15, envio: 8800 }, ex: { desc: 10, iva: 19 }, addi: { factor: 0.92265 }, siste: { desc: 5 } };
+
+// Acceso: solo la cuenta de administrador
+$("vLogin").addEventListener("submit", async (ev) => {
+  ev.preventDefault(); $("lError").textContent = ""; $("lEntrar").disabled = true;
+  try { await signInWithEmailAndPassword(auth, $("lCorreo").value.trim(), $("lClave").value); }
+  catch (e) { $("lError").textContent = "Correo o contraseña incorrectos."; }
+  $("lEntrar").disabled = false;
+});
+$("salir").onclick = () => signOut(auth);
+onAuthStateChanged(auth, async (u) => {
+  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta cuenta no tiene acceso a las calculadoras."; return; }
+  $("vLogin").hidden = !!u; $("vApp").hidden = !u;
+  if (!u) $("lCorreo").focus(); else { pintar(); $("valor").focus(); }
+});
+</script>
+</body>
+</html>
