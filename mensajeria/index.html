@@ -61,10 +61,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .ml-lista .fila-ml{display:flex;flex-direction:row;color:var(--ink);font-weight:400;gap:10px;align-items:flex-start;font-size:13px;border-top:1px solid var(--line);padding-top:6px}
 .ml-lista input{width:20px;height:20px;flex:none;margin-top:2px}
 .ml-escaner{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px}
-.ml-escaner>label:first-child{flex:1 1 16em;min-width:0}
-.ml-escaner .ml-canal{flex:0 0 11em}
-#mlScan{font-family:ui-monospace,Menlo,monospace}
-#mlScan.leyendo{outline:2px solid #C9A800}
+.ml-foto-min{width:44px;height:44px;object-fit:cover;border-radius:6px;flex:none}
 .aviso-ubic{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
 .aviso-ubic b{color:var(--ink)}
 .opciones-cobro{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -269,11 +266,11 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <label class="btn sec chico" style="align-self:flex-start;flex-direction:row">Cargar etiquetas (PDF)<input type="file" id="mlPdf" accept="application/pdf" multiple hidden></label>
           <div id="mlRes"></div>
           <div class="ml-escaner">
-            <label>O escanea la etiqueta con la pistola<input id="mlScan" placeholder="Toca aquí y escanea" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done"></label>
-            <label class="ml-canal">Plataforma<select id="mlScanCanal"><option value="auto">Detectar sola</option><option>Mercado Libre</option><option>Falabella</option></select></label>
+            <label class="btn chico" style="flex-direction:row">📷 Tomar foto de la etiqueta<input type="file" id="mlFoto" accept="image/*" capture="environment" hidden></label>
+            <label class="btn sec chico" style="flex-direction:row">Elegir fotos<input type="file" id="mlFotos" accept="image/*" multiple hidden></label>
           </div>
-          <span class="nota">Crea la guía al instante con el código de la etiqueta (sin imprimir nada): aparece en Guías y en el rastreo, y el mensajero la recibe escaneando esa misma etiqueta. La dirección queda “en la etiqueta”; si luego cargas el PDF, se completa sola.</span>
-          <div id="mlScanRes" class="ml-lista"></div>
+          <span class="nota">Desde el celular: toma la foto de la etiqueta (derecha y que se lea la dirección). La IA lee el nombre, la dirección y el número de envío; si encuentra la dirección exacta la guía queda ubicada, si no queda pendiente en “Ubicación por comprobar”. El mensajero la recibe escaneando esa misma etiqueta.</span>
+          <div id="mlFotoRes" class="ml-lista"></div>
         </div>
         <form id="fNueva" class="lista">
           <h3>Recogida</h3>
@@ -2960,7 +2957,10 @@ $("#mlPdf").onchange = e => { const files = [...(e.target.files || [])]; e.targe
     e.preventDefault(); dentro = 0; caja.classList.remove("arrastrando");
     const files = [...(e.dataTransfer?.files || [])];
     const pdfs = files.filter(f => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
-    if (!pdfs.length) { $("#mlRes").innerHTML = `<div class="error">Suelta archivos PDF de etiquetas de Mercado Libre o Falabella.</div>`; return; }
+    const fotos = files.filter(f => /^image\//.test(f.type));
+    fotos.forEach(f => { mlFotoCola = mlFotoCola.then(() => procesarFotoEtiqueta(f)); });
+    if (!pdfs.length && fotos.length) return;
+    if (!pdfs.length) { $("#mlRes").innerHTML = `<div class="error">Suelta los PDF o las fotos de las etiquetas de Mercado Libre o Falabella.</div>`; return; }
     procesarArchivosML(pdfs);
   });
   // Evitar que el navegador abra el PDF si se suelta fuera del recuadro
@@ -2986,6 +2986,40 @@ function pintarMlPendientes() {
     ${nuevas.length ? `<div class="btns" style="margin-top:8px"><button class="btn chico" type="button" id="mlCrear">Crear o completar ${nuevas.length} guía${nuevas.length === 1 ? "" : "s"}</button></div>` : `<div class="nota">Todas estas etiquetas ya tienen guía.</div>`}`;
   $("#mlCrear") && ($("#mlCrear").onclick = crearGuiasML);
 }
+// Crea la guía de una etiqueta de Mercado Libre / Falabella (o completa la que ya exista sin dirección)
+async function crearOCompletarML(d, rec, prefijo) {
+  const ciudadMkt = C.ciudadDeTexto([d.direccion, d.localidadTxt, d.referencia].join(" ")) || "bogota";
+  const c = await ubicar(d.direccion, ciudadMkt);
+  let p, verificar = false;
+  if (c.length) { p = c[0]; verificar = !c[0].cruce; }
+  else { const cerca = await tomtom(d.direccion + (d.localidadTxt ? ", " + d.localidadTxt : ""), "search", ciudadMkt).catch(() => []); p = cerca[0] || C.CIUDADES[ciudadMkt].centro; verificar = true; }
+  const loc = C.localidadEn(ciudadMkt, p);
+  const g = {
+    numero: "", remitente: rec.remitente,
+    origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
+    cliente: d.nombre, telefono: d.telefono || "",
+    destino: { direccion: d.direccion, localidad: loc, ciudad: C.CIUDADES[ciudadMkt].nombre, referencia: d.referencia, lat: p.lat, lng: p.lng, aprox: verificar, verificar },
+    contenido: d.bultos && d.bultos !== "1/1" ? "Bultos: " + d.bultos : "", nota: d.nota || "",
+    valor: 0, cobro: "sin_cobro", tipoEnvio: d.canal, tipoEnvioOtro: "",
+    marketplace: { canal: d.canal, venta: "", envio: d.envio, flex: !!d.flex },
+    zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
+    estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
+    creado: Date.now(), actualizado: Date.now(),
+    eventos: [C.evento("disponible", "Guía creada desde " + (d.foto ? "la foto de la etiqueta" : "la etiqueta") + " de " + d.canal, "despacho")]
+  };
+  const previa = guiaPorEnvio(d.envio);
+  if (previa) {
+    // Guía creada sin dirección: se le pone la dirección y el cliente de la etiqueta
+    const cambios = { cliente: g.cliente, telefono: g.telefono, destino: g.destino, contenido: g.contenido || previa.contenido || "", nota: g.nota || previa.nota || "", zonas: g.zonas,
+      eventos: [...(previa.eventos || []), C.evento(previa.estado, "Dirección completada con el PDF de " + d.canal, "despacho")] };
+    await guardarGuia(previa.numero, cambios);
+    S.guias[previa.numero] = { ...previa, ...cambios };
+    return { numero: previa.numero, d, verificar, completada: true };
+  }
+  const numero = await guardarNuevaGuia(g, prefijo);
+  S.guias[numero] = { ...g, numero };
+  return { numero, d, verificar };
+}
 async function crearGuiasML() {
   const rec = S.recogida;
   if (!rec || rec.lat == null) { toast("Primero fija el punto de recogida."); return; }
@@ -2996,40 +3030,8 @@ async function crearGuiasML() {
   const hechas = [];
   for (const [i, d] of elegidas.entries()) {
     btn.textContent = `Creando ${i + 1} de ${elegidas.length}…`;
-    try {
-      const ciudadMkt = C.ciudadDeTexto([d.direccion, d.localidadTxt, d.referencia].join(" ")) || "bogota";
-      const c = await ubicar(d.direccion, ciudadMkt);
-      let p, verificar = false;
-      if (c.length) { p = c[0]; verificar = !c[0].cruce; }
-      else { const cerca = await tomtom(d.direccion + (d.localidadTxt ? ", " + d.localidadTxt : ""), "search", ciudadMkt).catch(() => []); p = cerca[0] || C.CIUDADES[ciudadMkt].centro; verificar = true; }
-      const loc = C.localidadEn(ciudadMkt, p);
-      const g = {
-        numero: "", remitente: rec.remitente,
-        origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
-        cliente: d.nombre, telefono: d.telefono || "",
-        destino: { direccion: d.direccion, localidad: loc, ciudad: C.CIUDADES[ciudadMkt].nombre, referencia: d.referencia, lat: p.lat, lng: p.lng, aprox: verificar, verificar },
-        contenido: d.bultos && d.bultos !== "1/1" ? "Bultos: " + d.bultos : "", nota: d.nota || "",
-        valor: 0, cobro: "sin_cobro", tipoEnvio: d.canal, tipoEnvioOtro: "",
-        marketplace: { canal: d.canal, venta: "", envio: d.envio, flex: !!d.flex },
-        zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
-        estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
-        creado: Date.now(), actualizado: Date.now(),
-        eventos: [C.evento("disponible", "Guía creada desde etiqueta de " + d.canal, "despacho")]
-      };
-      const previa = guiaPorEnvio(d.envio);
-      if (previa) {
-        // Guía creada con la pistola: se le pone la dirección y el cliente de la etiqueta
-        const cambios = { cliente: g.cliente, telefono: g.telefono, destino: g.destino, contenido: g.contenido || previa.contenido || "", nota: g.nota || previa.nota || "", zonas: g.zonas,
-          eventos: [...(previa.eventos || []), C.evento(previa.estado, "Dirección completada con el PDF de " + d.canal, "despacho")] };
-        await guardarGuia(previa.numero, cambios);
-        S.guias[previa.numero] = { ...previa, ...cambios };
-        hechas.push({ numero: previa.numero, d, verificar, completada: true });
-        continue;
-      }
-      const numero = await guardarNuevaGuia(g, prefijo);
-      S.guias[numero] = { ...g, numero };
-      hechas.push({ numero, d, verificar });
-    } catch (err) { hechas.push({ error: C.mensajeError(err), d }); }
+    try { hechas.push(await crearOCompletarML(d, rec, prefijo)); }
+    catch (err) { hechas.push({ error: C.mensajeError(err), d }); }
   }
   const porRevisar = hechas.filter(h => h.verificar).length;
   $("#mlRes").innerHTML = `<div class="ml-lista">${hechas.map(h => h.error ? `<div class="fila-ml"><span class="error">${esc(h.d.nombre)} · Envío ${esc(h.d.envio)}: ${esc(h.error)}</span></div>` : `<div class="fila-ml"><span><b>${esc(h.numero)}</b> · ${esc(h.d.nombre)} · Envío ${esc(h.d.envio)}${h.completada ? " · completada" : ""} ${h.verificar ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}</span></div>`).join("")}</div>
@@ -3037,64 +3039,74 @@ async function crearGuiasML() {
   toast("Guías creadas desde las etiquetas");
 }
 
-/* ---------- Etiquetas de Mercado Libre / Falabella con la pistola lectora ---------- */
-// La pistola escribe el código y un Enter. Mercado Libre Flex (QR): {"id":"44…",…}; Falabella: código de barras de 12 a 22 cifras.
-// Si la pistola está con otra distribución de teclado, las comillas y llaves salen cambiadas: se toma el primer número largo.
-function codigoEtiqueta(v) {
-  const s = String(v || "").trim();
-  const e = C.envioMLDesdeEscaneo(s);
-  if (e) return { envio: e, qr: /[{:]/.test(s) };
-  const m = s.match(/\d{8,22}/);
-  return m ? { envio: m[0], qr: /[{}:,]/.test(s) || /id/i.test(s) } : null;
+/* ---------- Etiquetas de Mercado Libre / Falabella con foto (la IA lee la dirección) ---------- */
+// Achica la foto (máx. 1600 px) para enviarla rápido
+async function fotoLigera(file) {
+  const img = await createImageBitmap(file).catch(() => null);
+  if (!img) throw new Error("No se pudo abrir la foto");
+  const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+  cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+  const url = cv.toDataURL("image/jpeg", 0.85);
+  return { url, datos: url.split(",")[1], img };
 }
-const canalEtiqueta = (c, sel) => sel !== "auto" ? sel : c.qr || c.envio.length <= 11 ? "Mercado Libre" : "Falabella";
-let mlEscaneadas = [], mlCreando = Promise.resolve();
-function pintarEscaneadas() {
-  $("#mlScanRes").innerHTML = mlEscaneadas.slice(0, 12).map(h => `<div class="fila-ml"><span>${h.error ? `<span class="error">✗ ${esc(h.envio || h.leido)}: ${esc(h.error)}</span>` : `${h.ya ? "↺" : "✓"} <span class="pill ${h.canal === "Falabella" ? "entregada" : "devuelta"}">${esc(h.canal)}</span> <b>${esc(h.numero)}</b> · ${h.canal === "Falabella" ? "Código" : "Envío"} ${esc(h.envio)}${h.ya ? ` <span class="nota">ya existía (${esc(C.ESTADOS[h.ya] || h.ya)})</span>` : ""}`}</span></div>`).join("")
-    + (mlEscaneadas.length ? `<p class="nota" style="margin:4px 0 0">${mlEscaneadas.filter(h => h.numero && !h.ya).length} guías creadas con la pistola en esta sesión.</p>` : "");
-}
-async function crearGuiaEscaneada(leido) {
-  const c = codigoEtiqueta(leido);
-  if (!c) { mlEscaneadas.unshift({ leido: leido.slice(0, 40), error: "no es un código de Mercado Libre ni de Falabella" }); return; }
-  const ya = guiaPorEnvio(c.envio) || (() => { const h = mlEscaneadas.find(x => x.envio === c.envio && x.numero); return h && { numero: h.numero, tipoEnvio: h.canal, estado: "disponible" }; })();
-  if (ya) { mlEscaneadas.unshift({ numero: ya.numero, envio: c.envio, canal: ya.marketplace?.canal || ya.tipoEnvio, ya: ya.estado }); return; }
-  const rec = S.recogida;
-  if (!rec || rec.lat == null) { mlEscaneadas.unshift({ envio: c.envio, error: "primero fija el punto de recogida" }); return; }
-  const canal = canalEtiqueta(c, $("#mlScanCanal").value);
-  const centro = C.CIUDADES.bogota.centro;
-  const g = {
-    numero: "", remitente: rec.remitente,
-    origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
-    cliente: "Cliente " + canal, telefono: "",
-    // Sin PDF no hay dirección: el mensajero la lee en la etiqueta. El punto es solo de referencia.
-    destino: { direccion: "Dirección en la etiqueta de " + canal, localidad: "", ciudad: "Bogotá", referencia: "", lat: centro.lat, lng: centro.lng, aprox: true, verificar: false, sinDireccion: true },
-    contenido: "", nota: "",
-    valor: 0, cobro: "sin_cobro", tipoEnvio: canal, tipoEnvioOtro: "",
-    marketplace: { canal, venta: "", envio: c.envio, flex: canal === "Mercado Libre", escaneada: true },
-    zonas: [rec.localidad || C.localidadCercana(rec)].filter(Boolean),
-    estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
-    creado: Date.now(), actualizado: Date.now(),
-    eventos: [C.evento("disponible", "Guía creada escaneando la etiqueta de " + canal, "despacho")]
-  };
+// Número de envío desde el QR (Mercado Libre) o el código de barras (Falabella), si el celular sabe leerlos
+async function codigoEnFoto(img) {
   try {
-    const numero = await guardarNuevaGuia(g, C.prefijoTienda(rec.remitente));
-    S.guias[numero] = { ...g, numero };
-    mlEscaneadas.unshift({ numero, envio: c.envio, canal });
-    try { navigator.vibrate?.(80); } catch {}
-  } catch (err) { mlEscaneadas.unshift({ envio: c.envio, error: C.mensajeError(err) }); }
+    if (!("BarcodeDetector" in window)) return null;
+    const det = new BarcodeDetector({ formats: ["qr_code", "code_128", "itf", "code_39"] });
+    for (const b of await det.detect(img)) { const e = C.envioMLDesdeEscaneo(b.rawValue); if (e) return { envio: e, qr: b.format === "qr_code" }; }
+  } catch {}
+  return null;
 }
-(() => {
-  const inp = $("#mlScan");
-  inp.addEventListener("keydown", e => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    const v = inp.value.trim(); inp.value = "";
-    if (!v) return;
-    inp.classList.add("leyendo");
-    // En fila: si escaneas varias seguidas, se crean una por una y sin repetir
-    mlCreando = mlCreando.then(() => crearGuiaEscaneada(v)).then(() => { pintarEscaneadas(); inp.classList.remove("leyendo"); });
-  });
-})();
+const PROMPT_ETIQUETA = `La foto es una etiqueta de envío de Mercado Libre (Flex) o de Falabella (despacho directo) en Colombia. Léela con cuidado y responde SOLO un JSON, sin texto antes ni después:
+{"plataforma":"Mercado Libre" o "Falabella" o null,"envio":"número de envío (Mercado Libre: el que sigue a 'Envío'; Falabella: el número largo bajo el código de barras), solo dígitos","nombre":"destinatario","telefono":"solo dígitos o vacío","direccion":"dirección principal tal cual (calle/carrera/avenida y número), sin apartamento","complemento":"apto, torre, interior, casa, oficina… o vacío","barrio":"barrio o vacío","ciudad":"ciudad o municipio","referencia":"indicaciones extra o vacío","legible":true o false}
+Si un dato no se ve, déjalo vacío; no inventes nada.`;
+async function leerFotoEtiqueta(datos) {
+  const url = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, "");
+  const r = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + await auth.currentUser.getIdToken(), "Content-Type": "application/json" },
+    body: JSON.stringify({ metodo: "REDACTAR", prompt: PROMPT_ETIQUETA, imagenes: [{ tipo: "image/jpeg", datos }] }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || "El intermediario respondió " + r.status);
+  const t = String(j.texto || ""); const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  try { return JSON.parse(t.slice(a, b + 1)); } catch { throw new Error("La IA no pudo leer la etiqueta. Toma la foto más de cerca y derecha."); }
+}
+let mlFotosRes = [], mlFotoCola = Promise.resolve();
+function pintarFotos() {
+  $("#mlFotoRes").innerHTML = mlFotosRes.slice(0, 15).map(h => `<div class="fila-ml">${h.min ? `<img class="ml-foto-min" src="${h.min}" alt="">` : ""}<span>${
+    h.leyendo ? `<span class="nota">Leyendo la etiqueta…</span>`
+    : h.error ? `<span class="error">✗ ${esc(h.error)}</span>`
+    : `${h.ya ? "↺" : "✓"} <span class="pill ${h.d.canal === "Falabella" ? "entregada" : "devuelta"}">${esc(h.d.canal)}</span> <b>${esc(h.numero)}</b> · ${esc(h.d.nombre || "")} · ${h.d.canal === "Falabella" ? "Código" : "Envío"} ${esc(h.d.envio)}<br><span class="meta">${esc(h.d.direccion)}${h.d.localidadTxt ? ", " + esc(h.d.localidadTxt) : ""}</span> ${h.ya ? `<span class="nota">ya existía</span>` : h.verificar ? `<span class="pill novedad">Ubicación pendiente por comprobar</span>` : `<span class="pill entregada">Ubicada</span>`}`
+  }</span></div>`).join("");
+}
+async function procesarFotoEtiqueta(file) {
+  const h = { leyendo: true }; mlFotosRes.unshift(h); pintarFotos();
+  try {
+    const rec = S.recogida;
+    if (!rec || rec.lat == null) throw new Error("Primero fija el punto de recogida.");
+    const f = await fotoLigera(file);
+    const cv = document.createElement("canvas"); cv.width = 88; cv.height = 88; cv.getContext("2d").drawImage(f.img, 0, 0, 88, 88); h.min = cv.toDataURL("image/jpeg", 0.6);
+    const [cod, x] = await Promise.all([codigoEnFoto(f.img), leerFotoEtiqueta(f.datos)]);
+    const envio = cod?.envio || String(x.envio || "").replace(/\D/g, "");
+    if (!envio || envio.length < 8) throw new Error("No se leyó el número de envío. Toma la foto con la etiqueta completa.");
+    const canal = x.plataforma === "Falabella" || x.plataforma === "Mercado Libre" ? x.plataforma : cod?.qr || envio.length <= 11 ? "Mercado Libre" : "Falabella";
+    const ya = guiaPorEnvio(envio) || (() => { const o = mlFotosRes.find(z => z !== h && z.numero && z.d?.envio === envio); return o && { numero: o.numero, cliente: o.d.nombre, destino: { direccion: o.d.direccion } }; })();
+    if (ya && (!guiaPorEnvio(envio) || !porCrearML(envio))) { Object.assign(h, { numero: ya.numero, ya: true, d: { canal, envio, nombre: ya.cliente, direccion: ya.destino?.direccion || "" } }); return; }
+    if (!x.direccion) throw new Error("No se leyó la dirección (envío " + envio + "). Toma otra foto más de cerca.");
+    const d = {
+      canal, envio, foto: true, flex: canal === "Mercado Libre",
+      nombre: String(x.nombre || "Cliente " + canal).trim(), telefono: String(x.telefono || "").replace(/\D/g, ""),
+      direccion: String(x.direccion).trim(),
+      localidadTxt: [x.barrio, x.ciudad].filter(Boolean).join(", "),
+      referencia: [x.complemento, x.barrio ? "Barrio " + x.barrio : "", x.referencia].filter(Boolean).join(" · ")
+    };
+    Object.assign(h, await crearOCompletarML(d, rec, C.prefijoTienda(rec.remitente)));
+    try { navigator.vibrate?.(80); } catch {}
+  } catch (err) { h.error = err.message || C.mensajeError(err); }
+  finally { h.leyendo = false; pintarFotos(); }
+}
+const ponerFotos = e => { const fs = [...(e.target.files || [])]; e.target.value = ""; fs.forEach(f => { mlFotoCola = mlFotoCola.then(() => procesarFotoEtiqueta(f)); }); };
+$("#mlFoto").onchange = ponerFotos; $("#mlFotos").onchange = ponerFotos;
 
 // Consecutivo por tienda, guardado en el perfil de despacho: PIPEGAMES-00001, 00002…
 async function guardarNuevaGuia(g, prefijo) {
