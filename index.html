@@ -6073,7 +6073,7 @@ function aplicarStockExcel() {
             if (!enlazado) return;      // producto que el Excel no maneja: no se toca
             cant = 0;                   // estaba en el Excel y ya no: agotado
           }
-          if (cant < 0) return;         // solo hay unidades EN IMPORTACION: no se toca (preventas)
+          // cant < 0: solo hay unidades EN IMPORTACION (aún no llegan): se oculta
           var activo = cant > 0;
           if (g.active !== activo) { g.active = activo; cambios++; }
         });
