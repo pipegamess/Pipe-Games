@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Certificados Pipe Games</title>
+<title>Generador facturas Éxito · Pipe Games</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans:ital,wght@0,400;0,700;1,700&family=Archivo:wght@500;700;800&display=swap">
 <style>
@@ -75,7 +75,7 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
 <body>
 
 <form class="panel" id="vLogin" hidden style="max-width:400px;margin:8vh auto 0">
-  <h1>Certificados · Pipe Games</h1>
+  <h1>Generador facturas Éxito · Pipe Games</h1>
   <p class="sub">Entra con tu correo y contraseña de administrador de Pipe Games.</p>
   <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
   <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
@@ -85,7 +85,7 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
 
 <div id="vApp" hidden>
 <header class="top">
-  <div><h1>Certificados de garantía · Pipe Games</h1>
+  <div><h1>Generador facturas Éxito · Pipe Games</h1>
   <p class="sub">Llena los datos y descarga el PDF. Logo, formato y datos del responsable quedan fijos.</p></div>
   <div class="btns"><a href="../inicio/" style="font-size:14px;font-weight:700;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:9px 14px;text-decoration:none">Inicio</a><button type="button" id="salir">Salir</button></div>
 </header>
@@ -532,7 +532,7 @@ $("vLogin").addEventListener("submit", async ev => {
 });
 $("salir").onclick = () => signOut(auth);
 onAuthStateChanged(auth, async u => {
-  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta cuenta no tiene acceso a los certificados."; return; }
+  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta cuenta no tiene acceso al generador."; return; }
   $("vLogin").hidden = !!u; $("vApp").hidden = !u;
   window.dispatchEvent(new Event("resize"));
   if (!u) { $("lCorreo").focus(); return; }
