@@ -118,12 +118,22 @@ function envioTexto(m, esGrande, cli) {
   }
   return { valor: null, html: cli ? `<p><b>${esc(e.ciudad)}</b>: sí enviamos. Te confirmamos el valor del envío por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a>.</p>` : `<p><b>${esc(e.ciudad)}</b>: sí enviamos, pero no tiene tarifa fija. Cotízalo en Skydropx.</p>` };
 }
+// Garantía según el tipo de producto
+function garantiaDe(p) {
+  const t = norm(p.n);
+  if (/\b(ipad|macbook)\b/.test(t)) return "1 año directamente con la marca";
+  if (/\bconsola\b|game and watch|oculus|meta quest/.test(t)) return "6 meses por defectos de fábrica";
+  if (/\b(control|controles|joy ?cons?|joycons|base de carga|camara|auriculares?|estuche|maleta|memoria|ssd|adaptador|cargador)\b/.test(t)) return "3 meses por defectos de fábrica";
+  if (/\b(trofeo|gorra|parlante|echo dot|multi toma)\b/.test(t)) return null; // sin garantía definida
+  if (!p.l || /\|(PS\d|SWITCH\d?|XBOX)/i.test(p.k || "")) return "1 mes por defectos de fábrica"; // videojuegos // juegos de PS4, PS5 y Switch
+  return null;
+}
 // Ficha de un producto: precio con cada medio de pago y, para clientes, el botón para pedirlo
 function ficha(p, cli) {
   // Al cliente no se le muestra precio de lo agotado
   if (cli && !p.disp) return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip no">AGOTADO</span></h3><p>Actualmente está agotado. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>`;
   return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></h3>
-      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">🛒 Agregar al pedido</button></p>` : ""}${cli && !p.disp ? `<p class="nota">Está agotado por ahora. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>` : ""}`;
+      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}${garantiaDe(p) ? fila("Garantía", esc(garantiaDe(p))) : ""}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">🛒 Agregar al pedido</button></p>` : ""}${cli && !p.disp ? `<p class="nota">Está agotado por ahora. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>` : ""}`;
 }
 // opts.modo === "cliente": versión para el catálogo; solo precios, disponibilidad, envíos, pagos, horario y contacto
 const WA = "https://wa.me/573118836995";
@@ -150,7 +160,7 @@ function responder(q, opts = {}) {
   if (r.tema === "tiempos") partes.push(`<h3>Tiempos de entrega</h3><p>Bogotá, Chía y Soacha: mismo día si compra antes de las 3:00 p. m. Otras ciudades: 1 a 3 días hábiles por Envía o Interrapidísimo.</p>`);
   if (r.tema === "rastreo" && cli) partes.push(`<h3>Rastreo de tu pedido</h3><p>Consulta tu pedido con tu número de guía en <a href="https://pipegames.com.co/mensajeria/rastreo.html" target="_blank" rel="noopener">pipegames.com.co/mensajeria/rastreo.html</a>. Si tu envío es fuera de Bogotá, usa el número de guía de la transportadora que te enviamos.</p>`);
   else if (r.tema === "rastreo") partes.push(`<h3>Rastreo</h3><p>El cliente consulta su guía en <a href="https://pipegames.com.co/mensajeria/rastreo.html" target="_blank" rel="noopener">pipegames.com.co/mensajeria/rastreo.html</a>. Las guías nacionales se ven en Skydropx.</p>`);
-  if (r.tema === "garantia") partes.push(`<h3>Juegos físicos, nuevos y originales</h3><p>Todos nuestros juegos son <b>físicos</b> (disco o cartucho), <b>nuevos, originales y sellados de fábrica</b>. No vendemos juegos digitales ni usados.</p><p>Garantía de 1 mes por defectos de fábrica.</p>`);
+  if (r.tema === "garantia") partes.push(`<h3>Juegos físicos, nuevos y originales</h3><p>Todos nuestros juegos son <b>físicos</b> (disco o cartucho), <b>nuevos, originales y sellados de fábrica</b>. No vendemos juegos digitales ni usados.</p><h3>Garantía</h3><table>${fila("Videojuegos", "1 mes por defectos de fábrica")}${fila("Consolas", "6 meses")}${fila("Accesorios (controles, cámara, base de carga…)", "3 meses")}${fila("iPad y MacBook", "1 año con la marca")}</table>`);
   if (r.tema === "contacto") partes.push(cli ? `<h3>Contacto</h3><p><a class="pb-cta" href="${WA}" target="_blank" rel="noopener">WhatsApp 311 883 6995</a></p><p class="nota">Somos tienda 100% virtual: entregamos a domicilio en Bogotá, Chía y Soacha y enviamos a todo el país.</p>` : `<h3>Contacto</h3><p>WhatsApp 311 883 6995 · ventas@pipegames.com · Catálogo: <a href="https://pipegames.com.co/" target="_blank" rel="noopener">pipegames.com.co</a></p>`);
 
   // Productos
@@ -228,4 +238,7 @@ function envioCliente(etiqueta, nombres) {
   if (e.tipo === "nacional" && !grande) { const o = (e.opciones || []).filter(x => x.v).sort((a, b) => a.v - b.v)[0]; return { valor: o.v, texto: `Envío a ${e.ciudad} por ${o.n}: ${cop(o.v)} (1 a 3 días hábiles)` }; }
   return { valor: 0, porConfirmar: true, texto: `Envío a ${e.ciudad}: te confirmamos el valor por WhatsApp` };
 }
-export { ciudadCliente, envioCliente, METODOS, TOPE_CUOTAS, cop as formatoPesos, esc as escapar };
+// Productos que coinciden con un texto (para la factura y las publicaciones)
+function buscar(texto, max = 6) { return buscarProductos(leer(texto)).slice(0, max); }
+const productos = () => PROD;
+export { ciudadCliente, envioCliente, METODOS, TOPE_CUOTAS, cop as formatoPesos, esc as escapar, garantiaDe, buscar, productos, leer };

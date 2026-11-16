@@ -5,6 +5,9 @@ import { cargar, responder, verProducto, desactualizado, disponibles, ciudadClie
 const BASE = new URL(".", import.meta.url).href; // carpeta asistente/
 // ?modo=cliente: versión del catálogo (solo precios, disponibilidad, envíos, pagos, horario y contacto)
 const CLI = new URL(import.meta.url).searchParams.get("modo") === "cliente";
+// Acciones internas (publicaciones, facturas e IA): solo en el Centro de Mando; se cargan al abrir el bot
+let ACC = null;
+const acciones = () => ACC || (ACC = import("./acciones.js").then(m => { m.usarBotones(botones); m.conectar(chat, poner); return m; }));
 // Robot original de Pipe Games: cabeza de consola portátil con pantalla, ojos de píxel, antena con luz y cruceta en el pecho
 const ROBOT = `
 <svg viewBox="0 0 120 130" aria-hidden="true" class="pb-robot">
@@ -72,7 +75,8 @@ const css = `
 .pb-sug button[disabled] { opacity: .45; cursor: not-allowed; }
 .pb-sug button { font: 500 12.5px/1.2 'Barlow', Arial, sans-serif; color: #f4f4f5; background: #0c0c0e; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; padding: 6px 10px; cursor: pointer; }
 .pb-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(255,255,255,.1); background: #0d0d0f; }
-.pb-form input { flex: 1; min-width: 0; font: 16px 'Barlow', Arial, sans-serif; color: #f4f4f5; background: #202024; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; padding: 10px 12px; }
+.pb-form textarea { resize: none; max-height: 140px; line-height: 1.35; overflow-y: auto; }
+.pb-form input, .pb-form textarea { flex: 1; min-width: 0; font: 16px 'Barlow', Arial, sans-serif; color: #f4f4f5; background: #202024; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; padding: 10px 12px; }
 .pb-form button { font: 400 14px 'Russo One', sans-serif; background: #d6d6da; color: #0a0a0c; border: 0; border-radius: 12px; padding: 0 14px; cursor: pointer; }
 .pb-cta { display: inline-block; font: 700 14px/1.2 'Barlow', Arial, sans-serif; color: #0a0a0c !important; background: #f4f4f5; border: 0; border-radius: 10px; padding: 9px 14px; text-decoration: none; cursor: pointer; }
 /* En el catálogo: encima de la barra de botones de abajo (Proceso, Simulador, Rastreo) */
@@ -92,12 +96,15 @@ const css = `
 @keyframes pbParpadea { 0%,92%,100% { transform: scaleY(1) } 95% { transform: scaleY(.1) } }
 @keyframes pbLuz { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
 @keyframes pbPunto { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
+.pb-bot .pb-texto { background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; max-height: 220px; overflow: auto; white-space: normal; user-select: text; }
+.pb-bot .pb-login { display: grid; gap: 6px; margin-top: 6px; }
+.pb-bot .pb-login input { background: #111114; color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: 8px 10px; font: inherit; }
 @keyframes pbAbre { from { opacity: 0; transform: scale(.94) } to { opacity: 1; transform: none } }
 @media (max-width: 520px) { .pb-panel { right: 8px; left: 8px; width: auto; height: min(640px, calc(100vh - 120px)); } }
 `;
 
 const SUG = CLI ? ["¿Cómo puedo pagar?", "¿Pagan contra entrega?", "¿Hacen envíos a todo el país?", "¿Los juegos son físicos y nuevos?", "¿Tienen tienda física?", "Juegos de PS5", "Hablar con un asesor"]
-  : ["mario kart switch", "envío a Medellín", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "horario"];
+  : ["Descripción de Mario Kart 8 Deluxe", "Factura de Éxito", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "¿Qué garantía tienen las consolas?"];
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 const estilo = document.createElement("style"); estilo.textContent = css; document.head.append(estilo);
@@ -108,10 +115,14 @@ const panel = document.createElement("section");
 panel.className = "pb-panel"; panel.hidden = true; panel.setAttribute("aria-label", "Pipe Bot");
 panel.innerHTML = `<div class="pb-cab"><div class="pb-mini">${ROBOT}</div><div class="pb-esp"><img src="${BASE}../inicio/titulos/pipebot.png" alt="Pipe Bot"><small id="pbEstado">Cargando catálogo…</small></div><button type="button" class="pb-cerrar" aria-label="Cerrar">×</button></div>
   <div class="pb-chat" aria-live="polite"></div>
-  <form class="pb-form" autocomplete="off"><input placeholder="Juego, precio, envío, Addi…" enterkeyhint="send" aria-label="Pregunta para Pipe Bot"><button type="submit">Enviar</button></form>`;
+  <form class="pb-form" autocomplete="off"><textarea rows="1" placeholder="Juego, precio, envío, Addi…" enterkeyhint="send" aria-label="Pregunta para Pipe Bot"></textarea><button type="submit">Enviar</button></form>`;
 if (CLI) [boton, globo, panel].forEach(el => el.classList.add("pb-cliente"));
 document.body.append(globo, boton, panel);
-const chat = panel.querySelector(".pb-chat"), input = panel.querySelector("input");
+const chat = panel.querySelector(".pb-chat"), input = panel.querySelector(".pb-form textarea");
+// Enter envía; Shift+Enter hace salto de línea (al pegar datos del cliente se conservan las líneas)
+const crecer = () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight + 2, 140) + "px"; };
+input.addEventListener("input", crecer);
+input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); panel.querySelector(".pb-form").requestSubmit(); } });
 let listo = false;
 
 function poner(html, quien) { const d = document.createElement("div"); d.className = "pb-msg pb-" + quien; d.innerHTML = html; chat.append(d); chat.scrollTop = chat.scrollHeight; return d; }
@@ -121,7 +132,8 @@ async function abrir() {
   if (!listo) {
     listo = true;
     poner(CLI ? `<h3>¡Hola! Soy Pipe Bot 🎮</h3><p>El asistente virtual de Pipe Games. Pregúntame por un juego, su precio y disponibilidad, el envío a tu ciudad o cómo pagar a cuotas con Addi o Sistecrédito.</p><div class="pb-sug">${SUG.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`
-      : `<h3>¡Hola, Felipe! 🎮</h3><p>Pregúntame por un juego (precio, stock y cuotas), el envío a cualquier municipio, el total con Addi o Sistecrédito, o cuánto publicar en Mercado Libre, Falabella o Éxito.</p><div class="pb-sug">${SUG.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`, "bot");
+      : `<h3>¡Hola, Felipe! 🎮</h3><p>Pregúntame por un juego (precio, stock, garantía y cuotas), el envío a cualquier municipio, el total con Addi o Sistecrédito o cuánto publicar en Mercado Libre, Falabella o Éxito. También redacto <b>descripciones</b> para las plataformas e Instagram y hago la <b>factura de Éxito</b> con los datos del cliente.</p><div class="pb-sug">${SUG.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`, "bot");
+    if (!CLI) acciones().catch(() => {});
     try { await cargar(); panel.querySelector("#pbEstado").textContent = CLI ? "Asistente virtual · catálogo al día" : `${disponibles()} productos disponibles · stock al día`; }
     catch { panel.querySelector("#pbEstado").textContent = "No pude cargar el stock; uso el catálogo guardado"; }
   }
@@ -131,10 +143,17 @@ function cerrar() { panel.hidden = true; boton.setAttribute("aria-label", "Abrir
 async function preguntar(q) {
   q = q.trim(); if (!q) return;
   if (CLI && compra.paso) { poner(esc(q), "yo"); return responderPaso(q); }
-  poner(esc(q), "yo");
-  const pensando = poner(`<span class="pb-escribiendo"><i></i><i></i><i></i></span>`, "bot");
+  poner(esc(q).replace(/\n/g, "<br>"), "yo");
   try { if (desactualizado()) await cargar(); } catch {}
-  setTimeout(() => { pensando.innerHTML = responder(q, { modo: CLI ? "cliente" : "" }); chat.scrollTop = chat.scrollHeight; }, 350);
+  if (!CLI) {
+    let m = null; try { m = await acciones(); } catch {}
+    if (m && m.manejar(q, poner)) return;
+    const html = responder(q);
+    if (m && m.respaldo(q, html, poner)) return;
+    return poner(html, "bot");
+  }
+  const pensando = poner(`<span class="pb-escribiendo"><i></i><i></i><i></i></span>`, "bot");
+  setTimeout(() => { pensando.innerHTML = responder(q, { modo: "cliente" }); chat.scrollTop = chat.scrollHeight; }, 350);
 }
 // Elegir un producto de una lista: muestra su ficha completa (con "Pedir este producto" en el catálogo)
 function elegir(dato) {
@@ -146,7 +165,7 @@ chat.addEventListener("keydown", e => { const v = e.target.closest("[data-ver]")
 boton.addEventListener("click", () => panel.hidden ? abrir() : cerrar());
 panel.querySelector(".pb-cerrar").addEventListener("click", cerrar);
 panel.querySelector("form").addEventListener("submit", e => {
-  e.preventDefault(); const q = input.value; input.value = "";
+  e.preventDefault(); const q = input.value; input.value = ""; crecer();
   if (CLI && !compra.paso && /^\s*(continuar|comprar|finalizar|pagar)( (la )?compra)?\s*$/i.test(q)) { poner(esc(q), "yo"); return accion("continuar"); }
   preguntar(q);
 });
@@ -155,7 +174,7 @@ chat.addEventListener("click", e => {
   const v = e.target.closest("[data-ver]"); if (v) return elegir(v.dataset.ver);
   // Compra guiada (solo en el catálogo)
   const pd = e.target.closest("[data-pedir]"); if (pd) return agregar(pd.dataset.pedir);
-  const ac = e.target.closest("[data-accion]"); if (ac) return accion(ac.dataset.accion, ac);
+  const ac = e.target.closest("[data-accion]"); if (ac && CLI) return accion(ac.dataset.accion, ac);
   const sc = e.target.closest("[data-seccion]"); if (sc && typeof window.pbIrSeccion === "function") { cerrar(); window.pbIrSeccion(sc.dataset.seccion); }
 });
 

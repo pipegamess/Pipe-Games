@@ -33,7 +33,7 @@ for (const lista of ["ps4", "ps5", "sw", "acc"]) {
     const v = parseInt(String(x.price || "").replace(/\D/g, ""), 10) || 0;
     if (!x.name || !v) continue;
     const p = x.platform || lista.toUpperCase(), nk = x.name + "|" + p, e = Object.prototype.hasOwnProperty.call(STOCK_MAP, nk);
-    productos.push({ n: String(x.name).trim(), p, v, a: x.active !== false, k: e ? STOCK_MAP[nk] : llave(x.name) + "|" + llavePlat(p), ...(e ? { e: 1 } : {}) });
+    productos.push({ n: String(x.name).trim(), p, v, a: x.active !== false, k: e ? STOCK_MAP[nk] : llave(x.name) + "|" + llavePlat(p), ...(e ? { e: 1 } : {}), ...(lista === "acc" ? { l: "acc" } : {}) });
   }
 }
 const salidaP = `// GENERADO AUTOMÁTICAMENTE desde el catálogo (index.html). No editar a mano.

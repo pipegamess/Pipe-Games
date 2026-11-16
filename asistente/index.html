@@ -57,13 +57,21 @@ td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-spa
 .sug { display: flex; gap: 8px; flex-wrap: wrap; }
 .sug button { font: 500 13px/1.2 var(--body); color: var(--text); background: #0c0c0e; border: 1px solid var(--line2); border-radius: 999px; padding: 7px 11px; cursor: pointer; }
 form#f { display: flex; gap: 8px; padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); border-top: 1px solid var(--line); background: var(--bg); }
-#q { flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--text); background: var(--surface2); border: 1px solid var(--line2); border-radius: 12px; padding: 12px 14px; }
+#q { resize: none; max-height: 160px; line-height: 1.35; flex: 1; min-width: 0; font: inherit; font-size: 16px; color: var(--text); background: var(--surface2); border: 1px solid var(--line2); border-radius: 12px; padding: 12px 14px; }
 form#f button { font: 400 15px/1 var(--display); background: var(--plata); color: #0a0a0c; border: 0; border-radius: 12px; padding: 0 16px; cursor: pointer; }
 input:focus-visible, button:focus-visible { outline: 2px solid var(--plata); outline-offset: 1px; }
 .login { max-width: 400px; margin: 10vh auto 0; display: grid; gap: 12px; padding: 0 16px; }
 .login label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .login input { font: inherit; font-size: 16px; color: var(--text); background: var(--surface2); border: 1px solid var(--line2); border-radius: 10px; padding: 11px 12px; text-transform: none; letter-spacing: normal; }
 .login button { font: 400 16px/1 var(--display); background: var(--plata); color: #0a0a0c; border: 0; border-radius: 10px; padding: 14px; cursor: pointer; }
+.pb-cta { display: inline-block; font: 400 14px/1.2 var(--display); color: #0a0a0c; background: var(--plata); border: 0; border-radius: 10px; padding: 9px 14px; cursor: pointer; text-decoration: none; }
+.pb-cta:disabled { opacity: .5; }
+.pb-texto { background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font-size: 14px; line-height: 1.5; max-height: 320px; overflow: auto; }
+.pb-login { display: grid; gap: 6px; } .pb-login input { font: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--line2); border-radius: 8px; padding: 9px 10px; }
+.sug button:disabled { opacity: .45; }
+.pb-escribiendo i { display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: var(--muted); animation: pt 1s infinite alternate; }
+.pb-escribiendo i:nth-child(2) { animation-delay: .2s; } .pb-escribiendo i:nth-child(3) { animation-delay: .4s; }
+@keyframes pt { to { opacity: .2; } }
 .err { color: var(--err); font-size: 13px; min-height: 1.2em; margin: 0; }
 </style>
 </head>
@@ -88,7 +96,7 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--plata); out
   </header>
   <div id="chat" aria-live="polite"></div>
   <form id="f" autocomplete="off">
-    <input id="q" placeholder="Pregunta: mario kart switch, envío a Pasto, Addi 180000…" enterkeyhint="send">
+    <textarea id="q" rows="1" placeholder="Pregunta: mario kart switch, descripción de un juego, factura de Éxito…" enterkeyhint="send"></textarea>
     <button type="submit">Enviar</button>
   </form>
 </div>
@@ -103,19 +111,29 @@ const $ = id => document.getElementById(id);
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 async function cargar() { await cargarMotor(); $("estado").textContent = `${disponibles()} productos disponibles · stock al día`; }
 // ── Chat ──
-const SUG = ["mario kart switch", "envío a Medellín", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "horario"];
+const SUG = ["Descripción de Mario Kart 8 Deluxe", "Factura de Éxito", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "¿Qué garantía tienen las consolas?"];
+const botones = l => `<div class="sug">${l.map(([a, t, extra]) => `<button type="button" data-accion="${a}"${extra || ""}>${t}</button>`).join("")}</div>`;
+let ACC = null;
+const acciones = () => ACC || (ACC = import("./acciones.js").then(m => { m.usarBotones(botones); m.conectar($("chat"), poner); return m; }));
 function poner(html, quien) { const d = document.createElement("div"); d.className = "msg " + quien; d.innerHTML = html; $("chat").append(d); $("chat").scrollTop = $("chat").scrollHeight; return d; }
 function bienvenida() {
-  poner(`<h3>Hola, Felipe 👋</h3><p>Pregúntame por un juego (precio, stock y cuotas), el envío a cualquier municipio, el total con Addi o Sistecrédito, o el precio para publicar en Mercado Libre, Falabella o Éxito.</p>
+  poner(`<h3>Hola, Felipe 👋</h3><p>Pregúntame por un juego (precio, stock, garantía y cuotas), el envío a cualquier municipio, el total con Addi o Sistecrédito o el precio para publicar en Mercado Libre, Falabella o Éxito. También redacto <b>descripciones</b> para las plataformas e Instagram y hago la <b>factura de Éxito</b> con los datos del cliente.</p>
     <div class="sug">${SUG.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`, "bot");
 }
 async function preguntar(q) {
   q = q.trim(); if (!q) return;
   poner(esc(q), "yo");
   if (desactualizado()) await cargar();
-  poner(responder(q), "bot");
+  let m = null; try { m = await acciones(); } catch {}
+  if (m && m.manejar(q, poner)) return;
+  const html = responder(q);
+  if (m && m.respaldo(q, html, poner)) return;
+  poner(html, "bot");
 }
-$("f").addEventListener("submit", e => { e.preventDefault(); const q = $("q").value; $("q").value = ""; preguntar(q); });
+const crecer = () => { $("q").style.height = "auto"; $("q").style.height = Math.min($("q").scrollHeight + 2, 160) + "px"; };
+$("q").addEventListener("input", crecer);
+$("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("f").requestSubmit(); } });
+$("f").addEventListener("submit", e => { e.preventDefault(); const q = $("q").value; $("q").value = ""; crecer(); preguntar(q); });
 $("chat").addEventListener("click", e => {
   const b = e.target.closest("[data-s]"); if (b) return preguntar(b.dataset.s);
   const v = e.target.closest("[data-ver]"); if (v) { const [n, p] = v.dataset.ver.split("|"); poner(esc(n + " · " + p), "yo"); poner(verProducto(n, p), "bot"); }

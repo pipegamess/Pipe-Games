@@ -415,6 +415,17 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
     setStatus(falta.length ? "Datos repartidos. No encontré: "+falta.join(", ")+". Escríbelo en su campo." : "Datos repartidos. Revisa que cada campo quedó en su lugar.", falta.length?"warn":"ok");
   });
   window.__repartir = repartir;
+  // Pipe Bot (Centro de Mando) deja los datos de la factura y aquí se llenan y se descarga el PDF solos
+  window.__autoFactura = o => {
+    // limpia lo anterior para no mezclar productos de otra factura
+    for(let i=0;i<N;i++){ $("q"+i).value=""; $("p"+i).value=""; $("u"+i).value="" }
+    apply(o);
+    if(o.pegar){ $("pegar").value=o.pegar; $("btnPegar").click() }
+    (o.items||[]).forEach((it,i)=>{ if(i<N){ const v=parseNum(it.u); $("u"+i).value=v?money(v):"" }});
+    render();
+    if($("resp0").value.trim() && $("nombre").value.trim()) setTimeout(()=>$("form").requestSubmit(), 400);
+    else setStatus("Revisa los campos y toca Descargar PDF.","warn");
+  };
   // responsable: lo llena la cuenta al entrar; cada cambio se guarda en la cuenta
   window.__ponerResponsable = r => { for(let i=0;i<4;i++) $("resp"+i).value = (r&&r[i])||""; $("respBox").open = !(r&&r[0]); render() };
   for(let i=0;i<4;i++) $("resp"+i).addEventListener("change",()=>{ window.__guardarResponsable && window.__guardarResponsable([0,1,2,3].map(k=>$("resp"+k).value.trim())) });
@@ -541,6 +552,8 @@ onAuthStateChanged(auth, async u => {
   if (!u) { $("lCorreo").focus(); return; }
   try { const d = await getDoc(ref); window.__ponerResponsable(d.data()?.certificadoResponsable || null); }
   catch (e) { $("respEstado").textContent = "No se pudieron leer los datos del responsable."; }
+  let auto = null; try { auto = JSON.parse(localStorage.getItem("pg_cert_auto") || "null"); localStorage.removeItem("pg_cert_auto"); } catch (e) {}
+  if (auto && Date.now() - (auto.t || 0) < 15 * 60000) window.__autoFactura(auto);
 });
 </script>
 
