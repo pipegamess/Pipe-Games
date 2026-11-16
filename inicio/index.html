@@ -4,46 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#0a0a0f">
+<meta name="theme-color" content="#08080a">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Pipe Games">
+<meta name="apple-mobile-web-app-title" content="Centro de Mando">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<title>Pipe Games · Inicio</title>
+<title>Centro de Mando · Pipe Games</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Barlow:wght@400;500;600&display=swap">
 <style>
-/* Inicio: acceso a todas las herramientas de Pipe Games. Dos grupos: lo que usas tú (con contraseña) y lo que compartes con clientes.
-   Identidad de pipegames.com.co: fondo casi negro, amarillo Pipe Games, Rajdhani + Barlow. Tema oscuro fijo por marca. */
+/* Centro de Mando: acceso a todas las herramientas de Pipe Games, agrupadas por uso.
+   Identidad del logo: negro, grafito metálico y blanco; letra gruesa y cuadrada (Russo One). Tema oscuro fijo por marca. */
 :root {
-  --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --line: rgba(255,255,255,0.09);
-  --text: #e8e8f0; --muted: #8a8aa8; --acc: #f5c400; --acc-ink: #141000; --ok: #3ecf8e;
-  --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  --bg: #08080a; --surface: #141416; --surface2: #202024; --line: rgba(255,255,255,0.10); --line2: rgba(255,255,255,0.22);
+  --text: #f4f4f5; --muted: #9a9aa2; --plata: #d6d6da; --ok: #3ecf8e;
+  --metal: linear-gradient(180deg, #2c2c31 0%, #151518 55%, #0e0e10 100%);
+  --display: 'Russo One', 'Arial Black', Impact, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { background: var(--bg); color: var(--text); margin: 0; }
-body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: max(24px, env(safe-area-inset-top, 0px)) 48px; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: max(24px, env(safe-area-inset-top, 0px)) 48px;
+  background: radial-gradient(120% 60% at 50% -10%, #2a2a2f 0%, var(--bg) 60%) fixed, var(--bg); }
 .wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 28px; }
-header { display: flex; align-items: center; gap: 14px; }
-header img { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; flex: none; }
-h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 7vw, 38px); letter-spacing: 0.02em; margin: 0; line-height: 1; }
-h1 span { color: var(--acc); }
-.sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; }
-h2 { font-family: var(--display); font-size: 15px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; font-weight: 700; }
+header { display: flex; align-items: center; gap: 16px; }
+header img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 2px var(--line2), 0 6px 24px rgba(0,0,0,.6); }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(30px, 8vw, 44px); letter-spacing: 0.01em; margin: 0; line-height: 1; text-wrap: balance;
+  background: linear-gradient(180deg, #ffffff 30%, #a9a9b0 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sub { color: var(--muted); margin: 6px 0 0; font-size: 14px; }
+h2 { font-family: var(--display); font-weight: 400; font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--plata); margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line2), transparent); }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
-.item { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 4px 14px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; color: inherit; text-decoration: none; min-width: 0; }
-a.item:hover, a.item:focus-visible { border-color: var(--acc); outline: none; }
-.ico { grid-row: span 2; width: 48px; height: 48px; border-radius: 12px; background: var(--surface2); display: grid; place-items: center; font-size: 24px; }
-.item b { font-family: var(--display); font-size: 21px; letter-spacing: 0.03em; line-height: 1.1; }
+.item { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 4px 14px; align-items: center; background: var(--metal); border: 1px solid var(--line); border-radius: 14px; padding: 16px; color: inherit; text-decoration: none; min-width: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+a.item:hover, a.item:focus-visible { border-color: var(--plata); outline: none; }
+.ico { grid-row: span 2; width: 48px; height: 48px; border-radius: 12px; background: #0c0c0e; border: 1px solid var(--line); display: grid; place-items: center; font-size: 24px; }
+.item b { font-family: var(--display); font-weight: 400; font-size: 19px; letter-spacing: 0.01em; line-height: 1.15; }
 .item small { color: var(--muted); font-size: 13.5px; line-height: 1.35; }
-.compartir { display: grid; gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-.compartir .item { border: 0; border-radius: 0; background: transparent; }
+.compartir { display: grid; gap: 0; background: var(--metal); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); }
+.compartir .item { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .acciones { display: flex; gap: 8px; padding: 0 16px 16px 78px; flex-wrap: wrap; }
-.acciones a, .acciones button { font: 600 13px/1 var(--body); color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; cursor: pointer; text-decoration: none; }
+.acciones a, .acciones button { font: 600 13px/1 var(--body); color: var(--text); background: #0c0c0e; border: 1px solid var(--line2); border-radius: 999px; padding: 8px 12px; cursor: pointer; text-decoration: none; }
 .acciones button.ok { color: var(--ok); border-color: var(--ok); }
-.url { font-size: 12.5px; color: var(--muted); padding: 0 16px 10px 78px; word-break: break-all; }
 .nota { color: var(--muted); font-size: 13px; margin: 0; }
 @media (prefers-reduced-motion: no-preference) { .item { transition: border-color .15s ease; } }
 </style>
@@ -53,8 +55,8 @@ a.item:hover, a.item:focus-visible { border-color: var(--acc); outline: none; }
   <header>
     <img src="../mensajeria/logo-pipegames.jpg" alt="Pipe Games">
     <div>
-      <h1>Pipe <span>Games</span></h1>
-      <p class="sub">Todas las herramientas en un solo lugar.</p>
+      <h1>Centro de Mando</h1>
+      <p class="sub">Pipe Games · todas las herramientas en un solo lugar.</p>
     </div>
   </header>
 
