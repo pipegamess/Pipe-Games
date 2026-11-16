@@ -310,7 +310,7 @@ export function vistaPublica(g, foto, extras) {
     remitente: g.remitente || "",
     clienteNombre: primerNombre(g.cliente),
     localidad: g.destino?.localidad || "",
-    destino: g.destino ? { lat: g.destino.lat, lng: g.destino.lng } : null,
+    destino: g.destino && !g.destino.sinDireccion && g.destino.lat != null ? { lat: g.destino.lat, lng: g.destino.lng } : null,
     valor: g.valor || 0,
     tipoEnvio: textoTipoEnvio(g),
     mensajeroId: g.mensajeroId || null,

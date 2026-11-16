@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261115o">
+<link rel="stylesheet" href="estilos.css?v=20261116a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -60,6 +60,11 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 .ml-lista{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .ml-lista .fila-ml{display:flex;flex-direction:row;color:var(--ink);font-weight:400;gap:10px;align-items:flex-start;font-size:13px;border-top:1px solid var(--line);padding-top:6px}
 .ml-lista input{width:20px;height:20px;flex:none;margin-top:2px}
+.ml-escaner{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px}
+.ml-escaner>label:first-child{flex:1 1 16em;min-width:0}
+.ml-escaner .ml-canal{flex:0 0 11em}
+#mlScan{font-family:ui-monospace,Menlo,monospace}
+#mlScan.leyendo{outline:2px solid #C9A800}
 .aviso-ubic{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,var(--surface))}
 .aviso-ubic b{color:var(--ink)}
 .opciones-cobro{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -263,6 +268,12 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <span class="nota">Arrastra aquí los PDF de etiquetas que descargas de Mercado Libre (Flex) o de Falabella (Despacho directo), o toca el botón. Las guías se crean solas y el mensajero las recibe escaneando el código de esa misma etiqueta.</span>
           <label class="btn sec chico" style="align-self:flex-start;flex-direction:row">Cargar etiquetas (PDF)<input type="file" id="mlPdf" accept="application/pdf" multiple hidden></label>
           <div id="mlRes"></div>
+          <div class="ml-escaner">
+            <label>O escanea la etiqueta con la pistola<input id="mlScan" placeholder="Toca aquí y escanea" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done"></label>
+            <label class="ml-canal">Plataforma<select id="mlScanCanal"><option value="auto">Detectar sola</option><option>Mercado Libre</option><option>Falabella</option></select></label>
+          </div>
+          <span class="nota">Crea la guía al instante con el código de la etiqueta (sin imprimir nada): aparece en Guías y en el rastreo, y el mensajero la recibe escaneando esa misma etiqueta. La dirección queda “en la etiqueta”; si luego cargas el PDF, se completa sola.</span>
+          <div id="mlScanRes" class="ml-lista"></div>
         </div>
         <form id="fNueva" class="lista">
           <h3>Recogida</h3>
@@ -427,10 +438,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261115o";
-import * as C from "./comun.js?v=20261115o";
-import * as T from "./tarifas-envio.js?v=20261115o";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261115o";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261116a";
+import * as C from "./comun.js?v=20261116a";
+import * as T from "./tarifas-envio.js?v=20261116a";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261116a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -2129,7 +2140,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261115o";
+const VERSION_PANEL = "20261116a";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2933,6 +2944,8 @@ async function leerEtiquetasPdf(file) {
   return res;
 }
 const guiaPorEnvio = envio => Object.values(S.guias).find(g => g.marketplace?.envio === envio);
+// Se crea la guía, o se completa si se había creado solo escaneando la etiqueta
+const porCrearML = envio => { const g = guiaPorEnvio(envio); return !g || (!!g.destino?.sinDireccion && C.ACTIVOS.includes(g.estado)); };
 let mlPendientes = [];
 $("#mlPdf").onchange = e => { const files = [...(e.target.files || [])]; e.target.value = ""; procesarArchivosML(files); };
 // Arrastrar y soltar los PDF sobre el recuadro amarillo
@@ -2968,15 +2981,15 @@ async function procesarArchivosML(files) {
   } catch (err) { $("#mlRes").innerHTML = `<div class="error">${esc(err.message || "No se pudo leer el PDF.")}</div>`; }
 }
 function pintarMlPendientes() {
-  const nuevas = mlPendientes.filter(d => !guiaPorEnvio(d.envio));
-  $("#mlRes").innerHTML = `<div class="ml-lista">${mlPendientes.map((d, i) => { const ya = guiaPorEnvio(d.envio); return `<label class="fila-ml"><input type="checkbox" data-ml="${i}" ${ya ? "disabled" : "checked"}><span><span class="pill ${d.canal === "Falabella" ? "entregada" : "devuelta"}">${esc(d.canal)}</span> <b>${esc(d.nombre)}</b> · ${d.canal === "Falabella" ? "Código" : "Envío"} ${esc(d.envio)}<br><span class="meta">${esc(d.direccion)}${d.localidadTxt ? ", " + esc(d.localidadTxt) : ""} · ${esc(d.referencia)}</span>${ya ? `<br><span class="pill entregada">Ya existe: ${esc(ya.numero)}</span>` : ""}</span></label>`; }).join("")}</div>
-    ${nuevas.length ? `<div class="btns" style="margin-top:8px"><button class="btn chico" type="button" id="mlCrear">Crear ${nuevas.length} guía${nuevas.length === 1 ? "" : "s"}</button></div>` : `<div class="nota">Todas estas etiquetas ya tienen guía.</div>`}`;
+  const nuevas = mlPendientes.filter(d => porCrearML(d.envio));
+  $("#mlRes").innerHTML = `<div class="ml-lista">${mlPendientes.map((d, i) => { const ya = porCrearML(d.envio) ? null : guiaPorEnvio(d.envio); const comp = guiaPorEnvio(d.envio)?.destino?.sinDireccion; return `<label class="fila-ml"><input type="checkbox" data-ml="${i}" ${ya ? "disabled" : "checked"}><span><span class="pill ${d.canal === "Falabella" ? "entregada" : "devuelta"}">${esc(d.canal)}</span> <b>${esc(d.nombre)}</b> · ${d.canal === "Falabella" ? "Código" : "Envío"} ${esc(d.envio)}<br><span class="meta">${esc(d.direccion)}${d.localidadTxt ? ", " + esc(d.localidadTxt) : ""} · ${esc(d.referencia)}</span>${ya ? `<br><span class="pill entregada">Ya existe: ${esc(ya.numero)}</span>` : ""}${comp ? `<br><span class="pill tomada">Escaneada: se completa ${esc(guiaPorEnvio(d.envio).numero)}</span>` : ""}</span></label>`; }).join("")}</div>
+    ${nuevas.length ? `<div class="btns" style="margin-top:8px"><button class="btn chico" type="button" id="mlCrear">Crear o completar ${nuevas.length} guía${nuevas.length === 1 ? "" : "s"}</button></div>` : `<div class="nota">Todas estas etiquetas ya tienen guía.</div>`}`;
   $("#mlCrear") && ($("#mlCrear").onclick = crearGuiasML);
 }
 async function crearGuiasML() {
   const rec = S.recogida;
   if (!rec || rec.lat == null) { toast("Primero fija el punto de recogida."); return; }
-  const elegidas = [...document.querySelectorAll("[data-ml]:checked")].map(i => mlPendientes[+i.dataset.ml]).filter(d => !guiaPorEnvio(d.envio));
+  const elegidas = [...document.querySelectorAll("[data-ml]:checked")].map(i => mlPendientes[+i.dataset.ml]).filter(d => porCrearML(d.envio));
   if (!elegidas.length) return;
   const btn = $("#mlCrear"); btn.disabled = true;
   const prefijo = C.prefijoTienda(rec.remitente);
@@ -3003,16 +3016,85 @@ async function crearGuiasML() {
         creado: Date.now(), actualizado: Date.now(),
         eventos: [C.evento("disponible", "Guía creada desde etiqueta de " + d.canal, "despacho")]
       };
+      const previa = guiaPorEnvio(d.envio);
+      if (previa) {
+        // Guía creada con la pistola: se le pone la dirección y el cliente de la etiqueta
+        const cambios = { cliente: g.cliente, telefono: g.telefono, destino: g.destino, contenido: g.contenido || previa.contenido || "", nota: g.nota || previa.nota || "", zonas: g.zonas,
+          eventos: [...(previa.eventos || []), C.evento(previa.estado, "Dirección completada con el PDF de " + d.canal, "despacho")] };
+        await guardarGuia(previa.numero, cambios);
+        S.guias[previa.numero] = { ...previa, ...cambios };
+        hechas.push({ numero: previa.numero, d, verificar, completada: true });
+        continue;
+      }
       const numero = await guardarNuevaGuia(g, prefijo);
       S.guias[numero] = { ...g, numero };
       hechas.push({ numero, d, verificar });
     } catch (err) { hechas.push({ error: C.mensajeError(err), d }); }
   }
   const porRevisar = hechas.filter(h => h.verificar).length;
-  $("#mlRes").innerHTML = `<div class="ml-lista">${hechas.map(h => h.error ? `<div class="fila-ml"><span class="error">${esc(h.d.nombre)} · Envío ${esc(h.d.envio)}: ${esc(h.error)}</span></div>` : `<div class="fila-ml"><span><b>${esc(h.numero)}</b> · ${esc(h.d.nombre)} · Envío ${esc(h.d.envio)} ${h.verificar ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}</span></div>`).join("")}</div>
+  $("#mlRes").innerHTML = `<div class="ml-lista">${hechas.map(h => h.error ? `<div class="fila-ml"><span class="error">${esc(h.d.nombre)} · Envío ${esc(h.d.envio)}: ${esc(h.error)}</span></div>` : `<div class="fila-ml"><span><b>${esc(h.numero)}</b> · ${esc(h.d.nombre)} · Envío ${esc(h.d.envio)}${h.completada ? " · completada" : ""} ${h.verificar ? `<span class="pill novedad">Comprobar ubicación</span>` : ""}</span></div>`).join("")}</div>
     <p class="nota" style="margin:6px 0 0">${hechas.filter(h => !h.error).length} guías creadas.${porRevisar ? ` ${porRevisar} quedaron con ubicación aproximada: ábrelas desde Guías (filtro “Ubicación por comprobar”) y ajusta el punto.` : ""}</p>`;
   toast("Guías creadas desde las etiquetas");
 }
+
+/* ---------- Etiquetas de Mercado Libre / Falabella con la pistola lectora ---------- */
+// La pistola escribe el código y un Enter. Mercado Libre Flex (QR): {"id":"44…",…}; Falabella: código de barras de 12 a 22 cifras.
+// Si la pistola está con otra distribución de teclado, las comillas y llaves salen cambiadas: se toma el primer número largo.
+function codigoEtiqueta(v) {
+  const s = String(v || "").trim();
+  const e = C.envioMLDesdeEscaneo(s);
+  if (e) return { envio: e, qr: /[{:]/.test(s) };
+  const m = s.match(/\d{8,22}/);
+  return m ? { envio: m[0], qr: /[{}:,]/.test(s) || /id/i.test(s) } : null;
+}
+const canalEtiqueta = (c, sel) => sel !== "auto" ? sel : c.qr || c.envio.length <= 11 ? "Mercado Libre" : "Falabella";
+let mlEscaneadas = [], mlCreando = Promise.resolve();
+function pintarEscaneadas() {
+  $("#mlScanRes").innerHTML = mlEscaneadas.slice(0, 12).map(h => `<div class="fila-ml"><span>${h.error ? `<span class="error">✗ ${esc(h.envio || h.leido)}: ${esc(h.error)}</span>` : `${h.ya ? "↺" : "✓"} <span class="pill ${h.canal === "Falabella" ? "entregada" : "devuelta"}">${esc(h.canal)}</span> <b>${esc(h.numero)}</b> · ${h.canal === "Falabella" ? "Código" : "Envío"} ${esc(h.envio)}${h.ya ? ` <span class="nota">ya existía (${esc(C.ESTADOS[h.ya] || h.ya)})</span>` : ""}`}</span></div>`).join("")
+    + (mlEscaneadas.length ? `<p class="nota" style="margin:4px 0 0">${mlEscaneadas.filter(h => h.numero && !h.ya).length} guías creadas con la pistola en esta sesión.</p>` : "");
+}
+async function crearGuiaEscaneada(leido) {
+  const c = codigoEtiqueta(leido);
+  if (!c) { mlEscaneadas.unshift({ leido: leido.slice(0, 40), error: "no es un código de Mercado Libre ni de Falabella" }); return; }
+  const ya = guiaPorEnvio(c.envio) || (() => { const h = mlEscaneadas.find(x => x.envio === c.envio && x.numero); return h && { numero: h.numero, tipoEnvio: h.canal, estado: "disponible" }; })();
+  if (ya) { mlEscaneadas.unshift({ numero: ya.numero, envio: c.envio, canal: ya.marketplace?.canal || ya.tipoEnvio, ya: ya.estado }); return; }
+  const rec = S.recogida;
+  if (!rec || rec.lat == null) { mlEscaneadas.unshift({ envio: c.envio, error: "primero fija el punto de recogida" }); return; }
+  const canal = canalEtiqueta(c, $("#mlScanCanal").value);
+  const centro = C.CIUDADES.bogota.centro;
+  const g = {
+    numero: "", remitente: rec.remitente,
+    origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
+    cliente: "Cliente " + canal, telefono: "",
+    // Sin PDF no hay dirección: el mensajero la lee en la etiqueta. El punto es solo de referencia.
+    destino: { direccion: "Dirección en la etiqueta de " + canal, localidad: "", ciudad: "Bogotá", referencia: "", lat: centro.lat, lng: centro.lng, aprox: true, verificar: false, sinDireccion: true },
+    contenido: "", nota: "",
+    valor: 0, cobro: "sin_cobro", tipoEnvio: canal, tipoEnvioOtro: "",
+    marketplace: { canal, venta: "", envio: c.envio, flex: canal === "Mercado Libre", escaneada: true },
+    zonas: [rec.localidad || C.localidadCercana(rec)].filter(Boolean),
+    estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
+    creado: Date.now(), actualizado: Date.now(),
+    eventos: [C.evento("disponible", "Guía creada escaneando la etiqueta de " + canal, "despacho")]
+  };
+  try {
+    const numero = await guardarNuevaGuia(g, C.prefijoTienda(rec.remitente));
+    S.guias[numero] = { ...g, numero };
+    mlEscaneadas.unshift({ numero, envio: c.envio, canal });
+    try { navigator.vibrate?.(80); } catch {}
+  } catch (err) { mlEscaneadas.unshift({ envio: c.envio, error: C.mensajeError(err) }); }
+}
+(() => {
+  const inp = $("#mlScan");
+  inp.addEventListener("keydown", e => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const v = inp.value.trim(); inp.value = "";
+    if (!v) return;
+    inp.classList.add("leyendo");
+    // En fila: si escaneas varias seguidas, se crean una por una y sin repetir
+    mlCreando = mlCreando.then(() => crearGuiaEscaneada(v)).then(() => { pintarEscaneadas(); inp.classList.remove("leyendo"); });
+  });
+})();
 
 // Consecutivo por tienda, guardado en el perfil de despacho: PIPEGAMES-00001, 00002…
 async function guardarNuevaGuia(g, prefijo) {
