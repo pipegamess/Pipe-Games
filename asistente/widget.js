@@ -3,6 +3,8 @@
 import { cargar, responder, desactualizado, disponibles } from "./motor.js";
 
 const BASE = new URL(".", import.meta.url).href; // carpeta asistente/
+// ?modo=cliente: versión del catálogo (solo precios, disponibilidad, envíos, pagos, horario y contacto)
+const CLI = new URL(import.meta.url).searchParams.get("modo") === "cliente";
 // Robot original de Pipe Games: cabeza de consola portátil con pantalla, ojos de píxel, antena con luz y cruceta en el pecho
 const ROBOT = `
 <svg viewBox="0 0 120 130" aria-hidden="true" class="pb-robot">
@@ -68,6 +70,12 @@ const css = `
 .pb-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(255,255,255,.1); background: #0d0d0f; }
 .pb-form input { flex: 1; min-width: 0; font: 16px 'Barlow', Arial, sans-serif; color: #f4f4f5; background: #202024; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; padding: 10px 12px; }
 .pb-form button { font: 400 14px 'Russo One', sans-serif; background: #d6d6da; color: #0a0a0c; border: 0; border-radius: 12px; padding: 0 14px; cursor: pointer; }
+.pb-cta { display: inline-block; font: 700 14px/1.2 'Barlow', Arial, sans-serif; color: #0a0a0c !important; background: #f4f4f5; border: 0; border-radius: 10px; padding: 9px 14px; text-decoration: none; cursor: pointer; }
+/* En el catálogo: encima de la barra de botones de abajo (Proceso, Simulador, Rastreo) */
+.pb-cliente.pb-boton { width: 64px; height: 64px; bottom: calc(env(safe-area-inset-bottom, 0px) + 58px); right: max(14px, env(safe-area-inset-right, 0px)); }
+.pb-cliente.pb-globo { right: max(88px, calc(env(safe-area-inset-right, 0px) + 88px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 72px); }
+.pb-cliente.pb-panel { bottom: calc(env(safe-area-inset-bottom, 0px) + 132px); z-index: 9400; height: min(560px, calc(100vh - 160px)); }
+@media (max-width: 520px) { .pb-cliente.pb-panel { height: min(600px, calc(100vh - 150px)); } }
 .pb-escribiendo { display: inline-flex; gap: 4px; } .pb-escribiendo i { width: 6px; height: 6px; border-radius: 50%; background: #9a9aa2; }
 @media (prefers-reduced-motion: no-preference) {
   .pb-boton .pb-cuerpo { animation: pbFlota 3.2s ease-in-out infinite; transform-origin: 60px 70px; }
@@ -84,18 +92,20 @@ const css = `
 @media (max-width: 520px) { .pb-panel { right: 8px; left: 8px; width: auto; height: min(640px, calc(100vh - 120px)); } }
 `;
 
-const SUG = ["mario kart switch", "envío a Medellín", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "horario"];
+const SUG = CLI ? ["mario kart switch", "juegos de ps5", "envío a Medellín", "¿cómo puedo pagar?", "¿cuánto se demora?", "hablar con un asesor"]
+  : ["mario kart switch", "envío a Medellín", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "horario"];
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 const estilo = document.createElement("style"); estilo.textContent = css; document.head.append(estilo);
 const boton = document.createElement("button");
 boton.type = "button"; boton.className = "pb-boton"; boton.setAttribute("aria-label", "Abrir Pipe Bot"); boton.innerHTML = ROBOT;
-const globo = document.createElement("div"); globo.className = "pb-globo"; globo.textContent = "¡Hola! Soy Pipe Bot. ¿Qué buscas?";
+const globo = document.createElement("div"); globo.className = "pb-globo"; globo.textContent = CLI ? "¡Hola! Soy Pipe Bot. ¿Te ayudo a encontrar tu juego?" : "¡Hola! Soy Pipe Bot. ¿Qué buscas?";
 const panel = document.createElement("section");
 panel.className = "pb-panel"; panel.hidden = true; panel.setAttribute("aria-label", "Pipe Bot");
 panel.innerHTML = `<div class="pb-cab"><div class="pb-mini">${ROBOT}</div><div class="pb-esp"><img src="${BASE}../inicio/titulos/pipebot.png" alt="Pipe Bot"><small id="pbEstado">Cargando catálogo…</small></div><button type="button" class="pb-cerrar" aria-label="Cerrar">×</button></div>
   <div class="pb-chat" aria-live="polite"></div>
   <form class="pb-form" autocomplete="off"><input placeholder="Juego, precio, envío, Addi…" enterkeyhint="send" aria-label="Pregunta para Pipe Bot"><button type="submit">Enviar</button></form>`;
+if (CLI) [boton, globo, panel].forEach(el => el.classList.add("pb-cliente"));
 document.body.append(globo, boton, panel);
 const chat = panel.querySelector(".pb-chat"), input = panel.querySelector("input");
 let listo = false;
@@ -106,8 +116,9 @@ async function abrir() {
   try { sessionStorage.setItem("pb_visto", "1"); } catch {}
   if (!listo) {
     listo = true;
-    poner(`<h3>¡Hola, Felipe! 🎮</h3><p>Pregúntame por un juego (precio, stock y cuotas), el envío a cualquier municipio, el total con Addi o Sistecrédito, o cuánto publicar en Mercado Libre, Falabella o Éxito.</p><div class="pb-sug">${SUG.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`, "bot");
-    try { await cargar(); panel.querySelector("#pbEstado").textContent = `${disponibles()} productos disponibles · stock al día`; }
+    poner(CLI ? `<h3>¡Hola! Soy Pipe Bot 🎮</h3><p>El asistente virtual de Pipe Games. Pregúntame por un juego, su precio y disponibilidad, el envío a tu ciudad o cómo pagar a cuotas con Addi o Sistecrédito.</p><div class="pb-sug">${SUG.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`
+      : `<h3>¡Hola, Felipe! 🎮</h3><p>Pregúntame por un juego (precio, stock y cuotas), el envío a cualquier municipio, el total con Addi o Sistecrédito, o cuánto publicar en Mercado Libre, Falabella o Éxito.</p><div class="pb-sug">${SUG.map(s => `<button type="button" data-s="${esc(s)}">${esc(s)}</button>`).join("")}</div>`, "bot");
+    try { await cargar(); panel.querySelector("#pbEstado").textContent = CLI ? "Asistente virtual · catálogo al día" : `${disponibles()} productos disponibles · stock al día`; }
     catch { panel.querySelector("#pbEstado").textContent = "No pude cargar el stock; uso el catálogo guardado"; }
   }
   setTimeout(() => input.focus(), 50);
@@ -118,12 +129,17 @@ async function preguntar(q) {
   poner(esc(q), "yo");
   const pensando = poner(`<span class="pb-escribiendo"><i></i><i></i><i></i></span>`, "bot");
   try { if (desactualizado()) await cargar(); } catch {}
-  setTimeout(() => { pensando.innerHTML = responder(q); chat.scrollTop = chat.scrollHeight; }, 350);
+  setTimeout(() => { pensando.innerHTML = responder(q, { modo: CLI ? "cliente" : "" }); chat.scrollTop = chat.scrollHeight; }, 350);
 }
 boton.addEventListener("click", () => panel.hidden ? abrir() : cerrar());
 panel.querySelector(".pb-cerrar").addEventListener("click", cerrar);
 panel.querySelector("form").addEventListener("submit", e => { e.preventDefault(); const q = input.value; input.value = ""; preguntar(q); });
-chat.addEventListener("click", e => { const b = e.target.closest("[data-s]"); if (b) preguntar(b.dataset.s); });
+chat.addEventListener("click", e => {
+  const b = e.target.closest("[data-s]"); if (b) return preguntar(b.dataset.s);
+  // En el catálogo: "Pedir este producto" lo agrega al pedido y abre el formulario de compra
+  const pd = e.target.closest("[data-pedir]");
+  if (pd && typeof window.pbPedir === "function") { const [n, p] = pd.dataset.pedir.split("|"); cerrar(); window.pbPedir(n, p); }
+});
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !panel.hidden) cerrar(); });
 // El saludo del globo sale una vez por visita y se va solo
 let visto = false; try { visto = sessionStorage.getItem("pb_visto") === "1"; } catch {}

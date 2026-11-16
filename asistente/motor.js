@@ -85,24 +85,33 @@ const fila = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
 function preciosPago(base) {
   return METODOS.map(m => (m.credito && base >= TOPE_CUOTAS) ? fila(m.t.split(" · ")[0], "No aplica (desde $1.000.000)") : fila(m.t.split(" · ")[0], cop(m.calc(base)))).join("");
 }
-function envioTexto(m, esGrande) {
+function envioTexto(m, esGrande, cli) {
   const e = T.envioDeCiudad(T.envEtiqueta(m));
   if (e.tipo === "local") return { valor: e.valor, html: `<p><b>${esc(e.ciudad)}</b>: domicilio <b>${cop(e.valor)}</b> con nuestro mensajero. Mismo día si compra antes de las 3:00 p. m.</p>` };
-  if (esGrande && (e.tipo === "nacional" || e.tipo === "otro")) return { valor: null, html: `<p><b>${esc(e.ciudad)}</b>: consolas, parlantes e iPads fuera de Bogotá se cotizan en Skydropx (tarifa + $2.000, redondeado a los mil de arriba).</p>` };
+  if (esGrande && (e.tipo === "nacional" || e.tipo === "otro")) return { valor: null, html: cli ? `<p><b>${esc(e.ciudad)}</b>: para consolas, parlantes e iPads fuera de Bogotá, Chía y Soacha te confirmamos el valor del envío por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a>.</p>` : `<p><b>${esc(e.ciudad)}</b>: consolas, parlantes e iPads fuera de Bogotá se cotizan en Skydropx (tarifa + $2.000, redondeado a los mil de arriba).</p>` };
   if (e.tipo === "nacional") {
     const ops = (e.opciones || []).filter(o => o.v).sort((a, b) => a.v - b.v);
     return { valor: ops[0].v, html: `<p><b>${esc(e.ciudad)}</b>: ${ops.map(o => `${esc(o.n)} <b>${cop(o.v)}</b>`).join(" · ")}. Entrega en 1 a 3 días hábiles.</p>` };
   }
-  return { valor: null, html: `<p><b>${esc(e.ciudad)}</b>: sí enviamos, pero no tiene tarifa fija. Cotízalo en Skydropx.</p>` };
+  return { valor: null, html: cli ? `<p><b>${esc(e.ciudad)}</b>: sí enviamos. Te confirmamos el valor del envío por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a>.</p>` : `<p><b>${esc(e.ciudad)}</b>: sí enviamos, pero no tiene tarifa fija. Cotízalo en Skydropx.</p>` };
 }
-function responder(q) {
+// opts.modo === "cliente": versión para el catálogo; solo precios, disponibilidad, envíos, pagos, horario y contacto
+const WA = "https://wa.me/573118836995";
+function responder(q, opts = {}) {
+  const cli = opts.modo === "cliente";
   const r = leer(q), partes = [];
+  if (cli) {
+    r.mk = null; // los precios de otras plataformas son internos
+    if (/^\s*(pipe|asesor|humano|persona|felipe|hablar con alguien)\s*$/i.test(q) || /\b(asesor|humano|hablar con)\b/.test(r.n))
+      return `<h3>¡Claro!</h3><p>Escríbenos por WhatsApp y te atendemos personalmente.</p><p><a class="pb-cta" href="${WA}" target="_blank" rel="noopener">Hablar por WhatsApp · 311 883 6995</a></p><p class="nota">Lunes a sábado de 9:30 a. m. a 7:00 p. m.</p>`;
+  }
   // Temas generales
   if (r.tema === "horario") partes.push(`<h3>Horario</h3><p>Lunes a sábado de 9:30 a. m. a 7:00 p. m. Domingos y festivos no hay atención.</p>`);
   if (r.tema === "pagos") partes.push(`<h3>Medios de pago</h3><table>${METODOS.map(m => fila(esc(m.t), esc(m.d))).join("")}</table><p class="nota">Addi y Sistecrédito no aplican desde $1.000.000.</p>`);
   if (r.tema === "tiempos") partes.push(`<h3>Tiempos de entrega</h3><p>Bogotá, Chía y Soacha: mismo día si compra antes de las 3:00 p. m. Otras ciudades: 1 a 3 días hábiles por Envía o Interrapidísimo.</p>`);
-  if (r.tema === "rastreo") partes.push(`<h3>Rastreo</h3><p>El cliente consulta su guía en <a href="https://pipegames.com.co/mensajeria/rastreo.html" target="_blank" rel="noopener">pipegames.com.co/mensajeria/rastreo.html</a>. Las guías nacionales se ven en Skydropx.</p>`);
-  if (r.tema === "contacto") partes.push(`<h3>Contacto</h3><p>WhatsApp 311 883 6995 · ventas@pipegames.com · Catálogo: <a href="https://pipegames.com.co/" target="_blank" rel="noopener">pipegames.com.co</a></p>`);
+  if (r.tema === "rastreo" && cli) partes.push(`<h3>Rastreo de tu pedido</h3><p>Consulta tu pedido con tu número de guía en <a href="https://pipegames.com.co/mensajeria/rastreo.html" target="_blank" rel="noopener">pipegames.com.co/mensajeria/rastreo.html</a>. Si tu envío es fuera de Bogotá, usa el número de guía de la transportadora que te enviamos.</p>`);
+  else if (r.tema === "rastreo") partes.push(`<h3>Rastreo</h3><p>El cliente consulta su guía en <a href="https://pipegames.com.co/mensajeria/rastreo.html" target="_blank" rel="noopener">pipegames.com.co/mensajeria/rastreo.html</a>. Las guías nacionales se ven en Skydropx.</p>`);
+  if (r.tema === "contacto") partes.push(cli ? `<h3>Contacto</h3><p><a class="pb-cta" href="${WA}" target="_blank" rel="noopener">WhatsApp 311 883 6995</a></p><p class="nota">Somos tienda 100% virtual: entregamos a domicilio en Bogotá, Chía y Soacha y enviamos a todo el país.</p>` : `<h3>Contacto</h3><p>WhatsApp 311 883 6995 · ventas@pipegames.com · Catálogo: <a href="https://pipegames.com.co/" target="_blank" rel="noopener">pipegames.com.co</a></p>`);
 
   // Productos
   const prods = r.tema ? [] : buscarProductos(r);
@@ -110,7 +119,7 @@ function responder(q) {
   if (prods.length === 1) {
     const p = prods[0];
     partes.push(`<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></h3>
-      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}</table>`);
+      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">Pedir este producto</button></p>` : ""}${cli && !p.disp ? `<p class="nota">Está agotado por ahora. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>` : ""}`);
   } else if (prods.length > 1) {
     partes.push(`<h3>Encontré ${prods.length}${prods.length === 6 ? " o más" : ""}</h3>` + prods.map(p => `<div class="prod"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></b><span class="pr">${cop(p.v)}</span><span class="sub">Addi ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.addi.calc(p.v))} · Sistecrédito ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.siste.calc(p.v))} · Tarjeta ${cop(MET.tarjeta.calc(p.v))}</span></div>`).join("")
       + `<p class="nota">Escribe más del nombre o la consola para ver uno solo con todos sus precios.</p>`);
@@ -122,7 +131,7 @@ function responder(q) {
   // Envío
   let env = null;
   if (r.ciudad) {
-    env = envioTexto(r.ciudad.m, grande);
+    env = envioTexto(r.ciudad.m, grande, cli);
     partes.push(`<h3>Envío</h3>${env.html}${r.ciudad.varios ? `<p class="nota">Hay varios municipios con ese nombre; tomé ${esc(T.envEtiqueta(r.ciudad.m))}. Escribe el departamento si es otro.</p>` : ""}`);
   } else if (r.envio && !r.tema && !prods.length) {
     partes.push(`<h3>Envío</h3><p>Dime la ciudad o el municipio. Bogotá, Chía y Soacha: ${cop(T.ENVIO_LOCAL_VALOR)}. Ciudades principales: $16.000 por Envía o $18.000 por Interrapidísimo.</p>`);
@@ -147,7 +156,7 @@ function responder(q) {
   } else if (r.mk) partes.push(`<p>¿Con qué valor? Ejemplo: “mercado libre 110000” (lo que quieres recibir) o “publico en falabella a 184990”.</p>`);
 
   if (!partes.length) {
-    if (r.tokens.length) partes.push(`<p>No encontré “${esc(r.tokens.join(" "))}” en el catálogo${r.plat ? " para " + esc(r.plat.toUpperCase()) : ""}. Prueba con otra parte del nombre.</p>`);
+    if (r.tokens.length) partes.push(`<p>No encontré “${esc(r.tokens.join(" "))}” en el catálogo${r.plat ? " para " + esc(r.plat.toUpperCase()) : ""}. Prueba con otra parte del nombre${cli ? `, o pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a>` : ""}.</p>`);
     else partes.push(`<p>Pregúntame por un juego, un precio, un envío o un medio de pago.</p>`);
   }
   return partes.join("");

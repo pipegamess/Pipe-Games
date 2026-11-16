@@ -287,7 +287,7 @@
 
   /* FAB carrito flotante */
   #cartFab {
-    position:fixed; bottom:70px; right:16px; z-index:200;
+    position:fixed; bottom:134px; right:20px; z-index:200;
     width:52px; height:52px; border-radius:50%; border:none;
     background:var(--acc); color:#000; cursor:pointer;
     font-size:1.3rem; box-shadow:0 4px 16px rgba(0,0,0,0.4);
@@ -299,7 +299,7 @@
 
   /* ---- Botón "volver arriba" ---- */
   #backToTop {
-    position:fixed; bottom:16px; right:16px; z-index:199;
+    position:fixed; bottom:196px; right:24px; z-index:199;
     width:44px; height:44px; border-radius:50%; border:1px solid var(--border);
     background:var(--surface2); color:var(--acc); cursor:pointer;
     font-size:1.15rem; box-shadow:0 4px 14px rgba(0,0,0,0.4);
@@ -6110,6 +6110,16 @@ function pcAbrirPedidoLink() {
   simIrACheckout();
 }
 window.addEventListener('load', () => setTimeout(pcAbrirPedidoLink, 600));
+/* Pipe Bot (asistente/widget.js): "Pedir este producto" lo agrega al carrito y abre el formulario de compra */
+window.pbPedir = function (n, p) {
+  const norm = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  const g = simCatalogo().find(x => norm(x.name) === norm(n) && norm(x.platform) === norm(p));
+  if (!g) { window.open('https://wa.me/573118836995', '_blank'); return; }
+  try { closePhysicalModal(); } catch {}
+  addToCart(g.name, g.platform, g.price, g.img || '', null);
+  openSimulador(true);
+  simIrACheckout();
+};
 </script>
 
 <!-- MODAL AÑADIR ARTÍCULO -->
@@ -7257,4 +7267,5 @@ function ghOlvidar() {
 })();
 </script>
 
+<script type="module" src="asistente/widget.js?modo=cliente"></script>
 </body></html>
