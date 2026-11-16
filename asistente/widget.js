@@ -1,6 +1,6 @@
 // Pipe Bot: asistente flotante (abajo a la derecha). Se carga con <script type="module" src="../asistente/widget.js"></script>
 // Usa el motor de asistente/motor.js: catálogo con stock en vivo, tarifas de envío y fórmulas de pago y plataformas.
-import { cargar, responder, verProducto, desactualizado, disponibles } from "./motor.js";
+import { cargar, responder, verProducto, desactualizado, disponibles, ciudadCliente, envioCliente, METODOS, TOPE_CUOTAS, formatoPesos as cop } from "./motor.js";
 
 const BASE = new URL(".", import.meta.url).href; // carpeta asistente/
 // ?modo=cliente: versión del catálogo (solo precios, disponibilidad, envíos, pagos, horario y contacto)
@@ -69,6 +69,7 @@ const css = `
 .pb-bot td { padding: 3px 0; border-top: 1px solid rgba(255,255,255,.09); }
 .pb-bot td:last-child { text-align: right; white-space: nowrap; padding-left: 10px; font-variant-numeric: tabular-nums; }
 .pb-sug { display: flex; flex-wrap: wrap; gap: 6px; }
+.pb-sug button[disabled] { opacity: .45; cursor: not-allowed; }
 .pb-sug button { font: 500 12.5px/1.2 'Barlow', Arial, sans-serif; color: #f4f4f5; background: #0c0c0e; border: 1px solid rgba(255,255,255,.22); border-radius: 999px; padding: 6px 10px; cursor: pointer; }
 .pb-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(255,255,255,.1); background: #0d0d0f; }
 .pb-form input { flex: 1; min-width: 0; font: 16px 'Barlow', Arial, sans-serif; color: #f4f4f5; background: #202024; border: 1px solid rgba(255,255,255,.22); border-radius: 12px; padding: 10px 12px; }
@@ -129,6 +130,7 @@ async function abrir() {
 function cerrar() { panel.hidden = true; boton.setAttribute("aria-label", "Abrir Pipe Bot"); boton.focus(); }
 async function preguntar(q) {
   q = q.trim(); if (!q) return;
+  if (CLI && compra.paso) { poner(esc(q), "yo"); return responderPaso(q); }
   poner(esc(q), "yo");
   const pensando = poner(`<span class="pb-escribiendo"><i></i><i></i><i></i></span>`, "bot");
   try { if (desactualizado()) await cargar(); } catch {}
@@ -143,14 +145,116 @@ function elegir(dato) {
 chat.addEventListener("keydown", e => { const v = e.target.closest("[data-ver]"); if (v && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); elegir(v.dataset.ver); } });
 boton.addEventListener("click", () => panel.hidden ? abrir() : cerrar());
 panel.querySelector(".pb-cerrar").addEventListener("click", cerrar);
-panel.querySelector("form").addEventListener("submit", e => { e.preventDefault(); const q = input.value; input.value = ""; preguntar(q); });
+panel.querySelector("form").addEventListener("submit", e => {
+  e.preventDefault(); const q = input.value; input.value = "";
+  if (CLI && !compra.paso && /^\s*(continuar|comprar|finalizar|pagar)( (la )?compra)?\s*$/i.test(q)) { poner(esc(q), "yo"); return accion("continuar"); }
+  preguntar(q);
+});
 chat.addEventListener("click", e => {
   const b = e.target.closest("[data-s]"); if (b) return preguntar(b.dataset.s);
   const v = e.target.closest("[data-ver]"); if (v) return elegir(v.dataset.ver);
-  // En el catálogo: "Pedir este producto" lo agrega al pedido y abre el formulario de compra
-  const pd = e.target.closest("[data-pedir]");
-  if (pd && typeof window.pbPedir === "function") { const [n, p] = pd.dataset.pedir.split("|"); cerrar(); window.pbPedir(n, p); }
+  // Compra guiada (solo en el catálogo)
+  const pd = e.target.closest("[data-pedir]"); if (pd) return agregar(pd.dataset.pedir);
+  const ac = e.target.closest("[data-accion]"); if (ac) return accion(ac.dataset.accion, ac);
 });
+
+/* ══ Compra guiada: producto → ¿otro o continuar? → ciudad → pago → datos → WhatsApp ══ */
+const compra = { paso: null, d: {} };
+const fila = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
+const botones = l => `<div class="pb-sug">${l.map(([a, t, extra]) => `<button type="button" data-accion="${a}"${extra || ""}>${t}</button>`).join("")}</div>`;
+const esCredito = m => m === "addi" || m === "siste";
+function resumenHtml(r) {
+  return `<table>${r.items.map(i => fila(`${esc(i.n)} · ${esc(i.p)}${i.q > 1 ? " x" + i.q : ""}`, cop(i.q * i.v))).join("")}${fila("<b>Subtotal</b>", `<b>${cop(r.subtotal)}</b>`)}</table>`;
+}
+function agregar(dato) {
+  if (typeof window.pbAgregar !== "function") return;
+  const [n, p] = dato.split("|"), r = window.pbAgregar(n, p);
+  if (!r) return poner(`<p>No pude agregar ese producto. Escríbenos por WhatsApp.</p>`, "bot");
+  compra.paso = null;
+  poner(esc("Agregar " + n), "yo");
+  poner(`<h3>✅ Agregado a tu pedido</h3>${resumenHtml(r)}<p>¿Quieres agregar otro juego o seguimos con la compra?</p>${botones([["otro", "➕ Agregar otro"], ["continuar", "Continuar con la compra →"]])}`, "bot");
+}
+function preguntarPaso(paso, html) { compra.paso = paso; poner(html + botones([["cancelar", "Cancelar"]]), "bot"); input.focus(); }
+function pedirPago() {
+  const r = window.pbResumen(), base = r.subtotal + (compra.d.envio || 0);
+  compra.paso = "pago";
+  const ops = METODOS.map(m => {
+    const no = m.credito && base >= TOPE_CUOTAS;
+    const total = compra.d.porConfirmar ? m.calc(r.subtotal) : m.calc(base);
+    return [`pago:${m.id}`, `${esc(m.t.split(" · ")[0])} · ${no ? "no aplica" : cop(total)}`, no ? " disabled" : ""];
+  });
+  poner(`<h3>¿Cómo quieres pagar?</h3><p class="nota">${compra.d.porConfirmar ? "Valores sin el envío, que te confirmamos por WhatsApp." : "Total con el envío incluido."} Addi y Sistecrédito son a cuotas${base >= TOPE_CUOTAS ? " y no aplican desde $1.000.000" : ""}.</p>${botones([...ops, ["cancelar", "Cancelar"]])}`, "bot");
+}
+function resumenFinal() {
+  const r = window.pbResumen(), d = compra.d, m = METODOS.find(x => x.id === d.metodo);
+  const base = r.subtotal + (d.envio || 0), total = m.calc(base);
+  compra.paso = "confirmar";
+  const local = d.local && esCredito(d.metodo);
+  poner(`<h3>Revisa tu pedido</h3>${resumenHtml(r)}<table>${fila("Envío", d.porConfirmar ? "Te lo confirmamos" : cop(d.envio))}${total !== base ? fila("Recargo " + esc(m.t.split(" · ")[0]), cop(total - base)) : ""}${fila("<b>Total</b>", `<b>${cop(total)}</b>${d.porConfirmar ? " + envío" : ""}`)}</table>
+    <p class="nota">${esc(d.nombre)} · ${esc(d.ciudad)} · ${esc(m.t.split(" · ")[0])}</p>
+    ${local ? `<p>Último paso: marca tu casa en el mapa para que el domicilio llegue exacto.</p>${botones([["mapa", "📍 Marcar mi casa y enviar"], ["cancelar", "Cancelar"]])}`
+      : `${botones([["enviar", "Enviar pedido por WhatsApp ✓"], ["cancelar", "Cancelar"]])}<p class="nota">Se abrirá WhatsApp con tu pedido listo; solo toca enviar.</p>`}`, "bot");
+}
+function siguienteDato() {
+  const d = compra.d;
+  if (!esCredito(d.metodo)) return resumenFinal();
+  if (!d.cedula) return preguntarPaso("cedula", `<p>Para tramitar tu crédito necesito tu <b>número de cédula</b>.</p>`);
+  if (!d.correo) return preguntarPaso("correo", `<p>¿Cuál es tu <b>correo electrónico</b>?</p>`);
+  if (!d.tel) return preguntarPaso("tel", `<p>¿Tu <b>celular</b>? (10 dígitos)</p>`);
+  if (!d.dir) return preguntarPaso("dir", `<p>¿Cuál es la <b>dirección</b> de entrega? Incluye apto, torre o casa si aplica.</p>`);
+  if (!d.barrio) return preguntarPaso("barrio", `<p>¿En qué <b>barrio</b>?</p>`);
+  resumenFinal();
+}
+function responderPaso(q) {
+  const d = compra.d, paso = compra.paso;
+  if (paso === "ciudad") {
+    const c = ciudadCliente(q);
+    if (!c) return preguntarPaso("ciudad", `<p>No encontré “${esc(q)}”. Escribe tu ciudad o municipio, por ejemplo <i>Medellín</i> o <i>Soacha</i>.</p>`);
+    if (c.multi) { compra.paso = "ciudad"; return poner(`<p>Hay varios con ese nombre. ¿Cuál es?</p>${botones(c.multi.map(e => ["ciudad:" + e, esc(e)]))}`, "bot"); }
+    return fijarCiudad(c.etiqueta);
+  }
+  if (paso === "nombre") { if (q.length < 3) return preguntarPaso("nombre", `<p>Escribe tu nombre y apellido.</p>`); d.nombre = q; return siguienteDato(); }
+  if (paso === "cedula") { const v = q.replace(/\D/g, ""); if (v.length < 5 || v.length > 12) return preguntarPaso("cedula", `<p>Escribe solo los números de tu cédula.</p>`); d.cedula = v; return siguienteDato(); }
+  if (paso === "correo") { if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(q)) return preguntarPaso("correo", `<p>Ese correo no parece válido. Escríbelo de nuevo.</p>`); d.correo = q.toLowerCase(); return siguienteDato(); }
+  if (paso === "tel") { const v = q.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""); if (!/^3\d{9}$/.test(v)) return preguntarPaso("tel", `<p>Escribe un celular de 10 dígitos que empiece por 3.</p>`); d.tel = v; return siguienteDato(); }
+  if (paso === "dir") { if (q.length < 6) return preguntarPaso("dir", `<p>Escribe la dirección completa.</p>`); d.dir = q; return siguienteDato(); }
+  if (paso === "barrio") { if (q.length < 2) return preguntarPaso("barrio", `<p>Escribe el barrio.</p>`); d.barrio = q; return siguienteDato(); }
+  // En los pasos con botones, lo escrito se toma como una pregunta normal y la compra queda en pausa
+  compra.paso = null;
+  poner(responder(q, { modo: "cliente" }), "bot");
+}
+function fijarCiudad(etiqueta) {
+  const r = window.pbResumen(), e = envioCliente(etiqueta, r.items.map(i => i.n));
+  Object.assign(compra.d, { ciudad: etiqueta, envio: e.valor, porConfirmar: !!e.porConfirmar, local: /^(bogota|chia|soacha)/i.test(etiqueta.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) });
+  poner(`<p>🚚 ${esc(e.texto)}.</p>`, "bot");
+  pedirPago();
+}
+function accion(a, btn) {
+  if (a === "otro") { compra.paso = null; poner(`<p>¡Dale! Escribe el nombre del otro juego que quieres.</p>`, "bot"); return input.focus(); }
+  if (a === "cancelar") { compra.paso = null; compra.d = {}; return poner(`<p>Listo, dejé la compra en pausa. Tu pedido sigue en el carrito 🛒. Cuando quieras, escribe <b>continuar</b>.</p>`, "bot"); }
+  if (a === "continuar") {
+    const r = window.pbResumen();
+    if (!r.items.length) return poner(`<p>Tu pedido está vacío. Escribe el nombre de un juego para empezar.</p>`, "bot");
+    compra.d = {}; if (btn) poner(esc("Continuar con la compra"), "yo");
+    return preguntarPaso("ciudad", `<h3>¡Vamos! 🎮</h3>${resumenHtml(r)}<p>¿A qué <b>ciudad o municipio</b> enviamos tu pedido?</p>`);
+  }
+  if (a.startsWith("ciudad:")) { poner(esc(a.slice(7)), "yo"); return fijarCiudad(a.slice(7)); }
+  if (a.startsWith("pago:")) {
+    if (compra.paso !== "pago") return;
+    compra.d.metodo = a.slice(5); poner(esc(btn.textContent), "yo");
+    return preguntarPaso("nombre", `<p>¿A nombre de quién va el pedido? Escribe tu <b>nombre y apellido</b>.</p>`);
+  }
+  if (a === "enviar" && compra.paso === "confirmar") {
+    const d = compra.d; window.pbEnviar({ ...d, comp: "" });
+    compra.paso = null; compra.d = {};
+    return poner(`<h3>¡Listo! 🙌</h3><p>Te abrí WhatsApp con tu pedido. Solo toca <b>enviar</b> y te respondemos para confirmar el pago y el envío.</p><p class="nota">Si no se abrió, escríbenos al 311 883 6995.</p>`, "bot");
+  }
+  if (a === "mapa" && compra.paso === "confirmar") {
+    const d = compra.d; compra.paso = null; compra.d = {};
+    cerrar(); window.pbAbrirCompra({ ...d, comp: "" });
+  }
+}
+
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !panel.hidden) cerrar(); });
 // El saludo del globo sale una vez por visita y se va solo
 let visto = false; try { visto = sessionStorage.getItem("pb_visto") === "1"; } catch {}

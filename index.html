@@ -6110,6 +6110,50 @@ function pcAbrirPedidoLink() {
   simIrACheckout();
 }
 window.addEventListener('load', () => setTimeout(pcAbrirPedidoLink, 600));
+/* Pipe Bot (asistente/widget.js): compra guiada desde el chat */
+function pbBuscar(n, p) {
+  const norm = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  return simCatalogo().find(x => norm(x.name) === norm(n) && norm(x.platform) === norm(p));
+}
+window.pbResumen = function () {
+  const items = cart.map(i => ({ n: i.name, p: i.platform, q: i.qty || 1, v: priceToNum(i.price) }));
+  return { items, subtotal: items.reduce((a, i) => a + i.q * i.v, 0) };
+};
+window.pbAgregar = function (n, p) {
+  const g = pbBuscar(n, p); if (!g) return null;
+  try { closePhysicalModal(); } catch {}
+  addToCart(g.name, g.platform, g.price, g.img || '', null);
+  if (typeof ocultarCartToast === 'function') ocultarCartToast();
+  return window.pbResumen();
+};
+window.pbQuitar = function (n, p) {
+  changeQty(n, p, -999);
+  return window.pbResumen();
+};
+function pbPreparar(d) {
+  simPagoCarrito = d.metodo || null; simCiudadTxt = d.ciudad || '';
+  Object.assign(simDatos, { cedula: d.cedula || '', email: d.correo || '', tel: d.tel || '', dir: d.dir || '', comp: d.comp || '', barrio: d.barrio || '', lat: null, lng: null, pinCiudad: '', sinUbic: false });
+}
+/* Envía el carrito por WhatsApp con nombre, ciudad y medio de pago (y los datos del crédito si aplica) */
+window.pbEnviar = function (d) {
+  pbPreparar(d);
+  pendingWAItem = null; pendingReservationBody = null;
+  document.getElementById('clientName').value = d.nombre || '';
+  document.getElementById('clientCity').value = d.ciudad || '';
+  enviarPedidoWA();
+};
+/* Abre el formulario de compra con todo lleno (para marcar la casa en el mapa) */
+window.pbAbrirCompra = function (d) {
+  pbPreparar(d);
+  try { closePhysicalModal(); } catch {}
+  openSimulador(true);
+  simMetodo = d.metodo || simMetodo;
+  simIrACheckout();
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } };
+  set('simCiudad', d.ciudad); set('simNombre', d.nombre);
+  try { simRender(); } catch {}
+  set('simNombre', d.nombre);
+};
 /* Pipe Bot (asistente/widget.js): "Pedir este producto" lo agrega al carrito y abre el formulario de compra */
 window.pbPedir = function (n, p) {
   const norm = t => String(t || '').toUpperCase().replace(/\s+/g, ' ').trim();

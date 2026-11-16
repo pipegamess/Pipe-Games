@@ -110,7 +110,7 @@ function ficha(p, cli) {
   // Al cliente no se le muestra precio de lo agotado
   if (cli && !p.disp) return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip no">AGOTADO</span></h3><p>Actualmente está agotado. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>`;
   return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></h3>
-      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">Pedir este producto</button></p>` : ""}${cli && !p.disp ? `<p class="nota">Está agotado por ahora. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>` : ""}`;
+      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">🛒 Agregar al pedido</button></p>` : ""}${cli && !p.disp ? `<p class="nota">Está agotado por ahora. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>` : ""}`;
 }
 // opts.modo === "cliente": versión para el catálogo; solo precios, disponibilidad, envíos, pagos, horario y contacto
 const WA = "https://wa.me/573118836995";
@@ -185,3 +185,23 @@ function verProducto(n, p, opts = {}) {
   return x ? ficha(x, opts.modo === "cliente") : "<p>Ese producto ya no está en el catálogo.</p>";
 }
 export { cargar, responder, verProducto };
+
+// ── Para la compra guiada del catálogo ──
+// Ciudad escrita por el cliente → etiqueta "Ciudad - Departamento" (o varias si el nombre se repite)
+function ciudadCliente(texto) {
+  const r = T.envBuscar(texto);
+  if (r?.x) return { etiqueta: T.envEtiqueta(r.x) };
+  if (r?.multi) return { multi: r.multi.slice(0, 6).map(m => T.envEtiqueta(m)) };
+  const c = ciudadEn(norm(texto), texto);
+  if (c && !c.varios) return { etiqueta: T.envEtiqueta(c.m) };
+  if (c) return { multi: T.ENVIO_MUNI.filter(x => x.k === c.m.k).slice(0, 6).map(m => T.envEtiqueta(m)) };
+  return null;
+}
+// Envío del pedido a esa ciudad (consolas, parlantes e iPads fuera de Bogotá, Chía y Soacha: por confirmar)
+function envioCliente(etiqueta, nombres) {
+  const e = T.envioDeCiudad(etiqueta), grande = (nombres || []).some(n => /\b(consola|parlante|ipad)\b/i.test(n));
+  if (e.tipo === "local") return { valor: e.valor, texto: `Domicilio en ${e.ciudad}: ${cop(e.valor)} (mismo día si compras antes de las 3:00 p. m.)` };
+  if (e.tipo === "nacional" && !grande) { const o = (e.opciones || []).filter(x => x.v).sort((a, b) => a.v - b.v)[0]; return { valor: o.v, texto: `Envío a ${e.ciudad} por ${o.n}: ${cop(o.v)} (1 a 3 días hábiles)` }; }
+  return { valor: 0, porConfirmar: true, texto: `Envío a ${e.ciudad}: te confirmamos el valor por WhatsApp` };
+}
+export { ciudadCliente, envioCliente, METODOS, TOPE_CUOTAS, cop as formatoPesos, esc as escapar };
