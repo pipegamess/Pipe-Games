@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117c">
+<link rel="stylesheet" href="estilos.css?v=20261117d">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117c";
-import * as C from "./comun.js?v=20261117c";
-import * as T from "./tarifas-envio.js?v=20261117c";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117c";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117d";
+import * as C from "./comun.js?v=20261117d";
+import * as T from "./tarifas-envio.js?v=20261117d";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117d";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1867,7 +1867,10 @@ function prepararOrden(tipo, id) {
   $("#skxTipo").value = String(iT >= 0 ? iT : Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)); mostrarMedidas();
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
   avisoOrden(titulo(x.nombre), nombreTransp(x.transportadora), [x.contenido, x.valor ? (x.tipoEnvio === "Contra entrega" ? "Cobrar " : "Valor ") + C.cop(x.valor) : ""].filter(Boolean).join(" · "));
+  cotizarSolo();
 }
+// Con los datos listos, cotiza de una vez con la transportadora del cliente (solo queda revisar y crear la guía)
+function cotizarSolo() { setTimeout(() => { const d = datosSkx(); if (d.m && d.dest.nombre && d.dest.dir && /^\d{10}$/.test(d.dest.tel) && d.valor && d.rem.direccion) $("#skxCotizar").click(); }, 300); }
 function avisoOrden(nombre, transp, extra) {
   const a = $("#skxOrden"); a.hidden = false;
   a.innerHTML = `Preparando la orden de <b>${esc(nombre)}</b>${transp ? ` · eligió <b>${esc(transp)}</b>` : ""}${extra ? ` · ${esc(extra)}` : ""}. Revisa o corrige los datos y toca “Cotizar con Skydropx”. <button class="btn sec chico" type="button" id="skxOrdenNo">Soltar orden</button>`;
@@ -1885,6 +1888,7 @@ function skxDesdeReserva(id) {
   $("#skxTipo").value = String(Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)); mostrarMedidas();
   $("#skxTarifas").innerHTML = ""; $("#skxRes").innerHTML = "";
   avisoOrden(titulo(r.nombre), c.transportadora || "", `${r.producto}${r.unidades > 1 ? " × " + r.unidades : ""}`);
+  cotizarSolo();
 }
 function datosSkx() {
   const a = S.skx || {};
@@ -1907,7 +1911,10 @@ $("#skxCotizar").onclick = async () => {
   if (!d.rem.direccion || !/^\d{10}$/.test(d.rem.telefono || "")) { $("#skxAjustes").open = true; toast("Completa y guarda los datos del remitente (dirección y celular)"); return; }
   b.disabled = true; b.textContent = "Cotizando…"; $("#skxTarifas").innerHTML = `<div class="vacio">Consultando tarifas en Skydropx…</div>`; $("#skxRes").innerHTML = "";
   try {
-    const { id, rates, todas } = await cotizarSkydropx(d);
+    const cPref = carrierDe(skxPref);
+    let r = await cotizarSkydropx(d, cPref ? [cPref] : CARRIERS_SKX);
+    if (cPref && !r.rates.length) r = await cotizarSkydropx(d, CARRIERS_SKX); // la elegida no dio precio: las dos
+    const { id, rates, todas } = r;
     skxCot = { id, rates, d };
     rates.sort((a, b) => (+a.total || +a.amount) - (+b.total || +b.amount));
     // La transportadora que eligió el cliente queda marcada (la más barata de esa transportadora)
@@ -1921,7 +1928,11 @@ $("#skxCotizar").onclick = async () => {
   b.disabled = false; b.textContent = "Cotizar con Skydropx";
 };
 // Cotiza en Skydropx (origen = remitente guardado; destino = municipio d.m) y devuelve las tarifas con precio
-async function cotizarSkydropx(d) {
+// Transportadoras que manejamos (código de Skydropx). Skydropx indicó usar "requested_carriers" en la cotización
+// para que traiga la tarifa de la transportadora que eligió el cliente, y crear la guía con ese rate_id.
+const CARRIERS_SKX = ["envia", "interrapidisimo"];
+const carrierDe = t => { const n = T.envNorm(t || "").replace(/[^a-z]/g, ""); return n.startsWith("inter") ? "interrapidisimo" : n.startsWith("envia") ? "envia" : ""; };
+async function cotizarSkydropx(d, carriers = CARRIERS_SKX) {
   {
     // Skydropx valida ciudad y departamento contra su propia lista; se prueban las formas más comunes
     // (o el código postal, si se escribió) hasta que acepte cada dirección.
@@ -1936,13 +1947,14 @@ async function cotizarSkydropx(d) {
     };
     const vFrom = variantes(d.rem.ciudad || "Bogotá", d.rem.depto || "Cundinamarca", d.rem.barrio, d.rem.cp);
     const vTo = variantes(d.m.c, d.m.d, d.dest.barrio, "");
-    let iF = Math.max(0, S.skx?.variante ?? 0), iT = 0, q = null, ultimoError = null;
-    for (let intento = 0; intento < 16; intento++) {
-      const cuerpo = { quotation: { address_from: vFrom[Math.min(iF, vFrom.length - 1)], address_to: vTo[Math.min(iT, vTo.length - 1)], parcels: [{ ...d.paquete, declared_amount: d.valor }], declared_amount: d.valor } };
+    let iF = Math.max(0, S.skx?.variante ?? 0), iT = 0, q = null, ultimoError = null, conCarriers = !!carriers?.length;
+    for (let intento = 0; intento < 18; intento++) {
+      const cuerpo = { quotation: { address_from: vFrom[Math.min(iF, vFrom.length - 1)], address_to: vTo[Math.min(iT, vTo.length - 1)], parcels: [{ ...d.paquete, declared_amount: d.valor }], declared_amount: d.valor, ...(conCarriers ? { requested_carriers: carriers } : {}) } };
       try { q = await skx("POST", "/quotations", cuerpo); break; }
       catch (err) {
         ultimoError = err; const msg = String(err.message || "");
         if (!/422/.test(msg)) throw err;
+        if (/requested_carriers/.test(msg) && conCarriers) { conCarriers = false; continue; }
         let avanzo = false;
         if (/address_from/.test(msg) && iF < vFrom.length - 1) {
           // Código postal desconocido: saltar directo a las formas sin código postal
@@ -1957,13 +1969,15 @@ async function cotizarSkydropx(d) {
     // Recordar la forma de la dirección de recogida que sí funcionó
     if ((S.skx?.variante ?? 0) !== iF) { S.skx = { ...(S.skx || {}), variante: iF }; setDoc(doc(db, "usuarios", ADMIN_UID), { skydropx: { variante: iF } }, { merge: true }).catch(() => {}); }
     const id = hallar(q, "id");
-    for (let i = 0; i < 12 && id && !(q.is_completed || hallar(q, "is_completed")); i++) { await esperar(1500); q = await skx("GET", "/quotations/" + id); }
+    for (let i = 0; i < 20 && id && !(q.is_completed || hallar(q, "is_completed")); i++) { await esperar(1500); q = await skx("GET", "/quotations/" + id); }
     // Una tarifa sirve si trae precio (Skydropx Colombia marca "success: false" aun con "price_found_internal")
     const todas = q.rates || hallar(q, "rates") || [];
     // Transportadoras que no se ofrecen (se pueden cambiar en S.skx.ocultas)
     const ocultas = (S.skx?.ocultas || ["coordinadora", "servientrega"]).map(x => T.envNorm(x).replace(/\s/g, ""));
     const oculta = x => ocultas.some(o => T.envNorm(x.provider_name || x.provider_display_name || "").replace(/\s/g, "").includes(o));
-    const rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || "") && !oculta(x));
+    let rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || "") && !oculta(x));
+    // Si hay tarifas con "success: true" (las que Skydropx indica para crear la guía), se usan esas
+    if (rates.some(x => x.success === true)) rates = rates.filter(x => x.success === true);
     return { id, rates, todas };
   }
 }
@@ -2208,7 +2222,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117c";
+const VERSION_PANEL = "20261117d";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
