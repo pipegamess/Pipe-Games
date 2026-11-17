@@ -9,7 +9,7 @@ const ENVIO_TARIFAS = [
   ['Cartagena de Indias','Bolívar',16000,18000], ['Cúcuta','Norte de Santander',16000,18000], ['Bucaramanga','Santander',16000,18000],
   ['Villavicencio','Meta',13000,13000], ['Ibagué','Tolima',13000,13000], ['Santa Marta','Magdalena',16000,18000],
   ['Valledupar','Cesar',16000,18000], ['Montería','Córdoba',16000,18000], ['Pereira','Risaralda',16000,18000],
-  ['Manizales','Caldas',16000,18000], ['Pasto','Nariño',16000,18000], ['Neiva','Huila',16000,18000],
+  ['Manizales','Caldas',16000,18000], ['Pasto','Nariño',16000,18000], ['Neiva','Huila',13000,13000],
   ['Armenia','Quindío',16000,18000], ['Popayán','Cauca',16000,18000], ['Sincelejo','Sucre',16000,18000],
   ['Riohacha','La Guajira',16000,18000], ['Tunja','Boyacá',13000,13000], ['Florencia','Caquetá',13000,13000],
   ['Yopal','Casanare',13000,13000], ['Quibdó','Chocó',null,22000], ['Arauca','Arauca',13000,18000],
