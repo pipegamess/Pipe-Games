@@ -63,7 +63,27 @@ function envioDeCiudad(txt) {
     return { local:true, tipo:'nacional', ciudad:et, valor:sel.v, escrito:true, transp:sel.id,
              titulo:'Envío a ' + et + ' por ' + sel.n, opciones:envOpciones(x.tar), clave:x.key };
   }
-  return { local:false, tipo:'otro', ciudad:et, valor:0, escrito:true, titulo:'Envío a ' + et };
+  envCotizar(x);
+  return { local:false, tipo:'otro', ciudad:et, valor:0, escrito:true, titulo:'Envío a ' + et, cotizando: envCotEstado[x.key] === 'pend' };
+}
+/* Municipios sin tarifa fija: se cotiza en Skydropx con Envía e Interrapidísimo y se cobra la tarifa + $2.000,
+   redondeado a los mil de arriba. Cuando llega el valor, el municipio queda como uno con tarifa y se avisa con el evento "envio-cotizado". */
+const ENVIO_COTIZADOR = 'https://skydropx-pipegames.pipe-games22.workers.dev/cotizar';
+const envCotEstado = {};
+function envPrecioCotizado(v) { return v ? Math.ceil((Number(v) + 2000) / 1000) * 1000 : null; }
+function envCotizar(x) {
+  if (!x || x.tar || typeof fetch !== 'function') return;
+  const st = envCotEstado[x.key];
+  if (st === 'pend' || st === 'ok' || (st && st.fallo && Date.now() - st.fallo < 120000)) return;
+  envCotEstado[x.key] = 'pend';
+  fetch(ENVIO_COTIZADOR, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ ciudad:x.c, depto:x.d }) })
+    .then(r => r.json()).then(j => {
+      const t = (j && j.tarifas) || {}, envia = envPrecioCotizado(t.envia), inter = envPrecioCotizado(t.inter);
+      if (!envia && !inter) throw new Error(j && j.error || 'sin tarifas');
+      x.tar = { envia, inter, local:false, cotizado:true }; envCotEstado[x.key] = 'ok';
+    })
+    .catch(() => { envCotEstado[x.key] = { fallo: Date.now() }; })
+    .finally(() => { try { window.dispatchEvent(new Event('envio-cotizado')); } catch (e) {} });
 }
 /* Consolas, parlantes e iPads: fuera de Bogotá, Chía y Soacha no se muestra costo de envío; se confirma por WhatsApp.
    En Bogotá, Chía y Soacha aplica el domicilio normal ($10.000) para todo el catálogo. */
@@ -77,4 +97,4 @@ function envioPedido(txt, items) {
   return e;
 }
 
-export { ENVIO_LOCAL_VALOR, ENVIO_TARIFAS, ENVIO_TRANSP, ENVIO_MUNI, ENVIO_ALIAS, envioTransp, envNorm, envEtiqueta, envBuscar, envioDeCiudad };
+export { ENVIO_LOCAL_VALOR, ENVIO_TARIFAS, ENVIO_TRANSP, ENVIO_MUNI, ENVIO_ALIAS, envioTransp, envNorm, envEtiqueta, envBuscar, envioDeCiudad, envCotEstado };

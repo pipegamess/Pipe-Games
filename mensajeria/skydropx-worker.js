@@ -47,6 +47,11 @@ export default {
     // Link corto para el cliente: /addi/ir?c=<reserva>.<código> → página de Addi
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
     if (req.method !== "POST") return responder({ error: "Método no permitido" }, 405);
+    // Cotizador público (catálogo, link de saldo y datos de envío): solo cotiza, nunca crea guías
+    if (url.pathname === "/cotizar") {
+      if ((req.headers.get("Origin") || "") !== origen) return responder({ error: "Origen no permitido" }, 403);
+      return cotizarPublico(req, env, base, responder);
+    }
 
     // 1) Solo la cuenta de despacho (token de Firebase verificado)
     try {
@@ -118,6 +123,60 @@ export default {
     }
   }
 };
+
+/* ---------- Cotizador público: valor del envío a municipios sin tarifa fija ---------- */
+// Cotiza un sobre de videojuego (22×19×4 cm, 1 kg, valor $50.000) desde Bogotá con Envía e Interrapidísimo.
+// Devuelve la tarifa más barata de cada una; el catálogo le suma $2.000 y redondea a los mil de arriba.
+const cacheCot = new Map();
+const ALIAS_DEPTO_W = { "valle del cauca": ["Valle"], "la guajira": ["Guajira"], "san andres y providencia": ["San Andres", "Archipielago de San Andres"], "norte de santander": ["N. de Santander"] };
+async function cotizarPublico(req, env, base, responder) {
+  let b; try { b = await req.json(); } catch { return responder({ error: "Cuerpo inválido" }, 400); }
+  const limpio = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z .,()'-]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  const ciudad = limpio(b.ciudad), depto = limpio(b.depto);
+  if (ciudad.length < 2 || depto.length < 2) return responder({ error: "Falta la ciudad" }, 400);
+  const k = (ciudad + "|" + depto).toLowerCase();
+  const c = cacheCot.get(k); if (c && Date.now() - c.t < 6 * 3600e3) return responder(c.r);
+  if (!env.SKYDROPX_CLIENT_ID || !env.SKYDROPX_CLIENT_SECRET) return responder({ error: "Faltan las credenciales de Skydropx en el Worker" }, 500);
+  const origenes = [["Cundinamarca", "Bogota"], ["Bogota D.C.", "Bogota"], ["Distrito Capital", "Bogota"], ["Bogota", "Bogota"]];
+  const deptos = [depto, ...(ALIAS_DEPTO_W[depto.toLowerCase()] || [])];
+  const ciudades = [...new Set([ciudad, ciudad.replace(/\s*\(.*\)/, ""), ciudad.split(",")[0].trim()])];
+  const destinos = []; deptos.forEach(d => ciudades.forEach(cc => destinos.push([d, cc])));
+  const paquete = { length: 22, width: 19, height: 4, weight: 1 }, valor = 50000;
+  try {
+    let tk = await tokenDeSkydropx(env, base), iO = 0, iD = 0, conCarriers = true, q = null;
+    for (let intento = 0; intento < 14 && !q; intento++) {
+      const [o1, o2] = origenes[Math.min(iO, origenes.length - 1)], [d1, d2] = destinos[Math.min(iD, destinos.length - 1)];
+      const cuerpo = { quotation: { address_from: { country_code: "co", area_level1: o1, area_level2: o2, area_level3: o2 }, address_to: { country_code: "co", area_level1: d1, area_level2: d2, area_level3: d2 },
+        parcels: [{ ...paquete, declared_amount: valor }], declared_amount: valor, ...(conCarriers ? { requested_carriers: ["envia", "interrapidisimo"] } : {}) } };
+      let r = await llamar(base, "/quotations", "POST", cuerpo, tk);
+      if (r.status === 401) { tokenSkydropx.vence = 0; tk = await tokenDeSkydropx(env, base); r = await llamar(base, "/quotations", "POST", cuerpo, tk); }
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) { q = j; break; }
+      const msg = JSON.stringify(j);
+      if (r.status !== 422) throw new Error("Skydropx respondió " + r.status);
+      if (/requested_carriers/.test(msg) && conCarriers) { conCarriers = false; continue; }
+      let avanzo = false;
+      if (/address_from/.test(msg) && iO < origenes.length - 1) { iO++; avanzo = true; }
+      if (/address_to/.test(msg) && iD < destinos.length - 1) { iD++; avanzo = true; }
+      if (!avanzo) throw new Error("Skydropx no reconoce " + ciudad + " - " + depto);
+    }
+    if (!q) throw new Error("Skydropx no aceptó la cotización");
+    const id = q.id || q.data?.id;
+    for (let i = 0; i < 12 && id && !(q.is_completed ?? q.data?.is_completed); i++) {
+      await new Promise(ok => setTimeout(ok, 1200));
+      const r = await llamar(base, "/quotations/" + id, "GET", null, tk); q = await r.json().catch(() => q);
+    }
+    let rates = (q.rates || q.data?.rates || []).filter(x => x && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || ""));
+    if (rates.some(x => x.success === true)) rates = rates.filter(x => x.success === true);
+    const de = x => String(x.provider_name || x.provider_display_name || "").toLowerCase().normalize("NFD").replace(/[^a-z]/g, "");
+    const minimo = pref => { const v = rates.filter(x => de(x).startsWith(pref)).map(x => Math.ceil(+(x.total || x.amount))); return v.length ? Math.min(...v) : null; };
+    const res = { tarifas: { envia: minimo("envia"), inter: minimo("inter") } };
+    cacheCot.set(k, { t: Date.now(), r: res });
+    return responder(res);
+  } catch (e) {
+    return responder({ error: String(e.message || e).slice(0, 200) }, 502);
+  }
+}
 
 // IA gratuita de Cloudflare (Workers AI). Con foto: modelo de visión; sin foto: modelo de texto.
 const MODELO_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";

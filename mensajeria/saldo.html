@@ -11,12 +11,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117g">
+<link rel="stylesheet" href="estilos.css?v=20261117h">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261117g";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261117h";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261117g">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261117h">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -98,9 +98,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261117g";
-import * as C from "./comun.js?v=20261117g";
-import * as T from "./tarifas-envio.js?v=20261117g";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261117h";
+import * as C from "./comun.js?v=20261117h";
+import * as T from "./tarifas-envio.js?v=20261117h";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -179,6 +179,8 @@ $("#sEnvio").addEventListener("click", e => {
   T.envioTransp[b.dataset.clave] = b.dataset.tr; pintar();
 });
 
+// Municipio sin tarifa fija: cuando Skydropx entrega el valor, se vuelve a pintar con las transportadoras
+window.addEventListener("envio-cotizado", () => { try { pintar(); } catch {} });
 /* ---------- medio de pago ---------- */
 $("#sMetodos").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (!b) return; metodo = b.dataset.m; metodoElegido = true; pintar(); });
 
@@ -203,6 +205,7 @@ function pintar() {
   else if (env.tipo === "nacional") htmlEnv = `<div class="opciones">${env.opciones.map(o => o.v
       ? `<button type="button" class="op${o.id === env.transp ? " on" : ""}" data-tr="${o.id}" data-clave="${esc(env.clave)}"><span class="rad"></span><span class="info"><b>${esc(o.n)}</b><small>Envío a ${esc(env.ciudad)}</small></span><span class="v">${C.cop(o.v)}</span></button>`
       : `<div class="op" style="opacity:.5;cursor:default"><span class="rad"></span><span class="info"><b>${esc(o.n)}</b><small>No disponible</small></span></div>`).join("")}</div>`;
+  else if (env.tipo === "otro" && env.cotizando) htmlEnv = `<div class="aviso">Consultando el valor del envío a <b>${esc(env.ciudad)}</b>…</div>`;
   else if (env.tipo === "otro") htmlEnv = `<div class="aviso"><b>${esc(env.ciudad)}</b> no está en nuestra lista de tarifas. El costo del envío te lo confirmamos por WhatsApp.</div>`;
   else if (env.tipo === "invalido" && env.multi) htmlEnv = `<div class="aviso">Hay varios municipios con ese nombre. Elige el tuyo en la lista.</div>`;
   else if (env.tipo === "invalido") htmlEnv = `<div class="aviso">No encontramos <b>${esc(env.ciudad)}</b>. Escribe tu municipio y elígelo de la lista.</div>`;

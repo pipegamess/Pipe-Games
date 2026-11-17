@@ -12,7 +12,7 @@ const salida = `// GENERADO AUTOMÁTICAMENTE desde el catálogo (index.html). No
 // los cambios se hacen en el catálogo y este archivo se actualiza solo.
 ${bloque}
 
-export { ENVIO_LOCAL_VALOR, ENVIO_TARIFAS, ENVIO_TRANSP, ENVIO_MUNI, ENVIO_ALIAS, envioTransp, envNorm, envEtiqueta, envBuscar, envioDeCiudad };
+export { ENVIO_LOCAL_VALOR, ENVIO_TARIFAS, ENVIO_TRANSP, ENVIO_MUNI, ENVIO_ALIAS, envioTransp, envNorm, envEtiqueta, envBuscar, envioDeCiudad, envCotEstado };
 `;
 const destino = path.join(__dirname, "..", "tarifas-envio.js");
 const antes = fs.existsSync(destino) ? fs.readFileSync(destino, "utf8") : "";
