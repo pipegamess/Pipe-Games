@@ -37,6 +37,8 @@ h1 span { color: var(--acc); }
 .modo { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 4px; gap: 4px; }
 .modo button { font: 700 15px/1.1 var(--display); letter-spacing: 0.04em; padding: 11px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
 .modo button[aria-pressed="true"] { background: var(--acc); color: var(--acc-ink); }
+.modo.mini { margin: 2px 0 4px; } .modo.mini button { font: 600 12.5px/1.15 var(--body); letter-spacing: 0; padding: 8px 6px; }
+.modo.mini button[aria-pressed="true"] { background: var(--c); color: #111; }
 label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 input { font: inherit; letter-spacing: normal; text-transform: none; color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; min-width: 0; font-size: 15px; }
 input.grande { font: 700 30px/1.1 var(--display); padding: 10px 14px; font-variant-numeric: tabular-nums; }
@@ -126,10 +128,11 @@ const PLATAFORMAS = [
     desglose: (P, p) => { const com = P * p.com / 100, rete = com * p.rete / 100; return [["Comisión " + p.com + "%", com], ["Rete IVA (" + p.rete + "% de la comisión)", rete], ["Envío", p.envio]]; },
     precio: (N, p) => (N + p.envio) / (1 - (p.com + p.reteP) / 100) }, // Excel: =(B2+9600)/0.82
   { id: "fa", nombre: "Falabella", c: "var(--fa)",
-    p: { imp: 2, com: 15, envio: 8800 },
-    etiquetas: { imp: "Impuesto %", com: "Comisión %", envio: "Envío $" },
-    desglose: (P, p) => [["Impuesto " + p.imp + "%", P * p.imp / 100], ["Comisión " + p.com + "%", P * p.com / 100], ["Envío", p.envio]],
-    precio: (N, p) => (N + p.envio) / (1 - (p.imp + p.com) / 100) },
+    p: { imp: 2, com: 15, envio: 8800, directo: 10000 },
+    etiquetas: { imp: "Impuesto %", com: "Comisión %", envio: "Envío $", directo: "Envío adicional Falabella Directo $" },
+    // Falabella Directo: descuenta además el envío adicional (por defecto $10.000)
+    desglose: (P, p) => [["Impuesto " + p.imp + "%", P * p.imp / 100], ["Comisión " + p.com + "%", P * p.com / 100], ["Envío", p.envio], ...(faDirecto ? [["Envío adicional Falabella Directo", p.directo]] : [])],
+    precio: (N, p) => (N + p.envio + (faDirecto ? p.directo : 0)) / (1 - (p.imp + p.com) / 100) },
   { id: "ex", nombre: "Éxito", c: "var(--ex)",
     p: { desc: 10, iva: 19 },
     etiquetas: { desc: "Descuento %", iva: "IVA % del descuento" },
@@ -151,7 +154,8 @@ const neto = (pl, P) => P - pl.desglose(P, pl.p).reduce((a, [, v]) => a + v, 0);
 try { const g = JSON.parse(localStorage.getItem("pg_calc_ajustes") || "{}"); PLATAFORMAS.forEach(pl => Object.assign(pl.p, g[pl.id] || {})); } catch {}
 const guardar = () => { try { localStorage.setItem("pg_calc_ajustes", JSON.stringify(Object.fromEntries(PLATAFORMAS.map(pl => [pl.id, pl.p])))); } catch {} };
 
-let modo = "neto";
+let modo = "neto", faDirecto = false;
+try { faDirecto = localStorage.getItem("pg_calc_fadirecto") === "1"; } catch {}
 try { modo = localStorage.getItem("pg_calc_modo") === "precio" ? "precio" : "neto"; } catch {}
 
 function tarjeta(pl, V) {
@@ -172,12 +176,13 @@ function tarjeta(pl, V) {
       <tr class="total"><td>Te queda</td><td>${cop(n)}</td></tr></table>`;
   }
   const aj = Object.keys(pl.p).map(k => `<label>${pl.etiquetas[k]}<input data-pl="${pl.id}" data-k="${k}" inputmode="decimal" value="${pl.p[k]}"></label>`).join("");
-  return `<article class="card" style="--c:${pl.c}"><h2>${pl.nombre}<small>${resumen(pl)}</small></h2>${cuerpo}
+  const tipoFa = pl.id === "fa" ? `<div class="modo mini" role="group" aria-label="Tipo de envío Falabella"><button type="button" data-fa="0" aria-pressed="${!faDirecto}">Falabella</button><button type="button" data-fa="1" aria-pressed="${faDirecto}">Falabella Directo · envío +${cop(pl.p.directo)}</button></div>` : "";
+  return `<article class="card" style="--c:${pl.c}"><h2>${pl.id === "fa" && faDirecto ? "Falabella Directo" : pl.nombre}<small>${resumen(pl)}</small></h2>${tipoFa}${cuerpo}
     <details><summary>Ajustes</summary><div class="ajustes">${aj}</div><button class="copiar" type="button" data-restaurar="${pl.id}" style="margin-top:10px">Volver a los valores del Excel</button></details></article>`;
 }
 function resumen(pl) {
   const p = pl.p;
-  return { ml: `${p.com}% + rete + envío ${cop(p.envio)}`, fa: `${p.imp + p.com}% + envío ${cop(p.envio)}`, ex: `${(p.desc * (1 + p.iva / 100)).toFixed(1)}%`, addi: `÷ ${p.factor}`, siste: `${p.desc}%` }[pl.id];
+  return { ml: `${p.com}% + rete + envío ${cop(p.envio)}`, fa: `${p.imp + p.com}% + envío ${cop(p.envio + (faDirecto ? p.directo : 0))}`, ex: `${(p.desc * (1 + p.iva / 100)).toFixed(1)}%`, addi: `÷ ${p.factor}`, siste: `${p.desc}%` }[pl.id];
 }
 function pintar() {
   const V = num($("valor").value);
@@ -197,12 +202,13 @@ $("cards").addEventListener("change", e => {
   pintar();
 });
 $("cards").addEventListener("click", async e => {
-  const c = e.target.closest("[data-copiar]"), r = e.target.closest("[data-restaurar]");
+  const c = e.target.closest("[data-copiar]"), r = e.target.closest("[data-restaurar]"), f = e.target.closest("[data-fa]");
+  if (f) { faDirecto = f.dataset.fa === "1"; try { localStorage.setItem("pg_calc_fadirecto", faDirecto ? "1" : "0"); } catch {} pintar(); return; }
   if (r) { const pl = PLATAFORMAS.find(x => x.id === r.dataset.restaurar); Object.assign(pl.p, BASE_EXCEL[pl.id]); guardar(); pintar(); }
   if (c) { try { await navigator.clipboard.writeText(c.dataset.copiar); c.textContent = "Copiado ✓"; } catch { c.textContent = c.dataset.copiar; } }
 });
 // Valores originales del Excel (para restaurar)
-const BASE_EXCEL = { ml: { com: 16, rete: 15, reteP: 2, envio: 9600 }, fa: { imp: 2, com: 15, envio: 8800 }, ex: { desc: 10, iva: 19 }, addi: { factor: 0.92265 }, siste: { desc: 5 } };
+const BASE_EXCEL = { ml: { com: 16, rete: 15, reteP: 2, envio: 9600 }, fa: { imp: 2, com: 15, envio: 8800, directo: 10000 }, ex: { desc: 10, iva: 19 }, addi: { factor: 0.92265 }, siste: { desc: 5 } };
 
 // Acceso: solo la cuenta de administrador
 $("vLogin").addEventListener("submit", async (ev) => {
