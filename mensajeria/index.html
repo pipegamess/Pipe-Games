@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117i">
+<link rel="stylesheet" href="estilos.css?v=20261117j">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117i";
-import * as C from "./comun.js?v=20261117i";
-import * as T from "./tarifas-envio.js?v=20261117i";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117i";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117j";
+import * as C from "./comun.js?v=20261117j";
+import * as T from "./tarifas-envio.js?v=20261117j";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117j";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1141,7 +1141,7 @@ function pintarReservas() {
       <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : C.esUsuarioWhatsApp(waDe(r.contacto, r.red)) ? "WhatsApp " + esc(waDe(r.contacto, r.red)) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
       ${!r.confirmacion && (r.envioFijo || r.ciudadSugerida) ? `<div class="meta"><b>Envío:</b> ${esc(r.ciudadSugerida || "—")}${r.envioFijo ? " · " + C.cop(r.envioFijo) + " (fijo)" : " · se calcula con los datos del cliente"}</div>` : ""}
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.correo ? ` · ${esc(r.confirmacion.correo)}` : " · <b>sin correo</b>"}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
-      ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular o @usuario de WhatsApp<input id="rsEdTel" maxlength="40" autocapitalize="off" spellcheck="false" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label><label>Ciudad de despacho <small>(opcional)</small><input id="rsEdCiudad" maxlength="60" placeholder="Ej: Medellín" value="${esc(r.ciudadSugerida || "")}"></label><label>Costo de envío <small>(opcional)</small><input id="rsEdEnvio" inputmode="numeric" maxlength="12" placeholder="$ 0" value="${r.envioFijo ? C.cop(r.envioFijo) : ""}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
+      ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular o @usuario de WhatsApp<input id="rsEdTel" maxlength="40" autocapitalize="off" spellcheck="false" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label><label>Abono${(r.abonos?.length || 0) > 1 ? "s" : ""} <small>(varios: 100.000 + 50.000)</small><input id="rsEdAbono" inputmode="numeric" maxlength="60" placeholder="$ 0" value="${esc((r.abonos?.length ? r.abonos : r.abono ? [r.abono] : []).map(v => C.cop(v)).join(" + "))}"></label><label>Ciudad de despacho <small>(opcional)</small><input id="rsEdCiudad" maxlength="60" placeholder="Ej: Medellín" value="${esc(r.ciudadSugerida || "")}"></label><label>Costo de envío <small>(opcional)</small><input id="rsEdEnvio" inputmode="numeric" maxlength="12" placeholder="$ 0" value="${r.envioFijo ? C.cop(r.envioFijo) : ""}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
       <div class="btns"><button class="btn chico" data-rsedguardar="${r.id}">Guardar</button><button class="btn sec chico" data-rsedcancel="1">Cancelar</button></div>` : ""}
       <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}${r.confirmacion?.metodo === "addi" && !r.pagado ? `${["rejected", "declined"].includes(r.credito?.estado) ? "" : `<button class="btn chico btn-amarillo" data-rsaddi="${r.id}">${r.credito?.url ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button>`}${r.credito?.estado ? `<span class="pill${r.credito.estado === "approved" ? " entregada" : ""}">Addi: ${esc({ autorizado: "link enviado", approved: "aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" }[r.credito.estado] || r.credito.estado)}</span>` : ""}` : ""}${r.saldoToken && (r.venta || ["addi", "siste"].includes(r.confirmacion?.metodo)) ? `<button class="btn sec chico" data-rsseguir="${r.id}">Ver paso a paso</button>` : `<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>`}${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}${["cobrado", "linkEnviado", "saldoToken", "confirmacion", "credito", "pagado", "skydropx"].some(k => r[k]) ? `<button class="btn sec chico" data-rsreset="${r.id}">Restablecer</button>` : ""}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
@@ -1176,7 +1176,8 @@ $("#rsLista").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const ref = doc(db, "usuarios", ADMIN_UID);
   if (b.dataset.rsaddi) { autorizarAddi(b.dataset.rsaddi, b); return; }
-  if (b.dataset.rsedit) { rsEditando = b.dataset.rsedit; pintarReservas(); $("#rsEdNom")?.focus(); $("#rsEdEnvio")?.addEventListener("input", e => { const n = parseInt(e.target.value.replace(/\D/g, ""), 10); e.target.value = n ? C.cop(n) : ""; }); return; }
+  if (b.dataset.rsedit) { rsEditando = b.dataset.rsedit; pintarReservas(); $("#rsEdNom")?.focus(); $("#rsEdEnvio")?.addEventListener("input", e => { const n = parseInt(e.target.value.replace(/\D/g, ""), 10); e.target.value = n ? C.cop(n) : ""; });
+    $("#rsEdAbono")?.addEventListener("blur", e => { e.target.value = e.target.value.split("+").map(v => parseInt(v.replace(/\D/g, ""), 10) || 0).filter(v => v > 0).map(v => C.cop(v)).join(" + "); }); return; }
   if (b.dataset.rsedcancel) { rsEditando = null; pintarReservas(); return; }
   if (b.dataset.rsedguardar) {
     const id = b.dataset.rsedguardar, nombre = $("#rsEdNom").value.trim().replace(/\s+/g, " "), tel = $("#rsEdTel").value.replace(/\D/g, "").replace(/^57(?=\d{10}$)/, "");
@@ -1187,6 +1188,12 @@ $("#rsLista").addEventListener("click", async e => {
     // Envío definido por ti: el link de saldo cobra ese valor fijo. Vacío: se calcula cuando el cliente escribe su ciudad.
     const ciudadDesp = $("#rsEdCiudad").value.trim().replace(/\s+/g, " "), envioDesp = parseInt($("#rsEdEnvio").value.replace(/\D/g, ""), 10) || 0;
     if (envioDesp && envioDesp < 1000) { toast("Revisa el costo de envío"); return; }
+    // Abonos: uno o varios separados por "+"; "abono" guarda la suma
+    const abonosEd = $("#rsEdAbono").value.split("+").map(v => parseInt(v.replace(/\D/g, ""), 10) || 0).filter(v => v > 0);
+    const sumaAb = abonosEd.reduce((a, b) => a + b, 0), r0 = S.reservas?.[id] || {};
+    const abonoCambio = sumaAb !== (r0.abono || 0) || abonosEd.length !== (r0.abonos?.length || (r0.abono ? 1 : 0));
+    cambios[`reservas.${id}.abono`] = sumaAb;
+    cambios[`reservas.${id}.abonos`] = abonosEd;
     cambios[`reservas.${id}.ciudadSugerida`] = ciudadDesp;
     cambios[`reservas.${id}.envioFijo`] = envioDesp;
     if ($("#rsEdMail")) {
@@ -1195,7 +1202,7 @@ $("#rsLista").addEventListener("click", async e => {
       cambios[`reservas.${id}.confirmacion.correo`] = mail;
       if (mail) cambios[`reservas.${id}.skydropx.error`] = null; // con correo, la orden se vuelve a enviar sola
     }
-    try { await updateDoc(ref, cambios); rsEditando = null; toast("Reserva actualizada"); }
+    try { await updateDoc(ref, cambios); rsEditando = null; toast(abonoCambio && S.reservas?.[id]?.linkEnviado ? "Reserva actualizada. Como cambió el abono, toca “Reenviar link de saldo” para que el cliente vea el saldo nuevo" : "Reserva actualizada"); }
     catch (err) { toast(C.mensajeError(err)); }
     return;
   }
@@ -2245,7 +2252,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117i";
+const VERSION_PANEL = "20261117j";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
