@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261116c">
+<link rel="stylesheet" href="estilos.css?v=20261117a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -285,7 +285,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
           <h3>Entrega</h3>
           <div class="fila">
             <label>Destinatario<input id="nCli" required placeholder="Nombre completo"></label>
-            <label>Celular<input id="nTel" inputmode="tel" required placeholder="300 123 4567"></label>
+            <label>Celular o @usuario de WhatsApp<input id="nTel" required placeholder="300 123 4567 o @usuario" autocapitalize="off" spellcheck="false"></label>
           </div>
           <div class="frecuente" id="nFrec" hidden></div>
           <label style="max-width:12em">Ciudad<select id="nCiudad"><option value="bogota">Bogotá</option><option value="soacha">Soacha</option><option value="chia">Chía</option></select></label>
@@ -358,7 +358,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
         <h2>Calcular saldo y cobrar</h2>
         <p class="nota" style="margin:0">Mismas reglas del simulador de precios de pipegames.com.co: domicilio de $10.000 en Bogotá, Chía y Soacha, y el recargo de cada medio de pago. <b>Enviar link de saldo</b> le manda al cliente el link donde ve sus productos, elige ciudad de envío y medio de pago y deja sus datos (igual que en las reservas); queda en Reservas → “Ventas con link de cobro”. Si eliges <b>Envío → Otro</b> y escribes el valor, el cliente ve ese envío y no le salen transportadoras ni tarifas.</p>
         <form id="fCobro" class="lista" autocomplete="off">
-          <div class="fila"><label>Cliente<input id="cbCli" placeholder="Escribe o elige un cliente" list="cbClientes" autocomplete="off"></label><label>WhatsApp del cliente<input id="cbTel" type="tel" inputmode="numeric" maxlength="16" placeholder="3001234567" autocomplete="off"></label></div>
+          <div class="fila"><label>Cliente<input id="cbCli" placeholder="Escribe o elige un cliente" list="cbClientes" autocomplete="off"></label><label>WhatsApp del cliente<input id="cbTel" maxlength="40" placeholder="3001234567 o @usuario" autocomplete="off" autocapitalize="off" spellcheck="false"></label></div>
           <datalist id="cbClientes"></datalist>
           <label>Producto<input id="cbProd" list="cbCatalogo" placeholder="Busca el videojuego en el catálogo" autocomplete="off"></label>
           <div class="fila"><label>Precio final por unidad<input class="din" id="cbPrecio" inputmode="numeric" placeholder="250.000"></label><label>Unidades<input id="cbUnid" type="number" min="1" step="1" value="1" inputmode="numeric"></label></div>
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261116c";
-import * as C from "./comun.js?v=20261116c";
-import * as T from "./tarifas-envio.js?v=20261116c";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261116c";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117a";
+import * as C from "./comun.js?v=20261117a";
+import * as T from "./tarifas-envio.js?v=20261117a";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -886,7 +886,7 @@ $("#cbLink").onclick = async () => {
   try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
   const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL;
   const texto = `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}`;
-  const url = dest.tel ? `https://api.whatsapp.com/send?phone=57${dest.tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+  const url = C.urlWhatsApp(dest.tel, texto);
   ventana?.close();
   // El link queda a la vista: copiarlo, abrir la pantalla de saldo o enviarlo por WhatsApp
   cbLinkReserva = id; cbLinkInfo = { nombre: titulo(d.cliente), link, url, texto, tel: dest.tel };
@@ -906,14 +906,14 @@ $("#cbLinkCat").onclick = () => {
   lista.forEach(x => { const p = PROD_DISP.find(y => norm(`${y.n} · ${y.p}`) === norm(x.n)); if (p) items.push({ n: p.n, p: p.p, q: x.q }); else faltan.push(x.n); });
   if (faltan.length) { toast(`No está disponible en el catálogo: ${faltan.join(", ")}. Elígelo de la lista.`); return; }
   const tel = telEscrito() || destinoCobro().tel;
-  if (!tel) { toast("Escribe el WhatsApp del cliente"); $("#cbTel").focus(); return; }
+  if (!tel) { toast("Escribe el WhatsApp del cliente (celular o @usuario)"); $("#cbTel").focus(); return; }
   const pago = cbMetodo === "siste" ? "siste" : "addi";
   const link = "https://pipegames.com.co/?pedido=" + encodeURIComponent(JSON.stringify(items)) + "&pago=" + pago;
   const nombre = C.primerNombre(titulo(d.cliente));
   const resumen = items.map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ");
   const texto = `Hola${nombre ? " " + nombre : ""}, aquí puedes completar tu pedido de ${resumen} y pagarlo a cuotas con ${pago === "addi" ? "Addi" : "Sistecrédito"}. Solo llena tus datos y envíalo:\n${link}`;
-  window.open(`https://api.whatsapp.com/send?phone=${C.telWhatsApp(tel)}&text=${encodeURIComponent(texto)}`, "_blank");
-  toast("Cuando el cliente envíe su pedido, te llega como un pedido del catálogo");
+  abrirWA(tel, texto);
+  if (!C.esUsuarioWhatsApp(tel)) toast("Cuando el cliente envíe su pedido, te llega como un pedido del catálogo");
 };
 $("#cbArts").addEventListener("click", e => { if (e.target.closest("[data-quitarart]")) { e.target.closest(".art").remove(); calcular(); } });
 $("#cbArts").addEventListener("input", e => {
@@ -929,9 +929,7 @@ $("#cbWa").onclick = () => {
   const d = datosCobro(); if (!validarCobro(d)) return;
   // Celular: el de la reserva cargada o, si no, el del cliente con ese nombre en reservas o guías
   const dest = destinoCobro();
-  const texto = encodeURIComponent(mensajeCobro(d));
-  const url = dest.tel ? `https://api.whatsapp.com/send?phone=57${dest.tel}&text=${texto}` : `https://api.whatsapp.com/send?text=${texto}`;
-  window.open(url, "_blank");
+  abrirWA(dest.tel, mensajeCobro(d));
   registrarCobro(d, dest);
 };
 $("#cbCopiar").onclick = () => { const d = datosCobro(); if (!validarCobro(d)) return; copiar(mensajeCobro(d), "Mensaje de cobro copiado"); registrarCobro(d); };
@@ -954,26 +952,47 @@ function buscarCliente(nombre) {
   const k = normNombre(nombre); if (!k) return null;
   const prod = $("#rsProd")?.value;
   const res = Object.entries(S.reservas || {}).filter(([, r]) => normNombre(r.nombre) === k).sort(([, a], [, b]) => (b.producto === prod) - (a.producto === prod));
-  const conTel = res.find(([, r]) => /^\d{10}$/.test(r.contacto));
-  if (conTel) return { tel: conTel[1].contacto, reservaId: conTel[0], nombre: titulo(conTel[1].nombre), fuente: "reserva de " + conTel[1].producto };
+  const conTel = res.find(([, r]) => waDe(r.contacto, r.red));
+  if (conTel) return { tel: waDe(conTel[1].contacto, conTel[1].red), reservaId: conTel[0], nombre: titulo(conTel[1].nombre), fuente: "reserva de " + conTel[1].producto };
   const g = Object.values(S.guias || {}).filter(x => normNombre(x.cliente) === k && /^3\d{9}$/.test(soloDig(x.telefono))).sort((a, b) => b.creado - a.creado)[0];
   if (g) return { tel: soloDig(g.telefono), reservaId: res[0]?.[0] || null, nombre: g.cliente, fuente: "guía " + g.numero };
   if (res[0]) return { tel: "", reservaId: res[0][0], nombre: titulo(res[0][1].nombre), contacto: res[0][1].contacto, fuente: "reserva de " + res[0][1].producto };
   return null;
 }
-const telEscrito = () => { const t = String($("#cbTel")?.value || "").replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""); return /^3\d{9}$/.test(t) ? t : ""; };
+// WhatsApp del cliente: celular de 10 dígitos o @usuario de WhatsApp (si el cliente no comparte su número).
+// En reservas de Instagram/Facebook/TikTok el contacto con letras es un usuario de esa red, no de WhatsApp.
+function waDe(v, red) {
+  const s = String(v || "").trim(); if (!s) return "";
+  if (/[a-z@]/i.test(s)) return /insta|face|tik|messenger|ig\b|fb\b/i.test(red || "") ? "" : C.usuarioWhatsApp(s);
+  const t = s.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
+  return /^3\d{9}$/.test(t) ? t : "";
+}
+const attrWA = c => C.esUsuarioWhatsApp(C.contactoWhatsApp(c)) ? ` data-wausuario="${esc(C.contactoWhatsApp(c))}"` : "";
+// Abre WhatsApp con el mensaje. Con @usuario: se copia el usuario para buscar el chat (WhatsApp no deja abrir un chat por usuario desde un link)
+function avisarUsuarioWA(u) {
+  try { navigator.clipboard?.writeText(u).catch(() => {}); } catch {}
+  toast(`Busca ${u} en WhatsApp y escoge su chat: el mensaje ya va escrito (el usuario quedó copiado)`);
+}
+function abrirWA(contacto, texto, ventana) {
+  const c = C.contactoWhatsApp(contacto), url = C.urlWhatsApp(c, texto);
+  if (C.esUsuarioWhatsApp(c)) avisarUsuarioWA(c);
+  if (ventana) ventana.location.href = url; else window.open(url, "_blank");
+}
+document.addEventListener("click", e => { const a = e.target.closest("a[data-wausuario]"); if (a) avisarUsuarioWA(a.dataset.wausuario); });
+const telEscrito = () => waDe($("#cbTel")?.value);
 function destinoCobro() {
   // El WhatsApp escrito a mano manda sobre el que se encuentre por nombre
   const escrito = telEscrito();
   if (escrito) { const b = cbReserva && normNombre(cbReserva.nombre) === normNombre($("#cbCli").value) ? { reservaId: cbReserva.id } : (buscarCliente($("#cbCli").value) || {}); return { ...b, tel: escrito, fuente: "número escrito" }; }
-  if (cbReserva && normNombre(cbReserva.nombre) === normNombre($("#cbCli").value)) return { tel: /^\d{10}$/.test(cbReserva.tel) ? cbReserva.tel : "", reservaId: cbReserva.id, contacto: cbReserva.contacto, fuente: "reserva" };
+  if (cbReserva && normNombre(cbReserva.nombre) === normNombre($("#cbCli").value)) return { tel: waDe(cbReserva.tel, S.reservas?.[cbReserva.id]?.red), reservaId: cbReserva.id, contacto: cbReserva.contacto, fuente: "reserva" };
   return buscarCliente($("#cbCli").value) || { tel: "" };
 }
 function pintarDestinoWa() {
   let el = document.getElementById("cbDestinoWa");
   if (!el) { el = document.createElement("div"); el.id = "cbDestinoWa"; el.className = "nota"; $("#cbAcciones").before(el); }
   const d = destinoCobro(), hay = $("#cbCli").value.trim();
-  el.innerHTML = !hay ? "" : d.tel ? `Se enviará al WhatsApp <b>${esc(d.tel)}</b> (${esc(d.fuente)}).`
+  el.innerHTML = !hay ? "" : C.esUsuarioWhatsApp(d.tel) ? `Se enviará al usuario de WhatsApp <b>${esc(d.tel)}</b> (${esc(d.fuente)}): WhatsApp abre con el mensaje listo y tú escoges su chat (el usuario se copia para buscarlo).`
+    : d.tel ? `Se enviará al WhatsApp <b>${esc(d.tel)}</b> (${esc(d.fuente)}).`
     : `No hay celular guardado para este cliente${d.contacto ? " (contacto: " + esc(d.contacto) + ")" : ""}: WhatsApp te pedirá escoger el chat.`;
   el.hidden = !hay;
 }
@@ -1018,7 +1037,7 @@ function pintarEstadoLink() {
   let h;
   if (r.pagado) h = `${paso(3, "✅ Pagado")}<span class="nota">${cr.estado === "approved" ? "Addi aprobó el crédito." : "Pago registrado."}${c?.guia ? ` Ya puedes despachar la guía ${esc(c.guia)}.` : c?.ciudadLocal ? " Creando la guía…" : c ? " Revisa la orden en Skydropx para despachar." : ""}</span>${c?.guia ? `<div class="btns"><button class="btn sec chico" type="button" data-cbverguia="${esc(c.guia)}">Ver guía ${esc(c.guia)}</button></div>` : ""}`;
   else if (!c) h = `${paso(1, `Envíale el link a ${nom}`)}<span class="nota">${nom} elige ciudad, medio de pago y deja sus datos. Esto se actualiza solo cuando confirme.</span>
-    <div class="btns"><a class="btn" href="${esc(i.url)}" target="_blank" rel="noopener">Enviar link por WhatsApp${i.tel ? "" : " (escoge el chat)"}</a></div>${chicos}`;
+    <div class="btns"><a class="btn" href="${esc(i.url)}"${attrWA(i.tel)} target="_blank" rel="noopener">Enviar link por WhatsApp${C.esUsuarioWhatsApp(i.tel) ? " (" + esc(i.tel) + ")" : i.tel ? "" : " (escoge el chat)"}</a></div>${chicos}`;
   else if (c.metodo === "siste" && (cr.estado === "rejected" || cr.estado === "declined")) h = `${paso(2, "❌ Sistecrédito no aprobó el crédito")}<span class="nota">Ofrécele a ${nom} pagar por Bre-B. Si paga, márcalo pagado${c.guia ? `; si no compra, borra la guía ${esc(c.guia)}` : ""}.</span>
     <div class="btns"><button class="btn" type="button" data-cbbreb>Enviar datos de Bre-B por WhatsApp</button><button class="btn sec chico" type="button" data-cbpagado>Marcar pagado</button></div>`;
   else if (c.metodo === "siste" && cr.estado === "opciones") h = `${paso(2, `⏳ Esperando que ${nom} elija sus cuotas`)}<span class="nota">Cuando te responda, regístralo en el portal de Sistecrédito. Al quedar aprobado, márcalo pagado.</span>
@@ -1044,10 +1063,10 @@ document.addEventListener("click", async e => {
   const rs = S.reservas?.[cbLinkReserva], cs = rs?.confirmacion || {};
   if (b.hasAttribute("data-cbcedula")) return copiar(cs.cedula || "", "Cédula copiada");
   if (b.hasAttribute("data-cbsisteopc")) {
-    const telS = C.telWhatsApp(cs.telefono || rs?.contacto || cbLinkInfo.tel);
+    const telS = waDe(cs.telefono) || waDe(rs?.contacto, rs?.red) || waDe(cbLinkInfo.tel);
     const resumen = (rs?.items || []).map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") || rs?.detalle || rs?.producto || "tu pedido";
     const texto = `Hola ${C.primerNombre(cbLinkInfo.nombre)}, ya revisamos tu pedido de ${resumen} por ${C.copTxt(cs.total || 0)} con Sistecrédito. Te envío las opciones de cuotas que te aprueba Sistecrédito. Dime cuál prefieres (mensual o quincenal y número de cuotas) y lo dejamos registrado:`;
-    window.open(telS ? `https://api.whatsapp.com/send?phone=${telS}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+    abrirWA(telS, texto);
     try { await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${cbLinkReserva}.credito`]: { estado: "opciones", t: Date.now() } }); } catch (err) { toast(C.mensajeError(err)); }
     return;
   }
@@ -1065,21 +1084,21 @@ document.addEventListener("click", async e => {
     try { await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${cbLinkReserva}.pagado`]: Date.now() }); toast("Marcado como pagado"); } catch (err) { toast(C.mensajeError(err)); }
     return;
   }
-  const tel = C.telWhatsApp(r?.confirmacion?.telefono || r?.contacto || cbLinkInfo.tel);
+  const tel = waDe(r?.confirmacion?.telefono) || waDe(r?.contacto, r?.red) || waDe(cbLinkInfo.tel);
   const texto = `Hola ${C.primerNombre(cbLinkInfo.nombre)}, ${r?.confirmacion?.metodo === "siste" ? "Sistecrédito" : "Addi"} no aprobó el crédito esta vez. Puedes pagar ${C.copTxt(r?.confirmacion?.total || 0)} por transferencia Bre-B a la llave ${LLAVE_BREB} a nombre de ${TITULAR_BREB}. Envíanos el comprobante por este medio.`;
-  window.open(tel ? `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+  abrirWA(tel, texto);
 });
 document.addEventListener("click", e => { const b = e.target.closest("[data-cbaddi]"); if (b) autorizarAddi(b.dataset.cbaddi, b); });
 // Crédito Addi: el cliente confirmó con Addi y escribió por WhatsApp; al autorizar se crea la solicitud y se le envía el link
 async function autorizarAddi(id, b) {
   const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
-  const tel = C.telWhatsApp(c.telefono || r.contacto);
+  const tel = waDe(c.telefono) || waDe(r.contacto, r.red);
   const urlW = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, "");
   // Link corto (pasa por el intermediario y lleva a la página de Addi)
   const corto = cr => cr?.codigo ? `${urlW}/addi/ir?c=${id}.${cr.codigo}` : cr?.url;
   const enviar = link => {
     const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, autorizamos tu pedido. Completa tu pago a cuotas con Addi por ${C.copTxt(c.total)} aquí (el link vence en 2 horas):\n${link}`;
-    window.open(tel ? `https://api.whatsapp.com/send?phone=${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+    abrirWA(tel, texto);
   };
   // Si el link sigue vigente (menos de 2 horas), solo se reenvía
   // Se reenvía el mismo link solo si sigue vigente y ya tiene link corto; si no, se crea uno nuevo
@@ -1119,9 +1138,9 @@ function pintarReservas() {
   $("#rsCifras").innerHTML = `<div><b>${del.length}</b><span>Clientes</span></div><div><b>${del.reduce((s, r) => s + uds(r), 0)}</b><span>Unidades</span></div><div><b>${C.cop(abonado)}</b><span>Abonado</span></div>${precio ? `<div><b>${C.cop(del.filter(r => !r.pagado).reduce((s, r) => s + saldoR(r), 0))}</b><span>Por cobrar (sin envío)</span></div>` : ""}<div><b>${del.filter(r => r.pagado).length}</b><span>Pagadas</span></div><div><b style="color:var(--warn)">${del.filter(r => !r.pagado).length}</b><span>Pendientes por pago</span></div>`;
   const EST = { pendiente: ["Por cobrar", "disponible"], cobrado: ["Cobro enviado", "en_camino"], confirmado: ["Confirmó datos", "recogida"], pagado: ["Pagada", "entregada"], sinabono: ["Sin abono", "novedad"] };
   $("#rsLista").innerHTML = lista.length ? lista.map(r => { const e = estadoReserva(r); return `<div class="item${r.linkEnviado ? " rs-enviado" : ""}"><div class="arriba"><span><b>${esc(titulo(r.nombre))}</b>${uds(r) > 1 ? ` <span class="pill">${uds(r)} unidades</span>` : ""} <span class="meta">${[r.red, r.fecha].filter(Boolean).map(x => " · " + esc(x)).join("")}</span></span><span class="pill ${EST[e][1]}">${EST[e][0]}</span></div>
-      <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
+      <div class="meta">${/^\d{10}$/.test(r.contacto) ? "Cel. " + esc(r.contacto) : C.esUsuarioWhatsApp(waDe(r.contacto, r.red)) ? "WhatsApp " + esc(waDe(r.contacto, r.red)) : r.contacto ? "Contacto: " + esc(r.contacto) : "Sin celular"} · ${r.abonos?.length > 1 ? `Abonos ${r.abonos.map(C.cop).join(" + ")} = ${C.cop(r.abono)}` : "Abono " + C.cop(r.abono)}${precio ? ` · <b style="color:var(--ink)">Saldo ${C.cop(saldoR(r))} + envío</b>` : ""}${r.cobrado ? " · cobro enviado " + C.fecha(r.cobrado) : ""}</div>
       ${r.confirmacion ? `<div class="meta" style="color:var(--ink)"><b>Eligió:</b> ${esc(r.confirmacion.ciudad)}${r.confirmacion.transportadora ? " por " + esc(r.confirmacion.transportadora) : ""} · ${esc((r.confirmacion.metodoTxt || "").split(" · ")[0])} · <b>Total ${C.cop(r.confirmacion.total)}</b>${r.confirmacion.envioPorConfirmar ? " + envío por confirmar" : ""}<br>${esc(r.confirmacion.direccion)}${r.confirmacion.complemento ? ", " + esc(r.confirmacion.complemento) : ""}${r.confirmacion.barrio ? " · Barrio " + esc(r.confirmacion.barrio) : ""} · Cel. ${esc(r.confirmacion.telefono)}${r.confirmacion.correo ? ` · ${esc(r.confirmacion.correo)}` : " · <b>sin correo</b>"}${r.confirmacion.cedula ? ` · Cédula ${esc(r.confirmacion.cedula)}` : ""} · ${C.fecha(r.confirmacion.t)}</div>` : ""}
-      ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular<input id="rsEdTel" inputmode="numeric" maxlength="16" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
+      ${rsEditando === r.id ? `<div class="fila" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;align-items:end"><label>Nombre<input id="rsEdNom" maxlength="60" value="${esc(r.nombre || "")}"></label><label>Celular o @usuario de WhatsApp<input id="rsEdTel" maxlength="40" autocapitalize="off" spellcheck="false" value="${esc(r.contacto || "")}"></label><label>Videojuego<input id="rsEdProd" maxlength="80" value="${esc(r.producto || "")}"></label>${r.confirmacion ? `<label>Correo del cliente<input id="rsEdMail" type="email" maxlength="80" value="${esc(r.confirmacion.correo || "")}"></label>` : ""}</div>
       <div class="btns"><button class="btn chico" data-rsedguardar="${r.id}">Guardar</button><button class="btn sec chico" data-rsedcancel="1">Cancelar</button></div>` : ""}
       <div class="btns"><button class="btn sec chico" data-rsedit="${r.id}">Editar</button><button class="btn chico${r.linkEnviado ? " btn-amarillo" : ""}" data-rslink="${r.id}">${r.linkEnviado ? "Reenviar link de saldo" : "Enviar link de saldo"}</button>${r.confirmacion?.ciudadLocal ? (r.confirmacion.guia ? `<button class="btn chico" data-rsverguia="${esc(r.confirmacion.guia)}">Guía ${esc(r.confirmacion.guia)}</button>` : `<button class="btn chico" data-rsguia="${r.id}">Crear guía</button>`) : r.confirmacion ? (r.skydropx?.guia ? `<span class="pill entregada">Guía ${esc(r.skydropx.transportadora || "")} ${esc(r.skydropx.guia)}</span>` : `<button class="btn chico" data-rsskx="${r.id}">Guía Skydropx</button>`) : ""}${r.confirmacion?.metodo === "addi" && !r.pagado ? `${["rejected", "declined"].includes(r.credito?.estado) ? "" : `<button class="btn chico btn-amarillo" data-rsaddi="${r.id}">${r.credito?.url ? "Reenviar link de Addi" : "Autorizar crédito Addi"}</button>`}${r.credito?.estado ? `<span class="pill${r.credito.estado === "approved" ? " entregada" : ""}">Addi: ${esc({ autorizado: "link enviado", approved: "aprobado", rejected: "rechazado", declined: "no aprobado", abandoned: "abandonado" }[r.credito.estado] || r.credito.estado)}</span>` : ""}` : ""}${r.saldoToken && (r.venta || ["addi", "siste"].includes(r.confirmacion?.metodo)) ? `<button class="btn sec chico" data-rsseguir="${r.id}">Ver paso a paso</button>` : `<button class="btn sec chico" data-rscobrar="${r.id}">Cobrar</button>`}${!r.pagado ? `<button class="btn sec chico" data-rspagado="${r.id}">Marcar pagada</button>` : `<button class="btn sec chico" data-rsdeshacer="${r.id}">Deshacer pagada</button>`}${["cobrado", "linkEnviado", "saldoToken", "confirmacion", "credito", "pagado", "skydropx"].some(k => r[k]) ? `<button class="btn sec chico" data-rsreset="${r.id}">Restablecer</button>` : ""}<button class="btn sec chico" data-rsborrar="${r.id}">Quitar</button></div></div>`; }).join("")
     : `<div class="vacio">${del.length ? "No hay reservas con ese filtro." : "Importa la lista de reservas pegando la tabla en “Importar reservas”."}</div>`;
@@ -1163,7 +1182,7 @@ $("#rsLista").addEventListener("click", async e => {
     if (nombre.length < 2) { toast("Escribe el nombre"); return; }
     const prod = $("#rsEdProd").value.trim().replace(/\s+/g, " ");
     if (prod.length < 2) { toast("Escribe el nombre del videojuego"); return; }
-    const cambios = { [`reservas.${id}.nombre`]: nombre, [`reservas.${id}.contacto`]: tel || $("#rsEdTel").value.trim(), [`reservas.${id}.producto`]: prod };
+    const cambios = { [`reservas.${id}.nombre`]: nombre, [`reservas.${id}.contacto`]: tel || C.usuarioWhatsApp($("#rsEdTel").value) || $("#rsEdTel").value.trim(), [`reservas.${id}.producto`]: prod };
     if ($("#rsEdMail")) {
       const mail = $("#rsEdMail").value.trim().toLowerCase();
       if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) { toast("Revisa el correo"); return; }
@@ -1331,9 +1350,8 @@ async function enviarLinkSaldo(id) {
   try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
   const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL; // ?v= evita que el navegador muestre una copia vieja
   const texto = r.venta ? `Hola ${C.primerNombre(titulo(r.nombre))}, este es el link para completar tu pedido de ${r.detalle}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}` : `Hola ${C.primerNombre(titulo(r.nombre))}, la espera terminó. Queremos informarte que ya está disponible ${r.producto}${(r.unidades || 1) > 1 ? " (" + r.unidades + " unidades)" : ""}.\nRevisa tu saldo y elige la ciudad de envío y el medio de pago aquí:\n${link}`;
-  const tel = /^\d{10}$/.test(r.contacto) ? r.contacto : "";
-  const url = tel ? `https://api.whatsapp.com/send?phone=57${tel}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
-  if (ventana) ventana.location.href = url; else window.open(url, "_blank");
+  const tel = waDe(r.contacto, r.red);
+  abrirWA(tel, texto, ventana);
   if (!tel) toast(`${titulo(r.nombre)} no tiene celular guardado: escoge su chat en WhatsApp`);
 }
 // Cuando el cliente confirma, sus datos pasan a la reserva y el link queda cerrado.
@@ -1457,9 +1475,9 @@ function abrirLinkReserva(id) {
   const r = S.reservas?.[id]; if (!r?.saldoToken) return;
   irA("cobros");
   const link = URL_SALDO + "?c=" + r.saldoToken + "&v=" + VERSION_PANEL;
-  const tel = /^\d{10}$/.test(r.contacto || "") ? r.contacto : (r.confirmacion?.telefono || "");
+  const tel = waDe(r.contacto, r.red) || waDe(r.confirmacion?.telefono);
   const texto = `Hola ${C.primerNombre(titulo(r.nombre))}, este es el link para completar tu pedido:\n${link}`;
-  cbLinkReserva = id; cbLinkInfo = { nombre: titulo(r.nombre), link, texto, tel, url: tel ? `https://api.whatsapp.com/send?phone=${C.telWhatsApp(tel)}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}` };
+  cbLinkReserva = id; cbLinkInfo = { nombre: titulo(r.nombre), link, texto, tel, url: C.urlWhatsApp(tel, texto) };
   $("#fCobro").classList.add("solo-link");
   $("#cbLinkRes").hidden = false; $("#cbLinkRes").innerHTML = `<div id="cbLinkEstado"></div>`;
   pintarEstadoLink();
@@ -2009,7 +2027,7 @@ document.addEventListener("click", async e => {
   if (wa) {
     const g = S.skxGuias?.[wa.dataset.skxwa]; if (!g) return;
     const texto = `Hola ${C.primerNombre(g.cliente)}, tu pedido ya fue despachado con ${g.transportadora}.\nNúmero de guía: ${g.guia}\nCon ese número puedes rastrearlo en la página de ${g.transportadora}.`;
-    window.open(/^\d{10}$/.test(g.telefono) ? `https://api.whatsapp.com/send?phone=57${g.telefono}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+    abrirWA(waDe(g.telefono), texto);
     return;
   }
   const act = e.target.closest("[data-skxact]");
@@ -2150,7 +2168,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261116c";
+const VERSION_PANEL = "20261117a";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2419,7 +2437,7 @@ function botonAviso(g, chico = false) {
   const texto = t === "camino" ? C.mensajeEnCamino(g) : C.mensajeEntregado(g);
   const hecho = g.avisos?.[t];
   const etiqueta = hecho ? `Volver a avisar (enviado ${new Date(hecho).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })})` : (t === "camino" ? "Avisar al cliente: va en camino" : "Avisar al cliente: entregado");
-  return `<a class="btn ${hecho ? "sec" : "ok"} ${chico ? "chico" : ""}" target="_blank" rel="noopener" data-aviso="${t}" data-n="${esc(g.numero)}" href="${C.linkWhatsApp(g.telefono, texto)}">${etiqueta}</a>`;
+  return `<a class="btn ${hecho ? "sec" : "ok"} ${chico ? "chico" : ""}" target="_blank" rel="noopener" data-aviso="${t}" data-n="${esc(g.numero)}"${attrWA(g.telefono)} href="${C.linkWhatsApp(g.telefono, texto)}">${etiqueta}</a>`;
 }
 document.addEventListener("click", e => {
   const a = e.target.closest("a[data-aviso]"); if (!a) return;
@@ -2559,7 +2577,7 @@ function pintarDetalle() {
       <a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(C.direccionTexto(g.destino))}">Ver dirección en Google Maps</a>
       ${g.destino?.lat != null ? `<a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${g.destino.lat},${g.destino.lng}">Ver punto guardado en Google Maps</a>` : ""}
       ${!g.destino?.verificar && !S.editUbic && !["entregada", "cancelada", "devuelta"].includes(g.estado) ? `<button class="btn sec chico" data-acc="editUbic">Editar ubicación</button>` : ""}
-      ${g.telefono ? `<a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g)}`)}">Enviar guía por WhatsApp</a>` : ""}
+      ${g.telefono ? `<a class="btn sec chico" target="_blank" rel="noopener"${attrWA(g.telefono)} href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g)}`)}">Enviar guía por WhatsApp</a>` : ""}
     </div>
     ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
     <h3>Historial</h3><ol class="tl">${eventos}</ol>`;
@@ -3216,7 +3234,7 @@ $("#fNueva").onsubmit = async e => {
     const g = {
       numero, remitente: rec.remitente,
       origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
-      cliente: $("#nCli").value.trim(), telefono: $("#nTel").value.trim(),
+      cliente: $("#nCli").value.trim(), telefono: /[a-z@]/i.test($("#nTel").value) ? (C.usuarioWhatsApp($("#nTel").value) || $("#nTel").value.trim()) : $("#nTel").value.trim(),
       destino: { direccion: $("#nDir").value.trim(), localidad: locDestino, ciudad: C.CIUDADES[ciudad].nombre, referencia: $("#nRef").value.trim(), lat: p.lat, lng: p.lng, aprox: false, verificar: false },
       contenido: $("#nCont").value.trim(), nota: $("#nNota").value.trim(),
       valor: cobroElegido() === "contraentrega" ? valorCobro() : 0,
@@ -3235,7 +3253,7 @@ $("#fNueva").onsubmit = async e => {
       <div class="codigo">${numero}</div>
       <div class="meta">Entrega en ${esc(locDestino)}. ${imprimible(g) ? "Imprímela y pégala en el paquete; el mensajero la recibe escaneando el código." : "No se imprime: el mensajero escanea la etiqueta de " + esc(g.tipoEnvio) + " del paquete."}</div>
       <div class="btns">${imprimible(g) ? `<button class="btn chico" id="rImp">Imprimir guía</button>` : ""}<button class="btn sec chico" id="rCopia">Copiar link de rastreo</button>
-      <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${numero}. Síguelo aquí: ${link}`)}">Enviar guía al cliente</a></div></div>`;
+      <a class="btn sec chico" target="_blank" rel="noopener"${attrWA(g.telefono)} href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${numero}. Síguelo aquí: ${link}`)}">Enviar guía al cliente</a></div></div>`;
     $("#rCopia").onclick = () => copiar(link, "Link de rastreo copiado");
     // Abrir la impresión de la guía apenas se crea (las de Mercado Libre y Falabella no se imprimen)
     if (imprimible(g)) { $("#rImp").onclick = () => imprimirGuias([g]); setTimeout(() => imprimirGuias([g]), 300); }

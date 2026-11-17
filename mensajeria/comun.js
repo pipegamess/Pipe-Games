@@ -283,8 +283,27 @@ export function telWhatsApp(tel) {
   if (d.length === 10 && d.startsWith("3")) d = "57" + d;
   return d;
 }
+// Nombre de usuario de WhatsApp (@usuario): 3 a 35 letras, números, punto o guion bajo; empieza por letra
+export function usuarioWhatsApp(v) {
+  const t = String(v || "").trim().replace(/^@+/, "");
+  return /^[a-z][a-z0-9._]{2,34}$/i.test(t) && !/\.\.|\.$/.test(t) ? "@" + t.toLowerCase() : "";
+}
+// Contacto de WhatsApp: celular internacional (57…) o @usuario cuando el cliente no comparte su número
+export function contactoWhatsApp(v) {
+  const s = String(v || "").trim();
+  if (/^@/.test(s) || /[a-z]/i.test(s)) return usuarioWhatsApp(s);
+  const t = telWhatsApp(s);
+  return /^\d{10,15}$/.test(t) ? t : "";
+}
+export const esUsuarioWhatsApp = v => String(v || "").startsWith("@");
+// Link para escribir por WhatsApp. Con @usuario no se puede abrir el chat directo: WhatsApp abre con el mensaje listo para escoger el chat.
+export function urlWhatsApp(contacto, texto) {
+  const c = contactoWhatsApp(contacto);
+  return c && !esUsuarioWhatsApp(c) ? `https://api.whatsapp.com/send?phone=${c}&text=${encodeURIComponent(texto)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+}
 export function linkWhatsApp(tel, texto) {
-  return `https://wa.me/${telWhatsApp(tel)}?text=${encodeURIComponent(texto)}`;
+  const c = contactoWhatsApp(tel);
+  return c && !esUsuarioWhatsApp(c) ? `https://wa.me/${c}?text=${encodeURIComponent(texto)}` : `https://wa.me/?text=${encodeURIComponent(texto)}`;
 }
 export function primerNombre(n) { return String(n || "").trim().split(/\s+/)[0] || ""; }
 
