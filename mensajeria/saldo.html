@@ -11,12 +11,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117e">
+<link rel="stylesheet" href="estilos.css?v=20261117f">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261117e";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261117f";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261117e">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261117f">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -58,15 +58,14 @@
   <div id="resumen"></div>
   <form id="fSaldo" class="lista" hidden novalidate>
     <section class="panel">
-      <p class="paso">1. ¿A qué ciudad te lo enviamos?</p>
+      <p class="paso">1. Datos de envío</p>
+      <label>Nombre de quien recibe<input id="sNom" autocomplete="name" maxlength="80"></label>
+      <label>Celular<input id="sTel" type="tel" inputmode="numeric" autocomplete="tel" maxlength="16" placeholder="3001234567"></label>
       <div class="sug-caja"><label>Ciudad o municipio<input id="sCiudad" autocomplete="off" maxlength="60" placeholder="Ej. Bogotá, Medellín, Cali…"></label><div class="sugerencias" id="sCiudadSug" hidden></div></div>
       <div id="sEnvio"></div>
-    </section>
-    <section class="panel" id="secDir" hidden>
-      <p class="paso">2. Dirección de entrega</p>
+      <div class="lista" id="secDir" hidden>
       <div class="sug-caja"><label>Dirección<input id="sDir" autocomplete="off" maxlength="120" placeholder="Ej. Calle 26 # 68-10"></label><div class="sugerencias" id="sDirSug" hidden></div></div>
-      <div class="fila"><label>Complemento<input id="sComp" maxlength="80" placeholder="Torre, apartamento, casa…"></label><label>Barrio<input id="sBarrio" maxlength="60"></label></div>
-      <label>Celular de contacto<input id="sTel" type="tel" inputmode="numeric" maxlength="16" placeholder="3001234567"></label>
+      <div class="fila"><label>Complemento de la dirección<input id="sComp" maxlength="80" placeholder="Torre, apartamento, casa…"></label><label>Barrio<input id="sBarrio" maxlength="60" placeholder="Ej. Modelia"></label></div>
       <label>Correo electrónico<input id="sCorreo" type="email" inputmode="email" autocomplete="email" maxlength="80" placeholder="nombre@correo.com" required></label>
       <div id="cajaMapa" class="lista" style="gap:8px" hidden>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:14px">Marca tu casa en el mapa</b><button class="btn sec chico" type="button" id="sGps">Usar mi ubicación</button></div>
@@ -74,9 +73,10 @@
         <div class="estado-pin" id="sPin">Escribe la dirección o toca “Usar mi ubicación”, y revisa que el punto quede en tu casa.</div>
         <label style="flex-direction:row;align-items:flex-start;gap:8px;font-weight:500;color:var(--ink);cursor:pointer"><input type="checkbox" id="sSinUbic" style="width:auto;margin-top:3px"> No puedo activar la ubicación o no logro ubicar mi dirección en el mapa</label>
       </div>
+      </div>
     </section>
     <section class="panel">
-      <p class="paso" id="tPago">3. ¿Cómo quieres pagar?</p>
+      <p class="paso" id="tPago">2. ¿Cómo quieres pagar?</p>
       <div class="opciones" id="sMetodos"></div>
       <div class="aviso" id="sLimite" hidden>Para compras desde $1.000.000 solo recibimos transferencia por Llave Bre-B o tarjeta de crédito.</div>
       <div id="sLlave" hidden></div>
@@ -97,9 +97,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261117e";
-import * as C from "./comun.js?v=20261117e";
-import * as T from "./tarifas-envio.js?v=20261117e";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261117f";
+import * as C from "./comun.js?v=20261117f";
+import * as T from "./tarifas-envio.js?v=20261117f";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -130,6 +130,7 @@ function iniciar() {
     <div class="total"><span>Saldo</span><span>${C.cop(Math.max(saldoBase(), 0))}</span></div>
     <p class="nota" style="margin:0">Elige la ciudad y el medio de pago para ver el total con envío.</p></div>`;
   $("#fSaldo").hidden = false;
+  if (!$("#sNom").value) $("#sNom").value = titulo(S.nombre || "");
   if (S.ciudadSugerida && !$("#sCiudad").value) { const r = T.envBuscar(S.ciudadSugerida); if (r?.x) $("#sCiudad").value = T.envEtiqueta(r.x); }
   // Pedido armado en el catálogo: trae el medio de pago, la transportadora, la cédula y el correo que ya escribió
   const pre = S.pre || {};
@@ -210,7 +211,7 @@ function pintar() {
   $("#secDir").hidden = !valida;
   const local = !!claveLocal(env);
   $("#cajaMapa").hidden = !local;
-  $("#tPago").textContent = (valida ? "3" : "2") + ". ¿Cómo quieres pagar?";
+  $("#tPago").textContent = "2. ¿Cómo quieres pagar?";
   if (local) prepararMapa();
   // Medios de pago
   const htmlMet = c.permitidos.map(m => { const t = c.base > 0 ? m.calc(c.base) : c.base, r = t - c.base;
@@ -274,6 +275,8 @@ $("#fSaldo").onsubmit = async e => {
   e.preventDefault(); $("#sErr").textContent = "";
   const c = calculo();
   const err = (t, f) => { $("#sErr").textContent = t; if (f) $(f).focus(); };
+  if ($("#sNom").value.trim().length < 3) return err("Escribe el nombre de quien recibe.", "#sNom");
+  if (!/^\d{10}$/.test($("#sTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, ""))) return err("Escribe un celular de 10 dígitos.", "#sTel");
   if (!["local", "nacional", "otro"].includes(env.tipo)) return err("Escribe tu ciudad y elígela de la lista.", "#sCiudad");
   if (!metodoElegido) return err("Elige cómo vas a pagar.");
   const tel = $("#sTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
@@ -286,7 +289,7 @@ $("#fSaldo").onsubmit = async e => {
   const respuesta = {
     ciudad: env.ciudad, tipoEnvio: env.tipo, ciudadLocal: claveLocal(env) || "", transportadora: !S.envioFijo && env.tipo === "nacional" ? (T.ENVIO_TRANSP.find(t => t.id === env.transp)?.n || "") : "",
     envio: c.envio, envioFijo: !!S.envioFijo, envioPorConfirmar: !S.envioFijo && env.tipo === "otro", metodo: c.m.id, metodoTxt: c.m.t, recargo: c.recargo, total: c.total, saldo: Math.max(saldoBase(), 0),
-    direccion: $("#sDir").value.trim(), complemento: $("#sComp").value.trim(), barrio: $("#sBarrio").value.trim(), telefono: tel,
+    nombre: $("#sNom").value.trim().replace(/\s+/g, " ").slice(0, 80), direccion: $("#sDir").value.trim(), complemento: $("#sComp").value.trim(), barrio: $("#sBarrio").value.trim(), telefono: tel,
     lat: pin?.lat ?? (sinUbic ? C.CIUDADES[claveLocal(env)].centro.lat : null), lng: pin?.lng ?? (sinUbic ? C.CIUDADES[claveLocal(env)].centro.lng : null), sinUbicacion: !!sinUbic,
     cedula: c.m.credito ? $("#sCedula").value.replace(/\D/g, "") : "", correo: $("#sCorreo").value.trim().toLowerCase()
   };
