@@ -126,7 +126,7 @@ export default {
 
 /* ---------- Cotizador público: valor del envío a municipios sin tarifa fija ---------- */
 // Cotiza un sobre de videojuego (22×19×4 cm, 1 kg, valor $50.000) desde Bogotá con Envía e Interrapidísimo.
-// Devuelve la tarifa más barata de cada una; el catálogo le suma $2.000 y redondea a los mil de arriba.
+// Devuelve la tarifa más barata de cada una; el catálogo la redondea a los mil de arriba.
 const cacheCot = new Map();
 const ALIAS_DEPTO_W = { "valle del cauca": ["Valle"], "la guajira": ["Guajira"], "san andres y providencia": ["San Andres", "Archipielago de San Andres"], "norte de santander": ["N. de Santander"] };
 async function cotizarPublico(req, env, base, responder) {

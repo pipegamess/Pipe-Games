@@ -66,11 +66,11 @@ function envioDeCiudad(txt) {
   envCotizar(x);
   return { local:false, tipo:'otro', ciudad:et, valor:0, escrito:true, titulo:'Envío a ' + et, cotizando: envCotEstado[x.key] === 'pend' };
 }
-/* Municipios sin tarifa fija: se cotiza en Skydropx con Envía e Interrapidísimo y se cobra la tarifa + $2.000,
-   redondeado a los mil de arriba. Cuando llega el valor, el municipio queda como uno con tarifa y se avisa con el evento "envio-cotizado". */
+/* Municipios sin tarifa fija: se cotiza en Skydropx con Envía e Interrapidísimo y se cobra la tarifa
+   redondeada a los mil de arriba. Cuando llega el valor, el municipio queda como uno con tarifa y se avisa con el evento "envio-cotizado". */
 const ENVIO_COTIZADOR = 'https://skydropx-pipegames.pipe-games22.workers.dev/cotizar';
 const envCotEstado = {};
-function envPrecioCotizado(v) { return v ? Math.ceil((Number(v) + 2000) / 1000) * 1000 : null; }
+function envPrecioCotizado(v) { return v ? Math.ceil(Number(v) / 1000) * 1000 : null; } // $12.300 → $13.000; $15.300 → $16.000
 function envCotizar(x) {
   if (!x || x.tar || typeof fetch !== 'function') return;
   const st = envCotEstado[x.key];
