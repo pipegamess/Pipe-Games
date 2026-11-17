@@ -10,8 +10,8 @@
 <meta name="description" content="Escribe tus datos de entrega para que te enviemos tu pedido.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117f">
-<link rel="stylesheet" href="tema-catalogo.css?v=20261117f">
+<link rel="stylesheet" href="estilos.css?v=20261117g">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261117g">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 #mapa{height:min(42vh,360px);min-height:240px}
@@ -50,6 +50,7 @@
     <div class="sug-caja"><label>Ciudad o municipio<input id="eCiudad" autocomplete="off" maxlength="80" placeholder="Escribe tu ciudad o municipio" required></label><div class="sugerencias" id="eCiudadSug" hidden></div></div>
     <div id="eTransp" hidden></div>
     <div class="sug-caja"><label>Dirección<input id="eDir" autocomplete="off" maxlength="120" placeholder="Ej. Calle 26 # 68-10" required></label><div class="sugerencias" id="eSug" hidden></div></div>
+    <span class="nota" id="eDirNota">Escribe solo la calle o carrera con su número (ej. Cra 26 # 63B-13). Torre, bloque, apto o casa van en Complemento.</span>
     <div class="fila">
       <label>Complemento de la dirección<input id="eComp" maxlength="80" placeholder="Torre, apartamento, casa…" required></label>
       <label>Barrio<input id="eBarrio" maxlength="60" placeholder="Ej. Modelia" required></label>
@@ -67,9 +68,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261117f";
-import * as C from "./comun.js?v=20261117f";
-import * as T from "./tarifas-envio.js?v=20261117f";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261117g";
+import * as C from "./comun.js?v=20261117g";
+import * as T from "./tarifas-envio.js?v=20261117g";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, setDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -79,7 +80,7 @@ const { esc } = C;
 const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
 // Si el navegador entregó una copia vieja del formulario, cargar la publicada
-const VERSION_FORM = "20261117f";
+const VERSION_FORM = "20261117g";
 fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()).then(j => {
   if (String(j.v || "") > VERSION_FORM) { const u = new URL(location.href); if (u.searchParams.get("v") !== j.v) { u.searchParams.set("v", j.v); location.replace(u.toString()); } }
 }).catch(() => {});
@@ -257,8 +258,18 @@ $("#eGps").onclick = () => {
 };
 
 /* ---------- enviar ---------- */
+// Dirección solo con la nomenclatura: lo demás pasa a Complemento (y "Barrio X" a Barrio)
+function separarDir() {
+  const movido = C.corregirCamposDireccion($("#eDir"), $("#eComp"), $("#eBarrio"));
+  if (movido) { $("#eDirNota").innerHTML = `Pasamos “<b>${esc(movido)}</b>” a Complemento${$("#eBarrio").value ? " / Barrio" : ""}. En Dirección va solo la calle o carrera con su número.`; $("#eDirNota").style.color = "var(--ink)"; }
+  return movido;
+}
+$("#eDir").addEventListener("change", separarDir);
+$("#eDir").addEventListener("blur", separarDir);
 $("#fEnvio").onsubmit = async e => {
   e.preventDefault(); $("#eErr").textContent = "";
+  separarDir();
+  if (C.direccionEmpiezaMal($("#eDir").value)) { $("#eErr").textContent = "En Dirección escribe primero la calle o carrera con su número (ej. Cra 26 # 63B-13). Torre, bloque, apto o casa van en Complemento."; $("#eDir").focus(); return; }
   const tel = $("#eTel").value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
   env = T.envioDeCiudad($("#eCiudad").value);
   const nac = esNacional();

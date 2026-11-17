@@ -5334,7 +5334,7 @@ function simCedulaOk(v) { return /^[0-9]{5,10}$/.test(String(v || '').replace(/[
 function simEmailOk(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()); }
 function simDatosOk() { return simCedulaOk(simDatos.cedula) && simEmailOk(simDatos.email); }
 function simTelOk(v) { return /^3\d{9}$/.test(String(v || '').replace(/\D/g, '').replace(/^57(?=3\d{9}$)/, '')); }
-function simDirOk(v) { return String(v || '').trim().length >= 6; }
+function simDirOk(v) { return String(v || '').trim().length >= 6 && !simDirEmpiezaMal(v); }
 function simBarrioOk(v) { return String(v || '').trim().length >= 2; }
 function simEntregaOk() { return simTelOk(simDatos.tel) && simDirOk(simDatos.dir) && simBarrioOk(simDatos.barrio) && simUbicOk(); }
 /* ── Mapa de entrega (Bogotá, Chía y Soacha) en el pedido a cuotas ── */
@@ -5426,6 +5426,23 @@ function simDirManual() {
   document.getElementById('simDirSug').innerHTML = '';
   simEstadoPin('Toca el mapa en tu casa o usa "Usar mi ubicación".');
   document.getElementById('simMapa')?.scrollIntoView({ block:'center', behavior:'smooth' });
+}
+// Dirección solo con la nomenclatura: torre, bloque, apto, casa, conjunto… pasan a Complemento y "Barrio X" a Barrio
+const SIM_DIR_EXTRA = /\b(?:(?:bloque|blq|torre|apartamento|apto|apt|casa|interior|int|piso|oficina|ofi|local|conjunto|conj|cjto|urbanizacion|urb|edificio|edif|manzana|mz|mza|lote|etapa|porteria|bodega|parqueadero|agrupacion|unidad residencial|portal|condominio|barrio|br)(?![a-zñ])|(?:t|ap|of|ed|lt)(?=\.?\s?\d)|ed\.(?=\s))\.?/i;
+const simPlano = t => [...String(t || '')].map(ch => ch.normalize('NFD')[0]).join('');
+function simDirEmpiezaMal(t) { const m = SIM_DIR_EXTRA.exec(simPlano(String(t || '').trim())); return !!m && m.index === 0; }
+function simSepararDir() {
+  const orig = String(simDatos.dir || '').replace(/\s+/g, ' ').trim(), m = SIM_DIR_EXTRA.exec(simPlano(orig));
+  if (!m || m.index === 0 || !/\d/.test(orig.slice(0, m.index))) return;
+  let resto = orig.slice(m.index).replace(/^[\s,;]+/, '').trim(); const movido = resto;
+  const b = /(?:^|[\s,;])(?:barrio|br)\.?\s+([^,;]+)/i.exec(resto);
+  if (b) { if (!String(simDatos.barrio || '').trim()) simDatos.barrio = b[1].trim(); resto = (resto.slice(0, b.index) + resto.slice(b.index + b[0].length)).replace(/^[\s,;]+|[\s,;]+$/g, '').trim(); }
+  simDatos.dir = orig.slice(0, m.index).replace(/[\s,;.\-–]+$/, '').trim();
+  if (resto && !String(simDatos.comp || '').toLowerCase().includes(resto.toLowerCase())) simDatos.comp = [resto, String(simDatos.comp || '').trim()].filter(Boolean).join(' ');
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('simDir', simDatos.dir); set('simComp', simDatos.comp); set('simBarrio', simDatos.barrio);
+  const n = document.getElementById('simDirNota'); if (n) { n.innerHTML = 'Pasamos “<b>' + simEsc(movido) + '</b>” a Complemento' + (b ? ' / Barrio' : '') + '. En Dirección va solo la calle o carrera con su número.'; n.style.opacity = '1'; }
+  simActualizarBotones();
 }
 function simDato(campo, el) {
   simDatos[campo] = el.value;
@@ -5643,14 +5660,15 @@ function simRender() {
         <label for="simTel">Celular</label>
         <input id="simTel" type="tel" inputmode="numeric" maxlength="13" placeholder="3001234567" value="${simEsc(simDatos.tel)}" oninput="simDato('tel',this)">
         <label for="simDir">Dirección</label>
-        <input id="simDir" type="text" maxlength="100" autocomplete="off" placeholder="Ej: Calle 26 # 68-10" value="${simEsc(simDatos.dir)}" oninput="simDato('dir',this);simDirBuscar()">
+        <input id="simDir" type="text" maxlength="100" autocomplete="off" placeholder="Ej: Calle 26 # 68-10" value="${simEsc(simDatos.dir)}" oninput="simDato('dir',this);simDirBuscar()" onblur="simSepararDir()">
+        <div class="sim-nota-dir" id="simDirNota" style="font-size:12px;opacity:.75;margin:-2px 0 4px">Solo la calle o carrera con su número (ej: Cra 26 # 63B-13). Torre, bloque, apto o casa van abajo, en Complemento.</div>
         ${simLocal() ? `<div class="sim-dir-sug" id="simDirSug"></div>
         <label>Ubicación de tu casa</label>
         <button type="button" class="sim-gps" onclick="simGps()">📍 Usar mi ubicación</button>
         <div class="sim-mapa" id="simMapa"></div>
         <div class="sim-pin${simTienePin() ? ' ok' : ''}" id="simPin">${simTienePin() ? 'Tu ubicación está marcada. Puedes moverla si hace falta.' : 'Elige tu dirección en la lista, usa tu ubicación o toca el mapa en tu casa.'}</div>
         <label class="sim-chk"><input type="checkbox" id="simSinUbic" ${simDatos.sinUbic && !simTienePin() ? 'checked' : ''} onchange="simSinUbicCambio(this)"> No logro ubicar mi dirección en el mapa</label>` : ''}
-        <label for="simComp">Apto, torre o casa (opcional)</label>
+        <label for="simComp">Complemento de la dirección (torre, apto, casa…)</label>
         <input id="simComp" type="text" maxlength="80" placeholder="Ej: Torre 2 apto 301" value="${simEsc(simDatos.comp)}" oninput="simDato('comp',this)">
         <label for="simBarrio">Barrio</label>
         <input id="simBarrio" type="text" maxlength="60" placeholder="Ej: Modelia" value="${simEsc(simDatos.barrio)}" oninput="simDato('barrio',this)">` : ''}

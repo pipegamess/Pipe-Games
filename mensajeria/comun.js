@@ -447,3 +447,34 @@ export function ciudadEnDireccion(T, direccion, barrio = "") {
   }
   return null;
 }
+
+// Dirección: solo la nomenclatura (Cra 26 # 63B-13). Bloque, torre, apto, casa, conjunto… van al complemento y "Barrio X" al barrio.
+const DIR_EXTRA = /\b(?:(?:bloque|blq|torre|apartamento|apto|apt|casa|interior|int|piso|oficina|ofi|local|conjunto|conj|cjto|urbanizacion|urb|edificio|edif|manzana|mz|mza|lote|etapa|porteria|bodega|parqueadero|agrupacion|unidad residencial|portal|condominio|barrio|br)(?![a-zñ])|(?:t|ap|of|ed|lt)(?=\.?\s?\d)|ed\.(?=\s))\.?/i;
+// La dirección empieza con torre, apto, conjunto…: falta la calle/carrera al inicio
+export const direccionEmpiezaMal = t => { const p = [...String(t || "").trim()].map(ch => ch.normalize("NFD")[0]).join(""); const m = DIR_EXTRA.exec(p); return !!m && m.index === 0; };
+export function separarDireccion(texto) {
+  const original = String(texto || "").replace(/\s+/g, " ").trim();
+  // Copia sin tildes con las mismas posiciones, para buscar las palabras
+  const plano = [...original].map(ch => ch.normalize("NFD")[0]).join("");
+  const m = DIR_EXTRA.exec(plano);
+  if (!m || m.index === 0 || !/\d/.test(plano.slice(0, m.index))) return { direccion: original, complemento: "", barrio: "", movido: "" };
+  const dir = original.slice(0, m.index).replace(/[\s,;.\-–]+$/, "").trim();
+  let resto = original.slice(m.index).replace(/^[\s,;]+/, "").trim();
+  let barrio = "";
+  const b = /(?:^|[\s,;])(?:barrio|br)\.?\s+([^,;]+)/i.exec(resto);
+  if (b) { barrio = b[1].trim(); resto = (resto.slice(0, b.index) + resto.slice(b.index + b[0].length)).replace(/^[\s,;]+|[\s,;]+$/g, "").trim(); }
+  return { direccion: dir, complemento: resto, barrio, movido: original.slice(m.index).trim() };
+}
+// Aplica la separación sobre los campos de un formulario. Devuelve el texto movido (o "") para avisar al cliente.
+export function corregirCamposDireccion(inDir, inComp, inBarrio) {
+  if (!inDir) return "";
+  const r = separarDireccion(inDir.value);
+  if (!r.movido) return "";
+  inDir.value = r.direccion;
+  if (r.complemento && inComp) {
+    const ya = inComp.value.trim();
+    if (!ya.toLowerCase().includes(r.complemento.toLowerCase())) inComp.value = [r.complemento, ya].filter(Boolean).join(" ");
+  }
+  if (r.barrio && inBarrio && !inBarrio.value.trim()) inBarrio.value = r.barrio;
+  return r.movido;
+}
