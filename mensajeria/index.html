@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117b">
+<link rel="stylesheet" href="estilos.css?v=20261117c">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117b";
-import * as C from "./comun.js?v=20261117b";
-import * as T from "./tarifas-envio.js?v=20261117b";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117c";
+import * as C from "./comun.js?v=20261117c";
+import * as T from "./tarifas-envio.js?v=20261117c";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1520,16 +1520,50 @@ function pintarCobros() {
   listaClientes(); pintarDestinoWa();
   pintarReservas();
   calcular();
-  const l = Object.entries(S.cobros || {}).map(([id, c]) => ({ id, ...c })).sort((a, b) => b.creado - a.creado).slice(0, 30);
+  // Cobros por mensaje y ventas con link de saldo, juntos y del más reciente al más antiguo
+  const msj = Object.entries(S.cobros || {}).map(([id, c]) => ({ id, tipo: "cobro", ...c }));
+  const links = Object.entries(S.reservas || {}).filter(([, r]) => r.saldoToken && r.red === "Link de cobro")
+    .map(([id, r]) => ({ id, tipo: "link", cliente: titulo(r.nombre), saldo: Math.max(0, (r.total || 0) - (r.abono || 0)), telefono: r.contacto || "", creado: r.orden || 0, pagado: r.pagado || 0, r }));
+  const l = [...msj, ...links].sort((a, b) => b.creado - a.creado).slice(0, 30);
   $("#cbListaN").textContent = l.length;
-  $("#cbLista").innerHTML = l.length ? l.map(c => `<div class="item"><div class="arriba"><span><b>${esc(c.cliente || "Cliente")}</b></span><span class="pill ${c.pagado ? "entregada" : "novedad"}">${c.pagado ? "Pagado" : "Pendiente"}</span></div>
-      <div class="meta">Saldo ${C.cop(c.saldo)} · ${esc((c.metodoTxt || "").split(" · ")[0])} · ${C.fecha(c.creado)}${c.pagado && c.saldo > 0 ? " · pagado " + C.fecha(c.pagado) : ""}</div>
-      <div class="btns">${!c.pagado ? `<button class="btn chico" data-cbpag="${c.id}">Marcar pagado</button>` : ""}<button class="btn sec chico" data-cbusar="${c.id}">Abrir en la calculadora</button><button class="btn sec chico" data-cbdel="${c.id}">Borrar</button></div></div>`).join("")
-    : `<div class="vacio">Aquí quedan los cobros que envíes, para marcar cuáles ya pagaron.</div>`;
+  $("#cbLista").innerHTML = l.length ? l.map(c => { const k = c.tipo + ":" + c.id, tel = c.tipo === "link" ? waDe(c.telefono, c.r.red) : waDe(c.telefono); return `<div class="item"><div class="arriba"><span><b>${esc(c.cliente || "Cliente")}</b>${c.tipo === "link" ? ` <span class="pill">Link de saldo</span>` : ""}</span><span class="pill ${c.pagado ? "entregada" : "novedad"}">${c.pagado ? "Pagado" : "Pendiente"}</span></div>
+      <div class="meta">${c.tipo === "link" ? "Total " + C.cop(c.r.total || 0) + (c.r.confirmacion ? " · el cliente ya llenó sus datos" : " · esperando datos del cliente") : "Saldo " + C.cop(c.saldo) + " · " + esc((c.metodoTxt || "").split(" · ")[0])} · ${C.fecha(c.creado)}${c.pagado && c.saldo > 0 ? " · pagado " + C.fecha(c.pagado) : ""}</div>
+      <div class="meta">WhatsApp: ${tel ? `<b>${esc(tel)}</b>` : `<span style="color:var(--err)">sin número</span>`}</div>
+      ${cbEditTel === k ? `<div class="fila" style="grid-template-columns:1fr auto auto;gap:6px;align-items:end"><label>WhatsApp del cliente<input id="cbEdTel" maxlength="40" placeholder="3001234567 o @usuario" autocapitalize="off" spellcheck="false" value="${esc(c.telefono || "")}"></label><button class="btn chico" data-cbtelok="${esc(k)}">Guardar</button><button class="btn sec chico" data-cbtelno="1">Cancelar</button></div>` : ""}
+      <div class="btns"><button class="btn chico" data-cbreenv="${esc(k)}">${tel ? "Enviar por WhatsApp" : "Enviar por WhatsApp (escoge el chat)"}</button><button class="btn sec chico" data-cbcop="${esc(k)}">${c.tipo === "link" ? "Copiar link" : "Copiar mensaje"}</button><button class="btn sec chico" data-cbtel="${esc(k)}">${tel ? "Editar número" : "Agregar número"}</button>${c.tipo === "cobro" ? `${!c.pagado ? `<button class="btn sec chico" data-cbpag="${c.id}">Marcar pagado</button>` : ""}<button class="btn sec chico" data-cbusar="${c.id}">Abrir en la calculadora</button><button class="btn sec chico" data-cbdel="${c.id}">Borrar</button>` : `<button class="btn sec chico" data-cbirres="${c.id}">Ver en reservas</button>`}</div></div>`; }).join("")
+    : `<div class="vacio">Aquí quedan los cobros y links de saldo que envíes, para marcar cuáles ya pagaron.</div>`;
+}
+let cbEditTel = null;
+// Texto a enviar o copiar de cada cobro de la lista
+function textoDeCobro(k) {
+  const [tipo, id] = k.split(":");
+  if (tipo === "link") {
+    const r = S.reservas?.[id]; if (!r) return null;
+    const link = URL_SALDO + "?c=" + r.saldoToken + "&v=" + VERSION_PANEL;
+    return { link, texto: `Hola ${C.primerNombre(titulo(r.nombre))}, este es el link para completar tu pedido de ${r.detalle || r.producto}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}`, tel: waDe(r.contacto, r.red) };
+  }
+  const c = S.cobros?.[id]; if (!c) return null;
+  return { texto: mensajeCobro({ extras: [], abonos: [], ...c }), tel: waDe(c.telefono) };
 }
 $("#cbLista").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const ref = doc(db, "usuarios", ADMIN_UID);
+  if (b.dataset.cbtel) { cbEditTel = b.dataset.cbtel; pintarCobros(); $("#cbEdTel")?.focus(); return; }
+  if (b.dataset.cbtelno) { cbEditTel = null; pintarCobros(); return; }
+  if (b.dataset.cbreenv) { const t = textoDeCobro(b.dataset.cbreenv); if (t) abrirWA(t.tel, t.texto); return; }
+  if (b.dataset.cbcop) { const t = textoDeCobro(b.dataset.cbcop); if (t) copiar(t.link || t.texto, t.link ? "Link de saldo copiado" : "Mensaje de cobro copiado"); return; }
+  if (b.dataset.cbirres) { $("#plReservas") && ($("#plReservas").open = true); $("#rsBuscar") && ($("#rsBuscar").value = S.reservas?.[b.dataset.cbirres]?.nombre || ""); pintarReservas(); $("#plReservas")?.scrollIntoView({ behavior: "smooth" }); return; }
+  if (b.dataset.cbtelok) {
+    const [tipo, id] = b.dataset.cbtelok.split(":"), v = $("#cbEdTel").value.trim();
+    const tel = v ? waDe(v) : "";
+    if (v && !tel) { toast("Escribe un celular de 10 dígitos o un @usuario de WhatsApp"); return; }
+    try {
+      if (tipo === "link") await updateDoc(ref, { [`reservas.${id}.contacto`]: tel });
+      else { const c = S.cobros?.[id]; const cambios = { [`cobros.${id}.telefono`]: tel }; if (c?.reserva && S.reservas?.[c.reserva]) cambios[`reservas.${c.reserva}.contacto`] = tel; await updateDoc(ref, cambios); }
+      cbEditTel = null; toast(tel ? "Número guardado" : "Número quitado");
+    } catch (err) { toast(C.mensajeError(err)); }
+    return;
+  }
   try {
     if (b.dataset.cbpag) await updateDoc(ref, { [`cobros.${b.dataset.cbpag}.pagado`]: Date.now() });
     if (b.dataset.cbdel) await updateDoc(ref, { [`cobros.${b.dataset.cbdel}`]: deleteField() });
@@ -2174,7 +2208,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117b";
+const VERSION_PANEL = "20261117c";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
