@@ -129,10 +129,10 @@ const PLATAFORMAS = [
     precio: (N, p) => (N + p.envio) / (1 - (p.com + p.reteP) / 100) }, // Excel: =(B2+9600)/0.82
   { id: "fa", nombre: "Falabella", c: "var(--fa)",
     p: { imp: 2, com: 15, envio: 8800, directo: 10000 },
-    etiquetas: { imp: "Impuesto %", com: "Comisión %", envio: "Envío $", directo: "Envío adicional Falabella Directo $" },
-    // Falabella Directo: descuenta además el envío adicional (por defecto $10.000)
-    desglose: (P, p) => [["Impuesto " + p.imp + "%", P * p.imp / 100], ["Comisión " + p.com + "%", P * p.com / 100], ["Envío", p.envio], ...(faDirecto ? [["Envío adicional Falabella Directo", p.directo]] : [])],
-    precio: (N, p) => (N + p.envio + (faDirecto ? p.directo : 0)) / (1 - (p.imp + p.com) / 100) },
+    etiquetas: { imp: "Impuesto %", com: "Comisión %", envio: "Envío $", directo: "Envío Falabella Directo $" },
+    // Falabella Directo: el envío es de $10.000 en lugar de $8.800
+    desglose: (P, p) => [["Impuesto " + p.imp + "%", P * p.imp / 100], ["Comisión " + p.com + "%", P * p.com / 100], [faDirecto ? "Envío Falabella Directo" : "Envío", envioFa(p)]],
+    precio: (N, p) => (N + envioFa(p)) / (1 - (p.imp + p.com) / 100) },
   { id: "ex", nombre: "Éxito", c: "var(--ex)",
     p: { desc: 10, iva: 19 },
     etiquetas: { desc: "Descuento %", iva: "IVA % del descuento" },
@@ -155,6 +155,7 @@ try { const g = JSON.parse(localStorage.getItem("pg_calc_ajustes") || "{}"); PLA
 const guardar = () => { try { localStorage.setItem("pg_calc_ajustes", JSON.stringify(Object.fromEntries(PLATAFORMAS.map(pl => [pl.id, pl.p])))); } catch {} };
 
 let modo = "neto", faDirecto = false;
+const envioFa = p => faDirecto ? p.directo : p.envio;
 try { faDirecto = localStorage.getItem("pg_calc_fadirecto") === "1"; } catch {}
 try { modo = localStorage.getItem("pg_calc_modo") === "precio" ? "precio" : "neto"; } catch {}
 
@@ -176,13 +177,13 @@ function tarjeta(pl, V) {
       <tr class="total"><td>Te queda</td><td>${cop(n)}</td></tr></table>`;
   }
   const aj = Object.keys(pl.p).map(k => `<label>${pl.etiquetas[k]}<input data-pl="${pl.id}" data-k="${k}" inputmode="decimal" value="${pl.p[k]}"></label>`).join("");
-  const tipoFa = pl.id === "fa" ? `<div class="modo mini" role="group" aria-label="Tipo de envío Falabella"><button type="button" data-fa="0" aria-pressed="${!faDirecto}">Falabella</button><button type="button" data-fa="1" aria-pressed="${faDirecto}">Falabella Directo · envío +${cop(pl.p.directo)}</button></div>` : "";
+  const tipoFa = pl.id === "fa" ? `<div class="modo mini" role="group" aria-label="Tipo de envío Falabella"><button type="button" data-fa="0" aria-pressed="${!faDirecto}">Falabella</button><button type="button" data-fa="1" aria-pressed="${faDirecto}">Falabella Directo · envío ${cop(pl.p.directo)}</button></div>` : "";
   return `<article class="card" style="--c:${pl.c}"><h2>${pl.id === "fa" && faDirecto ? "Falabella Directo" : pl.nombre}<small>${resumen(pl)}</small></h2>${tipoFa}${cuerpo}
     <details><summary>Ajustes</summary><div class="ajustes">${aj}</div><button class="copiar" type="button" data-restaurar="${pl.id}" style="margin-top:10px">Volver a los valores del Excel</button></details></article>`;
 }
 function resumen(pl) {
   const p = pl.p;
-  return { ml: `${p.com}% + rete + envío ${cop(p.envio)}`, fa: `${p.imp + p.com}% + envío ${cop(p.envio + (faDirecto ? p.directo : 0))}`, ex: `${(p.desc * (1 + p.iva / 100)).toFixed(1)}%`, addi: `÷ ${p.factor}`, siste: `${p.desc}%` }[pl.id];
+  return { ml: `${p.com}% + rete + envío ${cop(p.envio)}`, fa: `${p.imp + p.com}% + envío ${cop(envioFa(p))}`, ex: `${(p.desc * (1 + p.iva / 100)).toFixed(1)}%`, addi: `÷ ${p.factor}`, siste: `${p.desc}%` }[pl.id];
 }
 function pintar() {
   const V = num($("valor").value);
