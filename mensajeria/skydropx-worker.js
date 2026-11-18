@@ -361,9 +361,10 @@ async function avisoAddi(req, env, url) {
   const reserva = url.searchParams.get("r") || "";
   const estado = String(d.status || d.applicationStatus || "").toLowerCase();
   if (reserva && /^[A-Za-z0-9_-]{1,60}$/.test(reserva) && env.FIREBASE_SA) {
-    const credito = { estado, monto: Number(d.approvedAmount) || 0, orden: String(d.orderId || url.searchParams.get("o") || ""), solicitud: String(d.applicationId || ""), t: Date.now() };
+    // Solo se actualizan estos campos del crédito: el link (url, codigo, t) que creó el panel se conserva
+    const credito = { estado, monto: Number(d.approvedAmount) || 0, solicitud: String(d.applicationId || ""), tAviso: Date.now() };
     const campos = { credito: { mapValue: { fields: aCamposFS(credito) } } };
-    const mascara = ["credito"];
+    const mascara = Object.keys(credito).map(k => "credito." + k);
     if (estado === "approved") { campos.pagado = { integerValue: String(Date.now()) }; mascara.push("pagado"); }
     try { await escribirReserva(env, reserva, campos, mascara); } catch (e) { return json('{"error":"no se pudo guardar"}', 500); } // Addi reintenta
   }
@@ -391,7 +392,8 @@ async function tokenServicio(env) {
 async function escribirReserva(env, reserva, campos, mascara) {
   const tk = await tokenServicio(env);
   const ruta = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID;
-  const qs = mascara.map(m => "updateMask.fieldPaths=" + encodeURIComponent("reservas.`" + reserva + "`." + m)).join("&");
+  const campo = /^[A-Za-z_][A-Za-z0-9_]*$/.test(reserva) ? reserva : "`" + reserva + "`";
+  const qs = mascara.map(m => "updateMask.fieldPaths=" + encodeURIComponent("reservas." + campo + "." + m)).join("&");
   const r = await fetch("https://firestore.googleapis.com/v1/" + ruta + "?" + qs, { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
     body: JSON.stringify({ fields: { reservas: { mapValue: { fields: { [reserva]: { mapValue: { fields: campos } } } } } } }) });
   if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
