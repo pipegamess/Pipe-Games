@@ -26,7 +26,10 @@ let tokenSkydropx = { valor: "", vence: 0, base: "" };
 
 export default {
   async fetch(req, env) {
-    const origen = env.ORIGEN || "https://pipegames.com.co";
+    const origenCfg = (env.ORIGEN || "https://pipegames.com.co").replace(/\/+$/, "");
+    const origenReq = req.headers.get("Origin") || "";
+    const origenOk = o => !!o && (o === origenCfg || /^https:\/\/(www\.)?pipegames\.com\.co$/.test(o));
+    const origen = origenOk(origenReq) ? origenReq : origenCfg;
     const cors = {
       "Access-Control-Allow-Origin": origen,
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -46,11 +49,14 @@ export default {
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
     // Link corto para el cliente: /addi/ir?c=<reserva>.<código> → página de Addi
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
+    // Prueba del cotizador desde el navegador: /cotizar?c=Girardot&d=Cundinamarca (muestra el detalle de Skydropx)
+    if (req.method === "GET" && url.pathname === "/cotizar") return cotizarPublico({ ciudad: url.searchParams.get("c"), depto: url.searchParams.get("d"), detalle: true }, env, base, responder);
     if (req.method !== "POST") return responder({ error: "Método no permitido" }, 405);
     // Cotizador público (catálogo, link de saldo y datos de envío): solo cotiza, nunca crea guías
     if (url.pathname === "/cotizar") {
-      if ((req.headers.get("Origin") || "") !== origen) return responder({ error: "Origen no permitido" }, 403);
-      return cotizarPublico(req, env, base, responder);
+      if (!origenOk(origenReq)) return responder({ error: "Origen no permitido: " + origenReq }, 403);
+      let b; try { b = await req.json(); } catch { return responder({ error: "Cuerpo inválido" }, 400); }
+      return cotizarPublico(b, env, base, responder);
     }
 
     // 1) Solo la cuenta de despacho (token de Firebase verificado)
@@ -129,13 +135,13 @@ export default {
 // Devuelve la tarifa más barata de cada una; el catálogo la redondea a los mil de arriba.
 const cacheCot = new Map();
 const ALIAS_DEPTO_W = { "valle del cauca": ["Valle"], "la guajira": ["Guajira"], "san andres y providencia": ["San Andres", "Archipielago de San Andres"], "norte de santander": ["N. de Santander"] };
-async function cotizarPublico(req, env, base, responder) {
-  let b; try { b = await req.json(); } catch { return responder({ error: "Cuerpo inválido" }, 400); }
+async function cotizarPublico(b, env, base, responder) {
+  const traza = [];
   const limpio = v => String(v || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z .,()'-]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
   const ciudad = limpio(b.ciudad), depto = limpio(b.depto);
   if (ciudad.length < 2 || depto.length < 2) return responder({ error: "Falta la ciudad" }, 400);
   const k = (ciudad + "|" + depto).toLowerCase();
-  const c = cacheCot.get(k); if (c && Date.now() - c.t < 6 * 3600e3) return responder(c.r);
+  const c = cacheCot.get(k); if (c && !b.detalle && Date.now() - c.t < 6 * 3600e3) return responder(c.r);
   if (!env.SKYDROPX_CLIENT_ID || !env.SKYDROPX_CLIENT_SECRET) return responder({ error: "Faltan las credenciales de Skydropx en el Worker" }, 500);
   const origenes = [["Cundinamarca", "Bogota"], ["Bogota D.C.", "Bogota"], ["Distrito Capital", "Bogota"], ["Bogota", "Bogota"]];
   const deptos = [depto, ...(ALIAS_DEPTO_W[depto.toLowerCase()] || [])];
@@ -151,8 +157,9 @@ async function cotizarPublico(req, env, base, responder) {
       let r = await llamar(base, "/quotations", "POST", cuerpo, tk);
       if (r.status === 401) { tokenSkydropx.vence = 0; tk = await tokenDeSkydropx(env, base); r = await llamar(base, "/quotations", "POST", cuerpo, tk); }
       const j = await r.json().catch(() => ({}));
-      if (r.ok) { q = j; break; }
       const msg = JSON.stringify(j);
+      traza.push({ intento, origen: o1 + "/" + o2, destino: d1 + "/" + d2, carriers: conCarriers, estado: r.status, respuesta: r.ok ? undefined : msg.slice(0, 300) });
+      if (r.ok) { q = j; break; }
       if (r.status !== 422) throw new Error("Skydropx respondió " + r.status);
       if (/requested_carriers/.test(msg) && conCarriers) { conCarriers = false; continue; }
       let avanzo = false;
@@ -171,10 +178,12 @@ async function cotizarPublico(req, env, base, responder) {
     const de = x => String(x.provider_name || x.provider_display_name || "").toLowerCase().normalize("NFD").replace(/[^a-z]/g, "");
     const minimo = pref => { const v = rates.filter(x => de(x).startsWith(pref)).map(x => Math.ceil(+(x.total || x.amount))); return v.length ? Math.min(...v) : null; };
     const res = { tarifas: { envia: minimo("envia"), inter: minimo("inter") } };
-    cacheCot.set(k, { t: Date.now(), r: res });
+    if (res.tarifas.envia || res.tarifas.inter) cacheCot.set(k, { t: Date.now(), r: res });
+    if (b.detalle) return responder({ ...res, completa: !!(q.is_completed ?? q.data?.is_completed), traza,
+      tarifasSkydropx: (q.rates || q.data?.rates || []).map(x => ({ transportadora: x.provider_name || x.provider_display_name, servicio: x.provider_service_name, total: x.total || x.amount, estado: x.status, success: x.success })) });
     return responder(res);
   } catch (e) {
-    return responder({ error: String(e.message || e).slice(0, 200) }, 502);
+    return responder({ error: String(e.message || e).slice(0, 200), ...(b.detalle ? { traza } : {}) }, 502);
   }
 }
 
