@@ -5846,6 +5846,8 @@ function enviarPedidoWA() {
     metodo = simPagoCarrito;
   }
   simPagoItem = null;
+  // Tarjeta de crédito: el pedido pasa a la página de pago, donde deja sus datos y paga con Bold (sin esperar a que le enviemos el link)
+  if (metodo === 'tarjeta' && pedidoTarjetaPosible(ciudad, items)) { pagarTarjetaCatalogo(nombre, ciudad, items); return; }
   // Pago a cuotas: el pedido llega al panel con sus datos; el WhatsApp solo trae el pedido (sin cédula, correo, celular ni dirección)
   const token = pedidoCuotasPosible(ciudad, items, metodo) ? pcToken() : '';
   pendingWAMessage = waArmarPedido(nombre, ciudad, items, metodo, !!token);
@@ -5905,6 +5907,32 @@ async function crearPedidoCuotas(token, nombre, ciudad, items, metodo) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     pcAvisoListo(metodo);
   } catch (e) { console.warn('pedido a cuotas', e); }
+}
+function pedidoTarjetaPosible(ciudad, items) {
+  if (!items.length) return false;
+  const env = envioPedido(ciudad, items);
+  return ['local', 'nacional', 'otro'].includes(env.tipo);
+}
+async function pagarTarjetaCatalogo(nombre, ciudad, items) {
+  const its = items.map(it => ({ n: (it.name + (it.platform ? ' · ' + it.platform : '')).slice(0, 120), q: it.qty || 1, v: priceToNum(it.price) }));
+  const total = its.reduce((a, i) => a + i.q * i.v, 0), env = envioPedido(ciudad, items), token = pcToken();
+  const datos = {
+    nombre: (nombre || 'Cliente').slice(0, 80),
+    producto: (its[0].n + (its.length > 1 ? ` y ${its.length - 1} artículo${its.length > 2 ? 's' : ''} más` : '')).slice(0, 300),
+    items: its, unidades: 1, unitario: total, abono: 0, abonos: [], venta: true, estado: 'enviado', creado: Date.now(), origen: 'catalogo',
+    ciudadSugerida: String(env.ciudad || ciudad || '').slice(0, 80), pre: { metodo: 'tarjeta', transp: env.tipo === 'nacional' ? (env.transp || '') : '' }
+  };
+  try {
+    const r = await fetch(`${PC_FIRESTORE}?documentId=${token}&key=${PC_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields: Object.fromEntries(Object.entries(datos).map(([k, x]) => [k, pcValor(x)])) }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    location.href = `${PC_URL_SALDO}?c=${token}`;
+  } catch (e) {
+    // Si no se pudo, el pedido sigue por WhatsApp como antes
+    console.warn('pedido con tarjeta', e);
+    pendingWAMessage = waArmarPedido(nombre, ciudad, items, 'tarjeta', false);
+    enviarPorLinea('573118836995');
+  }
 }
 function pcAvisoListo(metodo) {
   let m = document.getElementById('pcModal');

@@ -14,6 +14,9 @@
 //   ADDI_NOTI_USER / ADDI_NOTI_PASS       (Secret)  credenciales de notificación (Basic Auth del aviso de Addi)
 //   ADDI_AMBIENTE                         (Text, opcional) "produccion" (por defecto) o "pruebas"
 //   FIREBASE_SA                           (Secret)  JSON de la cuenta de servicio de Firebase (para marcar pagado)
+// Bold (pago con tarjeta por link), opcional:
+//   BOLD_API_KEY            (Secret)  Llave de identidad de Bold (Integraciones → Llaves → Botón de pagos)
+//   BOLD_SECRET             (Secret)  Llave secreta de Bold (firma de los avisos del webhook)
 //   ANTHROPIC_API_KEY       (Secret)  Clave de la API de Claude (console.anthropic.com) para el generador de publicaciones
 //   ANTHROPIC_MODEL         (Text, opcional) claude-sonnet-5-5
 //
@@ -25,7 +28,7 @@ const RUTAS_PERMITIDAS = /^\/(quotations|shipments|carriers|orders|labels|pickup
 let tokenSkydropx = { valor: "", vence: 0, base: "" };
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const origenCfg = (env.ORIGEN || "https://pipegames.com.co").replace(/\/+$/, "");
     const origenReq = req.headers.get("Origin") || "";
     const origenOk = o => !!o && (o === origenCfg || /^https:\/\/(www\.)?pipegames\.com\.co$/.test(o));
@@ -47,11 +50,20 @@ export default {
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
+    // Aviso de Bold (webhook) con el resultado del pago con tarjeta: se valida con la firma x-bold-signature
+    if (req.method === "POST" && url.pathname === "/bold/aviso") return avisoBold(req, env, ctx);
     // Link corto para el cliente: /addi/ir?c=<reserva>.<código> → página de Addi
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
     // Prueba del cotizador desde el navegador: /cotizar?c=Girardot&d=Cundinamarca (muestra el detalle de Skydropx)
     if (req.method === "GET" && url.pathname === "/cotizar") return cotizarPublico({ ciudad: url.searchParams.get("c"), depto: url.searchParams.get("d"), detalle: true }, env, base, responder);
     if (req.method !== "POST") return responder({ error: "Método no permitido" }, 405);
+    // Link de pago Bold para un saldo confirmado con tarjeta (página de saldo): el valor sale del saldo guardado
+    if (url.pathname === "/bold/link") {
+      if (!origenOk(origenReq)) return responder({ error: "Origen no permitido: " + origenReq }, 403);
+      let b; try { b = await req.json(); } catch { return responder({ error: "Cuerpo inválido" }, 400); }
+      try { return responder(await linkBold(String(b.c || ""), env)); }
+      catch (e) { return responder({ error: String(e.message || e).slice(0, 300) }, 400); }
+    }
     // Cotizador público (catálogo, link de saldo y datos de envío): solo cotiza, nunca crea guías
     if (url.pathname === "/cotizar") {
       if (!origenOk(origenReq)) return responder({ error: "Origen no permitido: " + origenReq }, 403);
@@ -371,6 +383,81 @@ async function avisoAddi(req, env, url) {
   return json(cuerpoTxt || "{}"); // Addi espera la misma respuesta que envió
 }
 const aCamposFS = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === "number" ? (Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v }) : { stringValue: String(v) }]));
+/* ---------- Bold: link de pago con tarjeta y aviso de pago ---------- */
+const BOLD_API = "https://integrations.api.bold.co";
+// Valor de Firestore (REST) a JavaScript
+const deFS = v => !v ? null : "stringValue" in v ? v.stringValue : "integerValue" in v ? Number(v.integerValue) : "doubleValue" in v ? v.doubleValue : "booleanValue" in v ? v.booleanValue
+  : "mapValue" in v ? Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, deFS(x)])) : "arrayValue" in v ? (v.arrayValue.values || []).map(deFS) : null;
+const rutaSaldo = (env, token) => "https://firestore.googleapis.com/v1/projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/saldos/" + token;
+async function leerSaldo(env, token) {
+  const r = await fetch(rutaSaldo(env, token), { headers: { Authorization: "Bearer " + await tokenServicio(env) } });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("No se pudo leer el pedido (" + r.status + ")");
+  const d = await r.json();
+  return Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, deFS(v)]));
+}
+async function guardarBoldEnSaldo(env, token, bold) {
+  const qs = Object.keys(bold).map(k => "updateMask.fieldPaths=" + encodeURIComponent("bold." + k)).join("&");
+  const r = await fetch(rutaSaldo(env, token) + "?" + qs + "&currentDocument.exists=true", { method: "PATCH", headers: { Authorization: "Bearer " + await tokenServicio(env), "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { bold: { mapValue: { fields: aCamposFS(bold) } } } }) });
+  if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
+}
+async function linkBold(token, env) {
+  if (!/^[A-Z0-9]{18}$/.test(token)) throw new Error("Pedido no válido");
+  if (!env.BOLD_API_KEY) throw new Error("Falta BOLD_API_KEY en el Worker");
+  if (!env.FIREBASE_SA) throw new Error("Falta FIREBASE_SA en el Worker");
+  const sd = await leerSaldo(env, token);
+  if (!sd) throw new Error("Pedido no encontrado");
+  const rsp = sd.respuesta || {};
+  if (!["confirmado", "recibido"].includes(sd.estado) || rsp.metodo !== "tarjeta") throw new Error("Este pedido no es para pagar con tarjeta");
+  if (rsp.envioPorConfirmar) throw new Error("El envío aún no tiene valor: te escribimos por WhatsApp");
+  const bold = sd.bold || {};
+  if (bold.estado === "pagado") return { pagado: true };
+  if (bold.url && bold.total === Math.round(rsp.total) && Date.now() - (bold.t || 0) < 20 * 3600e3) return { url: bold.url };
+  const total = Math.round(Number(rsp.total) || 0);
+  if (total < 1000 || total > 50000000) throw new Error("Total no válido");
+  const referencia = ("PG-" + token + "-" + Date.now().toString(36)).toUpperCase().slice(0, 60);
+  const cuerpo = {
+    amount_type: "CLOSE", amount: { currency: "COP", total_amount: total, tip_amount: 0, taxes: [] },
+    reference: referencia, description: ("Pipe Games · " + String(sd.producto || "Pedido")).replace(/[^\p{L}\p{N} .,·#()\-+]/gu, " ").slice(0, 100),
+    callback_url: "https://pipegames.com.co/mensajeria/saldo.html?c=" + token + "&bold=1",
+    payment_methods: ["CREDIT_CARD"], image_url: "https://pipegames.com.co/mensajeria/logo-pipegames.jpg",
+    ...(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(rsp.correo || "") ? { payer_email: rsp.correo } : {})
+  };
+  const r = await fetch(BOLD_API + "/online/link/v1", { method: "POST", headers: { Authorization: "x-api-key " + env.BOLD_API_KEY, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(cuerpo) });
+  const j = await r.json().catch(() => ({}));
+  const url = j?.payload?.url, link = j?.payload?.payment_link;
+  if (!r.ok || !url) throw new Error("Bold respondió " + r.status + ": " + JSON.stringify(j.errors || j).slice(0, 200));
+  await guardarBoldEnSaldo(env, token, { url, link: link || "", referencia, total, t: Date.now(), estado: "creado" });
+  return { url };
+}
+async function firmaBold(texto, secreto) {
+  const bytes = new TextEncoder().encode(texto);
+  let bin = ""; for (const b of bytes) bin += String.fromCharCode(b);
+  const llave = await crypto.subtle.importKey("raw", new TextEncoder().encode(secreto), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const f = await crypto.subtle.sign("HMAC", llave, new TextEncoder().encode(btoa(bin)));
+  return [...new Uint8Array(f)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function avisoBold(req, env, ctx) {
+  const crudo = await req.text();
+  const firma = (req.headers.get("x-bold-signature") || "").toLowerCase();
+  if (!firma || firma !== await firmaBold(crudo, env.BOLD_SECRET || "")) return new Response('{"error":"firma no válida"}', { status: 401 });
+  let d = {}; try { d = JSON.parse(crudo); } catch {}
+  const m = /^PG-([A-Z0-9]{18})-/.exec(String(d?.data?.metadata?.reference || "").toUpperCase());
+  const tipo = String(d.type || "");
+  if (m && env.FIREBASE_SA && /^SALE_(APPROVED|REJECTED)$/.test(tipo)) {
+    const trabajo = (async () => {
+      const token = m[1], aprobado = tipo === "SALE_APPROVED";
+      await guardarBoldEnSaldo(env, token, { estado: aprobado ? "pagado" : "rechazado", pago: String(d.data?.payment_id || ""), monto: Number(d.data?.amount?.total) || 0, tPago: Date.now() });
+      if (!aprobado) return;
+      const sd = await leerSaldo(env, token);
+      if (sd?.reservaId) await escribirReserva(env, sd.reservaId, { pagado: { integerValue: String(Date.now()) }, pagoBold: { mapValue: { fields: aCamposFS({ pago: String(d.data?.payment_id || ""), monto: Number(d.data?.amount?.total) || 0, t: Date.now() }) } } }, ["pagado", "pagoBold"]);
+    })().catch(e => console.warn("aviso Bold", e));
+    if (ctx?.waitUntil) ctx.waitUntil(trabajo); else await trabajo;
+  }
+  return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }); // Bold espera 200 en menos de 2 segundos
+}
+
 /* ---------- escritura en Firestore con la cuenta de servicio ---------- */
 let tokenGoogle = { valor: "", vence: 0 };
 async function tokenServicio(env) {

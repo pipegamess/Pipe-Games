@@ -11,12 +11,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117m">
+<link rel="stylesheet" href="estilos.css?v=20261117n">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261117m";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261117n";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261117m">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261117n">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -98,9 +98,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY } from "./config.js?v=20261117m";
-import * as C from "./comun.js?v=20261117m";
-import * as T from "./tarifas-envio.js?v=20261117m";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117n";
+import * as C from "./comun.js?v=20261117n";
+import * as T from "./tarifas-envio.js?v=20261117n";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -310,15 +310,17 @@ $("#fSaldo").onsubmit = async e => {
   const b = $("#sBtn"); b.disabled = true; b.textContent = "Enviando…";
   try {
     await updateDoc(doc(db, "saldos", id), { estado: "confirmado", respuesta, confirmado: Date.now() });
-    confirmado(respuesta);
+    confirmado(respuesta, true);
   } catch { err("No se pudo enviar. Revisa tu conexión e intenta de nuevo."); b.disabled = false; b.textContent = "Confirmar"; }
 };
-function confirmado(r) {
+function confirmado(r, recien) {
+  setTimeout(() => prepararBold(r, recien), 0);
   $("#fSaldo").hidden = true; $("#resumen").innerHTML = "";
   $("#intro").textContent = S ? `Gracias, ${C.primerNombre(titulo(S.nombre))}.` : "Gracias.";
   const total = r.total || 0;
   const pasos = r.metodo === "transf" ? `<p style="margin:0">Transfiere <b>${C.cop(total)}</b>${r.envioPorConfirmar ? " (más el envío que te confirmaremos)" : ""} a la llave Bre-B:</p>${bloqueLlave()}<p class="nota" style="margin:0">Luego envíanos el comprobante por WhatsApp.</p>`
-    : r.metodo === "tarjeta" ? `<p style="margin:0">Te enviaremos por WhatsApp el link de pago con tarjeta por <b>${C.cop(total)}</b>.</p>`
+    : r.metodo === "tarjeta" && r.envioPorConfirmar ? `<p style="margin:0">Te enviaremos por WhatsApp el link de pago con tarjeta por <b>${C.cop(total)}</b> más el envío.</p>`
+    : r.metodo === "tarjeta" ? `<div id="boldCaja" class="lista" style="gap:8px">${S?.bold?.estado === "pagado" ? boldPagadoHTML() : `<p class="nota" style="margin:0">Preparando tu link de pago con tarjeta…</p>`}</div>`
     : `<p style="margin:0">Envíanos tu pedido por WhatsApp para <b>autorizar tu crédito</b> con ${r.metodo === "addi" ? "Addi" : "Sistecrédito"} por <b>${C.cop(total)}</b>. Cuando lo autoricemos te enviaremos el link para completar tu pago a cuotas.</p>`;
   const texto = `Hola, confirmo mi pedido de ${S?.producto || "mi reserva"}${S?.unidades > 1 ? " (" + S.unidades + " unidades)" : ""}.\nEnvío a: ${r.ciudad || ""}\nPago: ${r.metodoTxt || ""}\nTotal: ${C.copTxt(total)}${r.metodo === "transf" ? "\nAdjunto el comprobante." : r.metodo === "addi" || r.metodo === "siste" ? "\nPor favor autoricen mi crédito." : ""}`;
   $("#salida").innerHTML = `<div class="panel"><div class="listo">¡Listo! Recibimos tu confirmación</div>
@@ -327,6 +329,23 @@ function confirmado(r) {
     <div class="total"><span>Total a pagar</span><span>${C.cop(total)}</span></div>
     ${pasos}
     <a class="btn" href="https://wa.me/${WA_TIENDA}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">${r.metodo === "transf" ? "Enviar comprobante por WhatsApp" : r.metodo === "addi" || r.metodo === "siste" ? "Enviar pedido por WhatsApp para autorizar" : "Escribirnos por WhatsApp"}</a></div>`;
+}
+// Pago con tarjeta (Bold): el link se crea solo con el total confirmado y se abre la página segura de Bold
+const boldPagadoHTML = () => `<div class="listo" style="margin:0">✅ Pago con tarjeta recibido</div><p class="nota" style="margin:0">Te escribimos por WhatsApp para coordinar el envío.</p>`;
+async function prepararBold(r, abrir) {
+  const caja = $("#boldCaja"); if (!caja || r.metodo !== "tarjeta" || r.envioPorConfirmar || S?.bold?.estado === "pagado") return;
+  const volvio = new URLSearchParams(location.search).has("bold");
+  try {
+    const resp = await fetch(SKYDROPX_URL.replace(/\/+$/, "") + "/bold/link", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ c: id }) });
+    const j = await resp.json().catch(() => ({}));
+    if (j.pagado) { caja.innerHTML = boldPagadoHTML(); return; }
+    if (!j.url) throw new Error(j.error || "sin link");
+    caja.innerHTML = `${volvio ? `<p class="nota" style="margin:0">Si ya pagaste, en unos minutos se confirma tu pago. Si no se completó, puedes intentarlo de nuevo:</p>` : `<p style="margin:0">Paga <b>${C.cop(r.total || 0)}</b> con tu tarjeta de crédito en la página segura de Bold.</p>`}
+      <a class="btn" href="${esc(j.url)}">Pagar con tarjeta</a>`;
+    if (abrir && !volvio) setTimeout(() => { location.href = j.url; }, 1200);
+  } catch (e) {
+    caja.innerHTML = `<p style="margin:0">Te enviaremos por WhatsApp el link de pago con tarjeta por <b>${C.cop(r.total || 0)}</b>.</p>`;
+  }
 }
 // Llave + QR (si despacho ya lo adjuntó), con botones para copiar la llave y guardar el QR en la galería
 function bloqueLlave() {
