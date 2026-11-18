@@ -206,9 +206,11 @@ async function cotizarPublico(b, env, base, responder) {
       const r = await llamar(base, "/quotations/" + id, "GET", null, tk); q = await r.json().catch(() => q);
     }
     let rates = (q.rates || q.data?.rates || []).filter(x => x && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || ""));
-    if (rates.some(x => x.success === true)) rates = rates.filter(x => x.success === true);
     const de = x => String(x.provider_name || x.provider_display_name || "").toLowerCase().normalize("NFD").replace(/[^a-z]/g, "");
-    const minimo = pref => { const v = rates.filter(x => de(x).startsWith(pref)).map(x => Math.ceil(+(x.total || x.amount))); return v.length ? Math.min(...v) : null; };
+    // Por transportadora: las tarifas con "success: true" si las hay; si no, las que traen precio
+    // (Interrapidísimo suele venir con precio y "success: false")
+    const minimo = pref => { let l = rates.filter(x => de(x).startsWith(pref)); if (l.some(x => x.success === true)) l = l.filter(x => x.success === true);
+      const v = l.map(x => Math.ceil(+(x.total || x.amount))); return v.length ? Math.min(...v) : null; };
     const res = { tarifas: { envia: minimo("envia"), inter: minimo("inter") } };
     if (res.tarifas.envia || res.tarifas.inter) cacheCot.set(k, { t: Date.now(), r: res });
     if (b.detalle) return responder({ ...res, completa: !!(q.is_completed ?? q.data?.is_completed), traza,

@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117j">
+<link rel="stylesheet" href="estilos.css?v=20261117k">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117j";
-import * as C from "./comun.js?v=20261117j";
-import * as T from "./tarifas-envio.js?v=20261117j";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117j";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117k";
+import * as C from "./comun.js?v=20261117k";
+import * as T from "./tarifas-envio.js?v=20261117k";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117k";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1984,8 +1984,10 @@ async function cotizarSkydropx(d, carriers = CARRIERS_SKX) {
     const ocultas = (S.skx?.ocultas || ["coordinadora", "servientrega"]).map(x => T.envNorm(x).replace(/\s/g, ""));
     const oculta = x => ocultas.some(o => T.envNorm(x.provider_name || x.provider_display_name || "").replace(/\s/g, "").includes(o));
     let rates = todas.filter(x => x && x.id && +(x.total || x.amount) > 0 && !/no_coverage|not_applicable|error/i.test(x.status || "") && !oculta(x));
-    // Si hay tarifas con "success: true" (las que Skydropx indica para crear la guía), se usan esas
-    if (rates.some(x => x.success === true)) rates = rates.filter(x => x.success === true);
+    // Por transportadora: si tiene tarifas con "success: true" se usan esas; si no, las que traen precio
+    // (Interrapidísimo suele venir con precio y "success: false")
+    const provDe = x => T.envNorm(x.provider_name || x.provider_display_name || "").replace(/[^a-z]/g, "");
+    rates = rates.filter(x => x.success === true || !rates.some(y => y.success === true && provDe(y) === provDe(x)));
     return { id, rates, todas };
   }
 }
@@ -2252,7 +2254,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117j";
+const VERSION_PANEL = "20261117k";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
