@@ -367,6 +367,10 @@ async function diagnostico(url, env) {
     out.suscribir = await sacar(await fetch(`${GRAPH_FB}/${cuenta}/subscribed_apps?subscribed_fields=messages`, { method: "POST", headers: auth }));
     out.suscripcion_despues = await sacar(await fetch(`${GRAPH_FB}/${cuenta}/subscribed_apps`, { headers: auth }));
   }
+  // ¿Puede el agente leer los chats? (sirve para saber si Meta deja ver los mensajes reales)
+  const rc = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,messages.limit(1){message,created_time,from}&limit=3`, { headers: auth });
+  const jc = await rc.json().catch(() => ({}));
+  out.chats = jc.data ? jc.data.map(c => ({ actualizado: c.updated_time, ultimo: c.messages && c.messages.data && c.messages.data[0] ? { de: c.messages.data[0].from && c.messages.data[0].from.username, texto: String(c.messages.data[0].message || "").slice(0, 40) } : null })) : { http: rc.status, error: jc.error && jc.error.message };
   const dbg = await fetch(`${GRAPH_FB}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(env.META_APP_ID + "|" + env.META_APP_SECRET)}`);
   const jd = await dbg.json().catch(() => ({}));
   out.token = jd.data ? { valido: jd.data.is_valid, tipo: jd.data.type, permisos: jd.data.scopes, vence: jd.data.expires_at } : { http: dbg.status, error: jd.error && jd.error.message };
