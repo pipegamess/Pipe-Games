@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Lista de espera · Pipe Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Lista de espera: clientes que preguntan por un título agotado. Se cruza con el stock en vivo del catálogo
+   y avisa cuando el título vuelve a estar disponible. Datos solo en Firestore (cuenta de administrador). */
+:root {
+  --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --line: rgba(255,255,255,0.09);
+  --text: #e8e8f0; --muted: #8a8aa8; --acc: #f5c400; --acc-ink: #141000; --ok: #3ecf8e; --ok-bg: rgba(62,207,142,0.12); --err: #ff7b7b; --wa: #25d366;
+  --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 6vw, 34px); letter-spacing: 0.02em; margin: 0; line-height: 1.05; text-wrap: balance; }
+h1 span { color: var(--acc); }
+h2 { font-family: var(--display); font-size: 20px; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+h2 small { font: 500 13px/1 var(--body); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; max-width: 62ch; }
+.top { display: flex; gap: 8px; flex-wrap: wrap; }
+.top a, button.ghost { font: 600 13px/1 var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; text-decoration: none; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.campos { display: grid; gap: 12px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .campos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .campos .ancho { grid-column: 1 / -1; } .campos .tit { grid-template-columns: minmax(0, 1fr) 150px; } }
+.tit { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) 120px; }
+label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); min-width: 0; }
+input, select, textarea { font: inherit; letter-spacing: normal; text-transform: none; color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; min-width: 0; font-size: 15px; }
+textarea { resize: vertical; min-height: 42px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.pista { font-size: 13px; color: var(--muted); margin: 0; min-height: 1.3em; }
+.pista.ok { color: var(--ok); } .pista.err { color: var(--err); }
+.acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+button.primary { font: 700 16px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; background: var(--acc); color: var(--acc-ink); border: 0; border-radius: 10px; padding: 13px 18px; cursor: pointer; }
+button.primary:disabled { opacity: .5; cursor: default; }
+.btn { font: 600 13px/1 var(--body); color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+.btn.wa { background: var(--wa); border-color: var(--wa); color: #06210f; font-weight: 700; }
+.btn.peligro { color: var(--err); }
+.btn.peligro.confirmar { background: var(--err); color: #200; border-color: var(--err); }
+.buscar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.buscar input { flex: 1 1 220px; width: auto; }
+.lista { display: grid; gap: 10px; }
+.item { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
+.item.llego { border-color: var(--ok); background: linear-gradient(0deg, var(--ok-bg), var(--ok-bg)), var(--surface2); }
+.item.marca { outline: 2px solid var(--acc); }
+.fila1 { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.juego { font: 700 18px/1.15 var(--display); letter-spacing: 0.02em; text-wrap: balance; }
+.consola { display: inline-block; font: 700 11px/1 var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--acc-ink); background: var(--acc); border-radius: 4px; padding: 4px 6px; margin-left: 6px; vertical-align: 2px; }
+.precio { font: 700 18px/1 var(--display); color: var(--ok); font-variant-numeric: tabular-nums; }
+.quien { font-size: 14px; color: var(--text); }
+.quien .c { color: var(--muted); }
+.meta { font-size: 12.5px; color: var(--muted); }
+.notas { font-size: 13.5px; color: var(--text); background: var(--surface); border-radius: 6px; padding: 6px 8px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vacio { color: var(--muted); font-size: 14px; margin: 0; }
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary h2::before { content: "▸"; color: var(--muted); font-size: 14px; }
+details[open] > summary h2::before { content: "▾"; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--line); color: var(--text); padding: 10px 14px; border-radius: 10px; font-size: 14px; max-width: calc(100% - 32px); z-index: 10; }
+.login { max-width: 400px; margin: 8vh auto 0; }
+.status { font-size: 13px; min-height: 1.2em; } .status.err { color: var(--err); }
+</style>
+</head>
+<body>
+
+<form class="panel login" id="vLogin" hidden>
+  <h2 style="text-transform:none">Lista de espera · Pipe Games</h2>
+  <p class="sub">Entra con tu correo y contraseña de administrador de Pipe Games.</p>
+  <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
+  <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit" id="lEntrar">Entrar</button>
+  <div class="status err" id="lError" role="alert"></div>
+</form>
+
+<div class="wrap" id="vApp" hidden>
+  <header>
+    <div>
+      <h1>Lista de espera <span>Pipe Games</span></h1>
+      <p class="sub">Clientes que preguntaron por un juego agotado. Cuando el título vuelve a estar disponible en el catálogo aparece en “Ya llegó” y te llega un aviso en el panel de despacho.</p>
+    </div>
+    <div class="top"><a href="../inicio/">Centro de Mando</a><a href="../mensajeria/">Panel de despacho</a><button class="ghost" type="button" id="salir">Salir</button></div>
+  </header>
+
+  <form class="panel" id="fNuevo" autocomplete="off">
+    <h2 id="fTitulo">Anotar cliente</h2>
+    <div class="campos">
+      <label>Nombre y apellido<input id="fNombre" required placeholder="Ej: Laura Gómez"></label>
+      <label>WhatsApp o @usuario<input id="fContacto" required placeholder="300 123 4567 o @usuario"></label>
+      <div class="tit ancho">
+        <label>Título de interés<input id="fJuego" list="dlJuegos" required placeholder="Escribe y elige del catálogo"></label>
+        <label>Consola<select id="fConsola"><option>PS5</option><option>PS4</option><option>SWITCH 2</option><option>SWITCH</option><option value="OTRA">Otra</option></select></label>
+      </div>
+      <p class="pista ancho" id="fPista"></p>
+      <label class="ancho">Notas (opcional)<textarea id="fNotas" rows="1" placeholder="Ej: lo quiere nuevo, paga con Addi, pidió preventa…"></textarea></label>
+    </div>
+    <div class="acciones">
+      <button class="primary" type="submit" id="fGuardar">Anotar en la lista</button>
+      <button class="btn" type="button" id="fCancelar" hidden>Cancelar edición</button>
+      <span class="status" id="fEstado" role="status"></span>
+    </div>
+    <datalist id="dlJuegos"></datalist>
+  </form>
+
+  <section class="panel">
+    <h2>¡Ya llegó! <small id="nLlego"></small></h2>
+    <div class="lista" id="lLlego"></div>
+  </section>
+
+  <section class="panel">
+    <div class="buscar"><h2 style="flex:1 1 auto">Esperando <small id="nEspera"></small></h2><input id="buscar" type="search" placeholder="Buscar cliente o juego"></div>
+    <div class="lista" id="lEspera"></div>
+  </section>
+
+  <details class="panel" id="secAvisados">
+    <summary><h2>Avisados <small id="nAvisados"></small></h2></summary>
+    <div class="lista" id="lAvisados" style="margin-top:12px"></div>
+  </details>
+  <p class="sub" id="stockInfo"></p>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module">
+import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION } from "../mensajeria/config.js?v=20261118a";
+import * as C from "../mensajeria/comun.js?v=20261118a";
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
+const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
+const { getFirestore, doc, onSnapshot, updateDoc, setDoc, deleteField } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore.js`);
+const app = initializeApp(firebaseConfig), auth = getAuth(app), db = getFirestore(app);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const norm = t => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9ñ ]+/g, " ").replace(/\s+/g, " ").trim();
+const titulo = s => String(s || "").trim().toLowerCase().replace(/(^|\s)\S/g, m => m.toUpperCase());
+const fecha = t => t ? new Date(t).toLocaleDateString("es-CO", { day: "numeric", month: "short" }) : "";
+const REF = () => doc(db, "usuarios", ADMIN_UID);
+let ESPERA = {}, PROD = [], editando = null, stockT = 0;
+
+function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 3500); }
+
+// ── Catálogo con stock en vivo (misma regla del catálogo, el panel y Pipe Bot) ──
+async function cargarStock() {
+  let lista = [], st = null;
+  try { lista = (await import(`../mensajeria/productos-catalogo.js?t=${Date.now()}`)).PRODUCTOS || []; } catch {}
+  try { const r = await fetch(`../stock.json?_=${Date.now()}`, { cache: "no-store" }); if (r.ok) st = await r.json(); } catch {}
+  const prod = st?.productos || {}, usar = Object.keys(prod).length >= 50;
+  PROD = lista.map(p => {
+    let disp = p.a, pre = false;
+    if (usar && p.k) { let c = prod[p.k]; if (c === undefined && p.e) c = 0; if (c !== undefined && c >= 0) disp = c > 0; else if (c < 0) pre = true; }
+    return { ...p, disp, pre, t: norm(p.n) };
+  });
+  stockT = Date.now();
+  $("dlJuegos").innerHTML = PROD.map(p => `<option value="${esc(p.n)} · ${esc(p.p)}">${p.disp ? "Disponible" : "Agotado"} · ${esc(C.cop(p.v))}</option>`).join("");
+  $("stockInfo").textContent = PROD.length ? `Stock revisado a las ${new Date().toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" })} · ${PROD.filter(p => p.disp).length} productos disponibles. Se vuelve a revisar cada 3 minutos.` : "No se pudo leer el catálogo.";
+  pintar();
+}
+const consolaDe = p => ["PS5", "PS4", "SWITCH 2", "SWITCH"].includes(p) ? p : "OTRA";
+// Busca el producto del catálogo para una persona en espera: por la clave guardada, o por nombre y consola.
+function productoDe(x) {
+  if (x.k) { const p = PROD.find(p => p.k === x.k); if (p) return p; }
+  const t = norm(x.titulo); if (t.length < 3) return null;
+  const misma = PROD.filter(p => x.consola === "OTRA" || consolaDe(p.p) === x.consola);
+  return misma.find(p => p.t === t) || (t.length >= 4 && (misma.filter(p => p.t.includes(t) || t.includes(p.t)).sort((a, b) => b.disp - a.disp)[0])) || null;
+}
+// Lo que se escribió en el formulario: "NOMBRE · PLAT" del catálogo o texto libre
+function elegido() {
+  const v = $("fJuego").value.trim();
+  const p = PROD.find(p => `${p.n} · ${p.p}`.toLowerCase() === v.toLowerCase());
+  return p ? { p, titulo: p.n } : { p: null, titulo: v.replace(/\s·\s[^·]*$/, "") };
+}
+function pistaJuego() {
+  const { p } = elegido(), el = $("fPista");
+  if (p) { $("fConsola").value = consolaDe(p.p); el.className = "pista" + (p.disp ? " ok" : ""); el.textContent = p.disp ? `Este juego está disponible ahora (${C.cop(p.v)}): puedes ofrecérselo de una vez.` : `Agotado en el catálogo · ${C.cop(p.v)}. Te avisaremos cuando vuelva.`; return; }
+  const v = $("fJuego").value.trim();
+  if (!v) { el.textContent = ""; return; }
+  const q = productoDe({ titulo: v, consola: $("fConsola").value });
+  el.className = "pista"; el.textContent = q ? `Se vigilará como “${q.n} · ${q.p}” del catálogo.` : "No está en el catálogo todavía. Queda anotado y aparecerá cuando lo agregues con ese nombre.";
+}
+$("fJuego").addEventListener("input", pistaJuego);
+$("fConsola").addEventListener("change", pistaJuego);
+
+// ── Guardar ──
+$("fNuevo").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const nombre = titulo($("fNombre").value), contacto = C.contactoWhatsApp($("fContacto").value), { p, titulo: tit } = elegido();
+  if (!contacto) { $("fEstado").className = "status err"; $("fEstado").textContent = "Escribe un celular de 10 dígitos o un @usuario de WhatsApp."; $("fContacto").focus(); return; }
+  if (!tit) return;
+  const id = editando || Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const previo = ESPERA[id] || {};
+  const x = { nombre, contacto, titulo: tit.toUpperCase(), consola: $("fConsola").value, k: p?.k || "", notas: $("fNotas").value.trim(), creado: previo.creado || Date.now(), estado: previo.estado || "esperando" };
+  if (previo.avisadoT) x.avisadoT = previo.avisadoT;
+  if (previo.llego && previo.k === x.k && previo.titulo === x.titulo) x.llego = previo.llego;
+  $("fGuardar").disabled = true;
+  try { await guardar({ [`espera.${id}`]: x }); limpiarForm(); toast(editando ? "Cambios guardados" : `${C.primerNombre(nombre)} quedó en la lista de espera`); }
+  catch (e) { $("fEstado").className = "status err"; $("fEstado").textContent = "No se pudo guardar: " + (e.code || e.message); }
+  $("fGuardar").disabled = false;
+});
+async function guardar(cambios) {
+  try { await updateDoc(REF(), cambios); }
+  catch (e) {
+    if (e.code !== "not-found") throw e;
+    const obj = {}; Object.entries(cambios).forEach(([k, v]) => { const [, id, campo] = k.split("."); obj[id] = campo ? { [campo]: v } : v; });
+    await setDoc(REF(), { espera: obj }, { merge: true });
+  }
+}
+function limpiarForm() {
+  editando = null; $("fNuevo").reset(); $("fPista").textContent = ""; $("fEstado").textContent = "";
+  $("fTitulo").textContent = "Anotar cliente"; $("fGuardar").textContent = "Anotar en la lista"; $("fCancelar").hidden = true;
+}
+$("fCancelar").onclick = limpiarForm;
+
+// ── Lista ──
+function tarjeta(id, x, modo) {
+  const p = productoDe(x), user = C.esUsuarioWhatsApp(x.contacto);
+  const contacto = user ? x.contacto : "+" + x.contacto.replace(/^57(\d{10})$/, "57 $1");
+  const precio = p ? `<span class="precio">${C.cop(p.v)}</span>` : "";
+  let botones = "";
+  if (modo === "llego") botones = `<button class="btn wa" data-avisar="${id}">Avisar por WhatsApp</button><button class="btn" data-avisado="${id}">Ya le avisé</button>`;
+  else if (modo === "espera") botones = `<button class="btn" data-anotado="${id}" title="Confírmale que quedó en la lista">Confirmarle por WhatsApp</button>`;
+  else botones = `<button class="btn" data-volver="${id}">Volver a esperar</button><button class="btn" data-msg="${id}">Reenviar aviso</button>`;
+  botones += `<button class="btn" data-editar="${id}">Editar</button><button class="btn peligro" data-borrar="${id}">Eliminar</button>`;
+  const estadoTxt = modo === "llego" ? `Disponible${p?.pre ? " en preventa" : ""} desde el ${fecha(x.llego || Date.now())}`
+    : modo === "avisado" ? `Avisado el ${fecha(x.avisadoT)}`
+    : p ? `Vigilando “${esc(p.n)} · ${esc(p.p)}”` : "Aún no está en el catálogo";
+  return `<div class="item${modo === "llego" ? " llego" : ""}" id="e-${id}">
+    <div class="fila1"><div class="juego">${esc(x.titulo)}<span class="consola">${esc(x.consola === "OTRA" ? "Otra" : x.consola)}</span></div>${precio}</div>
+    <div class="quien"><b>${esc(x.nombre)}</b> <span class="c">· ${esc(contacto)}</span></div>
+    ${x.notas ? `<p class="notas">${esc(x.notas)}</p>` : ""}
+    <div class="meta">Anotado el ${fecha(x.creado)} · ${estadoTxt}</div>
+    <div class="acciones">${botones}</div>
+  </div>`;
+}
+function pintar() {
+  const q = norm($("buscar").value);
+  const todos = Object.entries(ESPERA).sort((a, b) => (b[1].creado || 0) - (a[1].creado || 0));
+  const llego = [], espera = [], avisados = [], nuevos = {};
+  todos.forEach(([id, x]) => {
+    if (x.estado === "avisado") return avisados.push([id, x]);
+    const p = PROD.length ? productoDe(x) : null;
+    if (p?.disp) { llego.push([id, x]); if (!x.llego) nuevos[`espera.${id}.llego`] = Date.now(); }
+    else espera.push([id, x]);
+  });
+  if (Object.keys(nuevos).length) guardar(nuevos).catch(() => {});
+  const filtra = l => q ? l.filter(([, x]) => norm(`${x.nombre} ${x.contacto} ${x.titulo} ${x.consola} ${x.notas}`).includes(q)) : l;
+  $("lLlego").innerHTML = llego.length ? llego.map(([id, x]) => tarjeta(id, x, "llego")).join("") : `<p class="vacio">Ninguno de los juegos esperados está disponible todavía.</p>`;
+  $("nLlego").textContent = llego.length ? `${llego.length} por avisar` : "";
+  // Esperando: agrupado por juego, con cuántos lo esperan
+  const grupos = {};
+  filtra(espera).forEach(([id, x]) => (grupos[x.titulo + "|" + x.consola] ||= []).push([id, x]));
+  const orden = Object.values(grupos).sort((a, b) => b.length - a.length);
+  $("lEspera").innerHTML = orden.length ? orden.map(g => (g.length > 1 ? `<div class="meta" style="margin-top:4px"><b style="color:var(--acc)">${g.length} personas</b> esperan ${esc(g[0][1].titulo)}</div>` : "") + g.map(([id, x]) => tarjeta(id, x, "espera")).join("")).join("")
+    : `<p class="vacio">${q ? "Nada coincide con la búsqueda." : "No hay clientes esperando."}</p>`;
+  $("nEspera").textContent = espera.length ? `${espera.length} clientes` : "";
+  const av = filtra(avisados).sort((a, b) => (b[1].avisadoT || 0) - (a[1].avisadoT || 0));
+  $("lAvisados").innerHTML = av.length ? av.map(([id, x]) => tarjeta(id, x, "avisado")).join("") : `<p class="vacio">Aún no has avisado a nadie.</p>`;
+  $("nAvisados").textContent = avisados.length ? `${avisados.length}` : "";
+  marcarHash();
+}
+function marcarHash() {
+  const id = location.hash.slice(1), el = id && document.getElementById("e-" + id);
+  if (!el || marcarHash.hecho === id) return;
+  marcarHash.hecho = id; el.classList.add("marca"); el.scrollIntoView({ block: "center" });
+}
+$("buscar").addEventListener("input", pintar);
+
+function mensaje(x, anotado) {
+  const p = productoDe(x), consola = x.consola === "OTRA" ? "" : ` para ${x.consola === "SWITCH 2" ? "Nintendo Switch 2" : x.consola === "SWITCH" ? "Nintendo Switch" : x.consola}`;
+  if (anotado) return `Hola ${C.primerNombre(x.nombre)} 👋 Te escribimos de Pipe Games. Quedaste en nuestra lista de espera para *${p ? p.n : x.titulo}*${consola}. Apenas llegue te avisamos por aquí 🎮`;
+  return `Hola ${C.primerNombre(x.nombre)} 👋 Te escribimos de Pipe Games. ¡Buenas noticias! Ya tenemos disponible *${p ? p.n : x.titulo}*${consola}${p ? ` a ${C.copTxt(p.v)}` : ""}. Como nos habías preguntado por él, quisimos avisarte primero 🎮 ¿Te lo apartamos?`;
+}
+// Se abre sin esperas para que el navegador del celular no bloquee la ventana
+function abrirWA(x, anotado) {
+  if (C.esUsuarioWhatsApp(x.contacto)) {
+    try { navigator.clipboard.writeText(x.contacto).catch(() => {}); } catch {}
+    toast(`Usuario ${x.contacto} copiado: búscalo en WhatsApp y envíale el mensaje.`);
+  }
+  window.open(C.urlWhatsApp(x.contacto, mensaje(x, anotado)), "_blank", "noopener");
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-avisar],button[data-avisado],button[data-volver],button[data-msg],button[data-anotado],button[data-editar],button[data-borrar]");
+  if (!b) return;
+  const [acc, id] = Object.entries(b.dataset)[0], x = ESPERA[id]; if (!x) return;
+  if (acc === "avisar") { abrirWA(x); await guardar({ [`espera.${id}.estado`]: "avisado", [`espera.${id}.avisadoT`]: Date.now() }).catch(() => toast("No se pudo marcar como avisado")); return; }
+  if (acc === "avisado") { await guardar({ [`espera.${id}.estado`]: "avisado", [`espera.${id}.avisadoT`]: Date.now() }).catch(() => {}); toast("Marcado como avisado"); return; }
+  if (acc === "volver") { await guardar({ [`espera.${id}.estado`]: "esperando", [`espera.${id}.avisadoT`]: deleteField(), [`espera.${id}.llego`]: deleteField() }).catch(() => {}); return; }
+  if (acc === "msg") { abrirWA(x); return; }
+  if (acc === "anotado") { abrirWA(x, true); return; }
+  if (acc === "editar") {
+    editando = id; $("fNombre").value = x.nombre; $("fContacto").value = x.contacto;
+    const p = x.k && PROD.find(p => p.k === x.k);
+    $("fJuego").value = p ? `${p.n} · ${p.p}` : x.titulo; $("fConsola").value = x.consola; $("fNotas").value = x.notas || "";
+    $("fTitulo").textContent = "Editar cliente"; $("fGuardar").textContent = "Guardar cambios"; $("fCancelar").hidden = false; pistaJuego();
+    $("fNuevo").scrollIntoView({ behavior: "smooth" }); $("fNombre").focus({ preventScroll: true }); return;
+  }
+  if (acc === "borrar") {
+    if (!b.classList.contains("confirmar")) { b.classList.add("confirmar"); b.textContent = "¿Eliminar? Toca otra vez"; setTimeout(() => { b.classList.remove("confirmar"); b.textContent = "Eliminar"; }, 4000); return; }
+    await guardar({ [`espera.${id}`]: deleteField() }).catch(() => toast("No se pudo eliminar"));
+  }
+});
+
+// ── Acceso: solo la cuenta de administrador ──
+$("vLogin").addEventListener("submit", async ev => {
+  ev.preventDefault(); $("lError").textContent = ""; $("lEntrar").disabled = true;
+  try { await signInWithEmailAndPassword(auth, $("lCorreo").value.trim(), $("lClave").value); }
+  catch { $("lError").textContent = "Correo o contraseña incorrectos."; }
+  $("lEntrar").disabled = false;
+});
+$("salir").onclick = () => signOut(auth);
+let unsub = null, timer = null;
+onAuthStateChanged(auth, async u => {
+  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta cuenta no tiene acceso a la lista de espera."; return; }
+  $("vLogin").hidden = !!u; $("vApp").hidden = !u;
+  unsub?.(); unsub = null; clearInterval(timer);
+  if (!u) { ESPERA = {}; $("lCorreo").focus(); return; }
+  unsub = onSnapshot(REF(), s => { ESPERA = (s.exists() && s.data().espera) || {}; pintar(); }, e => toast("No se pudo leer la lista: " + e.code));
+  cargarStock(); timer = setInterval(cargarStock, 180000);
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden && auth.currentUser && Date.now() - stockT > 60000) cargarStock(); });
+window.addEventListener("hashchange", () => { marcarHash.hecho = null; marcarHash(); });
+</script>
+</body>
+</html>
