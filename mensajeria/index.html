@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261118b">
+<link rel="stylesheet" href="estilos.css?v=20261118c">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118b";
-import * as C from "./comun.js?v=20261118b";
-import * as T from "./tarifas-envio.js?v=20261118b";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261118b";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118c";
+import * as C from "./comun.js?v=20261118c";
+import * as T from "./tarifas-envio.js?v=20261118c";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261118c";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -2320,7 +2320,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261118b";
+const VERSION_PANEL = "20261118c";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2686,13 +2686,73 @@ document.addEventListener("input", e => {
 function cerrarDetalle() { if (mapaMens) { mapaMens.remove(); mapaMens = null; } mapaMensVista = null; S.corr = null; S.corrVista = null; if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; } S.abierta = null; $("#vDetalle").hidden = true; ajustado = ""; pintarMapa(); }
 let fotoCache = {};
 async function abrirDetalle(n) {
-  S.corr = null; S.corrVista = null; S.editUbic = false; S.corrBarrio = null; S.corrBarrioManual = false; S.corrDir = null; S.corrComp = null; S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
+  S.ent = null; S.corr = null; S.corrVista = null; S.editUbic = false; S.corrBarrio = null; S.corrBarrioManual = false; S.corrDir = null; S.corrComp = null; S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
   const g = S.guias[n];
   const kf = n + ":" + g?.estado;
   if ((g?.estado === "entregada" || g?.estado === "novedad") && !fotoCache[kf]) {
     try { const f = await getDoc(doc(db, "fotos", n)); const d = f.exists() ? f.data() : null; const vale = d && (g.estado === "entregada" ? d.tipo !== "novedad" : d.tipo === "novedad"); fotoCache[kf] = vale ? d.imagen : "sin"; fotoCache[kf + ":comp"] = vale && d.comprobante || ""; fotoCache[kf + ":extra"] = vale && d.extras || []; } catch { fotoCache[kf] = "sin"; }
     if (S.abierta === n) pintarDetalle();
   }
+}
+/* ---------- Confirmar entrega con fotos desde el panel (maestro) ---------- */
+const MAX_FOTOS_ENT = 3;
+function bloqueEntrega(g) {
+  if (!esMaestro() || ["cancelada", "devuelta"].includes(g.estado)) return "";
+  const ya = g.estado === "entregada", st = S.ent;
+  if (!st) return `<div class="btns"><button class="btn ${ya ? "sec " : "ok "}chico" data-acc="entAbrir">📷 ${ya ? "Cargar fotos de entrega" : "Confirmar entrega con fotos"}</button></div>`;
+  const radio = (v, t) => `<label style="flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0"><input type="radio" name="entRecibe" value="${v}"${st.recibe === v ? " checked" : ""} style="width:auto"> ${t}</label>`;
+  return `<div class="panel" id="entPanel"><h3>${ya ? "Cargar fotos de entrega" : "Confirmar entrega"}</h3>
+    <span class="nota">${ya ? "Las fotos reemplazan las que tenga la guía y se ven en el rastreo del cliente." : "Sube la foto del pedido entregado (por ejemplo la que te mandó el cliente o el mensajero). La guía queda entregada y la foto se ve en el rastreo."} Máximo ${MAX_FOTOS_ENT} fotos.</span>
+    ${st.fotos.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap">${st.fotos.map((x, i) => `<div style="display:grid;gap:4px;justify-items:center"><img alt="Foto ${i + 1}" src="${x}" style="width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"><button class="btn peligro chico" data-acc="entQuitar" data-i="${i}" style="padding:3px 8px">Quitar</button></div>`).join("")}</div>` : ""}
+    ${st.fotos.length < MAX_FOTOS_ENT ? `<div class="btns"><label class="btn chico" style="flex-direction:row">📷 Tomar foto<input type="file" id="entCam" accept="image/*" capture="environment" hidden></label><label class="btn sec chico" style="flex-direction:row">Elegir fotos<input type="file" id="entArch" accept="image/*" multiple hidden></label></div>` : ""}
+    <span class="nota" id="entProc"></span>
+    ${ya ? "" : `<div><span class="nota" style="display:block;margin-bottom:4px">¿Quién recibió?</span><div class="btns" style="gap:14px">${radio("cliente", "Cliente")}${radio("familiar", "Familiar")}${radio("porteria", "Portería")}</div></div>
+      ${st.recibe !== "cliente" ? `<label>Nombre de quien recibió<input id="entNom" maxlength="60" value="${esc(st.nombre)}" placeholder="Ej. Carlos"></label>` : ""}
+      ${g.valor ? `<label>¿Cómo pagó los ${C.cop(g.valor)}?<select id="entMedio"><option value="">Escoge…</option>${Object.entries(C.MEDIOS).map(([k, t]) => `<option value="${k}"${st.medio === k ? " selected" : ""}>${t}</option>`).join("")}</select></label>` : ""}`}
+    <div class="error" id="entErr"></div>
+    <div class="btns"><button class="btn ok" data-acc="entGuardar">${ya ? "Guardar fotos" : "Confirmar entrega"}</button><button class="btn sec chico" data-acc="entCancelar">Cancelar</button></div>
+  </div>`;
+}
+document.addEventListener("change", async e => {
+  const t = e.target;
+  if (t.name === "entRecibe" && S.ent) { S.ent.recibe = t.value; pintarDetalle(); return; }
+  if (t.id === "entMedio" && S.ent) { S.ent.medio = t.value; return; }
+  if ((t.id === "entCam" || t.id === "entArch") && S.ent) {
+    const lista = [...(t.files || [])], st = S.ent, libres = MAX_FOTOS_ENT - st.fotos.length;
+    $("#entProc").textContent = "Procesando foto…";
+    let fallo = false;
+    for (const f of lista.slice(0, libres)) { try { st.fotos.push(await C.comprimirImagen(f)); } catch { fallo = true; } }
+    if (S.ent !== st) return;
+    pintarDetalle();
+    if (lista.length > libres) toast(`Solo se agregaron ${libres}: el máximo es ${MAX_FOTOS_ENT} fotos`);
+    if (fallo) $("#entErr") && ($("#entErr").textContent = "Alguna foto no se pudo leer. Intenta de nuevo.");
+    document.getElementById("entPanel")?.scrollIntoView({ block: "nearest" });
+  }
+});
+document.addEventListener("input", e => { if (e.target.id === "entNom" && S.ent) S.ent.nombre = e.target.value; });
+async function guardarEntregaPanel(n, g, b) {
+  const st = S.ent, ya = g.estado === "entregada", err = t => { $("#entErr").textContent = t; };
+  if (!st.fotos.length) return err("Toma o elige al menos 1 foto de la entrega.");
+  if (!ya && st.recibe !== "cliente" && !st.nombre.trim()) return err("Escribe el nombre de quien recibió.");
+  if (!ya && g.valor && !st.medio) return err("Escoge cómo pagó el cliente.");
+  b.disabled = true; b.textContent = "Guardando…";
+  try {
+    const [foto, ...extras] = st.fotos;
+    await setDoc(doc(db, "fotos", n), { imagen: foto, extras, tipo: "entrega", t: Date.now(), mensajeroId: g.mensajeroId || "despacho", porPanel: true }, ya ? { merge: true } : {});
+    const lote = writeBatch(db);
+    let nueva = g;
+    if (!ya) {
+      const medio = g.valor ? st.medio : "pagado";
+      const recaudo = { medio, valor: medio === "pagado" ? 0 : g.valor || 0, esperado: g.valor || 0, motivo: "", recibe: { tipo: st.recibe, nombre: st.recibe === "cliente" ? g.cliente : st.nombre.trim() } };
+      const cambios = { estado: "entregada", recaudo, entregaPanel: true, eventos: [...(g.eventos || []), C.evento("entregada", "Confirmada desde el panel con fotos", "despacho")] };
+      lote.update(doc(db, "guias", n), { ...cambios, actualizado: Date.now() });
+      nueva = { ...g, ...cambios };
+    } else if (g.fotosBorradas) lote.update(doc(db, "guias", n), { fotosBorradas: deleteField() });
+    if (g.clave) lote.set(doc(db, "rastreo", C.idRastreo(g)), C.vistaPublica(nueva, foto, extras), { merge: true });
+    await lote.commit();
+    const kf = n + ":entregada"; fotoCache[kf] = foto; fotoCache[kf + ":extra"] = extras;
+    S.ent = null; pintarDetalle(); toast(ya ? "Fotos de entrega guardadas" : "Entrega confirmada con fotos");
+  } catch (e) { b.disabled = false; b.textContent = ya ? "Guardar fotos" : "Confirmar entrega"; err(C.mensajeError(e)); }
 }
 function pintarDetalle() {
   const g = S.guias[S.abierta]; if (!g) { cerrarDetalle(); return; }
@@ -2736,6 +2796,7 @@ function pintarDetalle() {
       const extra = fotoCache[g.numero + ":" + g.estado + ":extra"] || [];
       return (f && f !== "sin" ? `<div class="panel"><h3>${extra.length ? "Fotos" : "Foto"} ${nom}</h3><div class="fotos-entrega">${[f, ...extra].map((x, i) => `<img class="foto-entrega" alt="Foto ${i + 1} ${nom}" src="${x}">`).join("")}</div></div>` : `<div class="vacio">${f === "sin" ? (g.fotosBorradas ? "Las fotos de esta guía se borraron (más de 90 días)." : "Sin foto " + nom + ".") : "Cargando foto…"}</div>`)
         + (comp ? `<div class="panel"><h3>Comprobante de Nequi</h3><img class="foto-entrega" alt="Comprobante de pago por Nequi" src="${comp}"></div>` : ""); })()}
+    ${bloqueEntrega(g)}
     ${g.destino?.verificar || S.editUbic ? `<div class="panel aviso-ubic"><b>${g.destino?.verificar ? "Ubicación cercana, comprobar manualmente." : "Editar ubicación de la entrega"}</b><span class="nota">${g.destino?.verificar ? "El sistema no encontró la dirección exacta y puso un punto cercano. " : ""}Arrastra el marcador al sitio correcto o toca el mapa. También puedes pegar un link de Google Maps o las coordenadas.</span>
       <div class="fila" style="grid-template-columns:minmax(0,1fr) auto;align-items:end"><label>Busca el lugar o la dirección<input id="corrLink" type="search" placeholder="Ej. Zue Ámbar Soacha · Calle 26 # 68-10" autocomplete="off"></label><button class="btn sec chico" data-acc="usarLink">Buscar</button></div>
       <span class="nota" style="margin-top:-4px">Mientras escribes aparecen los lugares encontrados; toca el correcto. También acepta coordenadas o un link de Google Maps.</span>
@@ -2791,6 +2852,10 @@ $("#hojaDetalle").addEventListener("click", async e => {
   const n = S.abierta, g = S.guias[n];
   const a = b.dataset.acc;
   if (a === "cerrar") return cerrarDetalle();
+  if (a === "entAbrir") { S.ent = { fotos: [], recibe: "cliente", nombre: "", medio: g.recaudo?.medio || "" }; pintarDetalle(); setTimeout(() => document.getElementById("entPanel")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); return; }
+  if (a === "entCancelar") { S.ent = null; pintarDetalle(); return; }
+  if (a === "entQuitar") { S.ent?.fotos.splice(+b.dataset.i, 1); pintarDetalle(); return; }
+  if (a === "entGuardar") { if (S.ent) guardarEntregaPanel(n, g, b); return; }
   if (a === "corrElegir") { S.corr = { lat: +b.dataset.lat, lng: +b.dataset.lng }; S.corrVista = null; setTimeout(() => sugerirBarrioCorr(g), 0); const t = $("#corrLink").value; pintarDetalle(); if ($("#corrLink")) $("#corrLink").value = t; ultimaCorr = ""; toast("Punto ubicado: revisa y toca Guardar ubicación"); return; }
   if (a === "editUbic") { S.editUbic = true; S.corr = null; S.corrVista = null; pintarDetalle(); setTimeout(() => document.getElementById("mapaCorr")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80); return; }
   if (a === "editUbicNo") { S.editUbic = false; S.corr = null; S.corrVista = null; S.corrDir = null; S.corrComp = null; S.corrBarrio = null; S.corrBarrioManual = false; pintarDetalle(); return; }
