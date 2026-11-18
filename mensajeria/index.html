@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117v">
+<link rel="stylesheet" href="estilos.css?v=20261117w">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117v";
-import * as C from "./comun.js?v=20261117v";
-import * as T from "./tarifas-envio.js?v=20261117v";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117v";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117w";
+import * as C from "./comun.js?v=20261117w";
+import * as T from "./tarifas-envio.js?v=20261117w";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117w";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -673,7 +673,7 @@ async function procesarSolicitudes(lista) {
           numero, remitente: rec.remitente,
           origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
           cliente: d.nombre, telefono: d.telefono, correo: d.correo || "",
-          destino: { direccion: d.direccion, complemento: d.complemento || "", barrio: d.barrio || "", referencia: [d.complemento, d.barrio ? "Barrio " + d.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[ciudad].nombre, lat: d.lat, lng: d.lng, aprox: !!d.sinUbicacion, verificar: !!d.sinUbicacion },
+          destino: { direccion: d.direccion, complemento: d.complemento || "", barrio: d.barrio || "", referencia: [limpiaComp(d.complemento), d.barrio ? "Barrio " + d.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[ciudad].nombre, lat: d.lat, lng: d.lng, aprox: !!d.sinUbicacion, verificar: !!d.sinUbicacion },
           contenido: pd.contenido || "", nota: "",
           valor, cobro: valor ? "contraentrega" : "pagado", tipoEnvio: tipo, tipoEnvioOtro: "", marketplace: null,
           zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
@@ -1430,7 +1430,7 @@ async function procesarSaldos(lista) {
             numero, remitente: rec.remitente,
             origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
             cliente: titulo(sd.nombre), telefono: rsp.telefono || "",
-            destino: { direccion: rsp.direccion, complemento: rsp.complemento || "", barrio: rsp.barrio || "", referencia: [rsp.complemento, rsp.barrio ? "Barrio " + rsp.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[rsp.ciudadLocal].nombre, lat: rsp.lat, lng: rsp.lng, aprox: !!rsp.sinUbicacion, verificar: !!rsp.sinUbicacion },
+            destino: { direccion: rsp.direccion, complemento: rsp.complemento || "", barrio: rsp.barrio || "", referencia: [limpiaComp(rsp.complemento), rsp.barrio ? "Barrio " + rsp.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[rsp.ciudadLocal].nombre, lat: rsp.lat, lng: rsp.lng, aprox: !!rsp.sinUbicacion, verificar: !!rsp.sinUbicacion },
             contenido: sd.items ? sd.items.map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") : sd.producto + ((sd.unidades || 1) > 1 ? " x" + sd.unidades : ""), nota: "",
             valor: 0, cobro: "pagado", tipoEnvio: "Directo", tipoEnvioOtro: "", marketplace: null,
             zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
@@ -1507,7 +1507,7 @@ async function crearGuiaPagada(id) {
         numero, remitente: rec.remitente,
         origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
         cliente: titulo(c.nombre || r.nombre), telefono: c.telefono || "",
-        destino: { direccion: c.direccion, complemento: c.complemento || "", barrio: c.barrio || "", referencia: [c.complemento, c.barrio ? "Barrio " + c.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[c.ciudadLocal].nombre, lat, lng, aprox: !exacta, verificar: !exacta },
+        destino: { direccion: c.direccion, complemento: c.complemento || "", barrio: c.barrio || "", referencia: [limpiaComp(c.complemento), c.barrio ? "Barrio " + c.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[c.ciudadLocal].nombre, lat, lng, aprox: !exacta, verificar: !exacta },
         contenido: (r.items || []).map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") || r.detalle || r.producto, nota: "",
         valor: 0, cobro: "pagado", tipoEnvio: "Directo", tipoEnvioOtro: "", marketplace: null,
         zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
@@ -2305,7 +2305,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117v";
+const VERSION_PANEL = "20261117w";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2695,7 +2695,7 @@ function pintarDetalle() {
     <div class="panel">
       <dl class="kv">
         <dt>Cliente</dt><dd>${esc(g.cliente)} · ${esc(g.telefono)}</dd>
-        <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}</dd>
+        <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${refLimpia(g) ? " · " + esc(refLimpia(g)) : ""}</dd>
         <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
         <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
         <dt>Clave de rastreo</dt><dd><span class="guia">${esc(g.clave || "generando…")}</span>${g.clave ? (C.esClaveCodigo(g.clave) ? " · código impreso en la etiqueta" : " · últimos 4 dígitos del celular") : ""}</dd>
@@ -3454,6 +3454,17 @@ try { const f = localStorage.getItem("formatoImp"); if (f) $("#fmtImp").value = 
 $("#fmtImp").onchange = () => { try { localStorage.setItem("formatoImp", $("#fmtImp").value); } catch {} };
 // Las guías de Mercado Libre y Falabella llevan la etiqueta del marketplace: no se imprimen.
 const imprimible = g => !g.marketplace && !["Mercado Libre", "Falabella"].includes(g.tipoEnvio);
+// Complemento sin "Cundinamarca", "Colombia" ni "Bogotá D.C." (a veces llegan pegados de la dirección sugerida)
+function limpiaComp(t) { return String(t || "").replace(/(^|[,·\s])(cundinamarca|colombia|bogot[aá],?\s*d\.?\s*c\.?)(?=$|[,·\s])/gi, "$1").replace(/[\s,·]+$/g, "").replace(/^[\s,·]+/g, "").replace(/\s{2,}/g, " ").trim(); }
+// Referencia sin departamento ni país en las guías de Bogotá (p. ej. "Cundinamarca · Barrio Bosa" → "Barrio Bosa")
+function refLimpia(g) {
+  const sinT = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+  const sobra = new Set(["cundinamarca", "colombia", "bogota", "bogota dc", "bogota d c", "distrito capital", "bogota distrito capital"]);
+  if (g.destino?.ciudad && g.destino.ciudad !== "Bogotá") return String(g.destino?.referencia || "");
+  return String(g.destino?.referencia || "").split(" · ")
+    .map(x => x.replace(/,?\s*(cundinamarca|colombia)\s*$/i, "").trim())
+    .filter(x => x && !sobra.has(sinT(x))).join(" · ");
+}
 function htmlEtiqueta(g, i) {
   let qr = "";
   try { const q = qrcode(0, "M"); q.addData(C.linkRastreo(g)); q.make(); qr = q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }); } catch {}
@@ -3464,7 +3475,7 @@ function htmlEtiqueta(g, i) {
       <div class="et-nombre">${esc(g.cliente)}</div>
       ${g.telefono ? `<div>Cel. ${esc(g.telefono)}</div>` : ""}
       <div class="et-dir">${esc(g.destino?.direccion)}</div>
-      <div>${esc(g.destino?.localidad)}${g.destino?.referencia ? " · " + esc(g.destino.referencia) : ""}${g.destino?.ciudad && g.destino.ciudad !== "Bogotá" && g.destino.localidad === g.destino.ciudad ? "" : " · " + esc(g.destino?.ciudad || "Bogotá")}</div></div>
+      <div>${esc(g.destino?.localidad)}${refLimpia(g) ? " · " + esc(refLimpia(g)) : ""}${g.destino?.ciudad && g.destino.ciudad !== "Bogotá" && g.destino.localidad === g.destino.ciudad ? "" : " · " + esc(g.destino?.ciudad || "Bogotá")}</div></div>
     <div class="et-sec"><div class="et-rot">De</div>
       <div><b>${esc(g.remitente)}</b></div>${C.textoMarketplace(g) ? `<div>${esc(C.textoMarketplace(g))}</div>` : ""}</div>
     <div class="et-sec"><div class="et-rot">Contenido</div><div>${esc(g.contenido) || "—"}</div>${g.nota ? `<div style="margin-top:1mm"><b>Nota:</b> ${esc(g.nota)}</div>` : ""}</div>
