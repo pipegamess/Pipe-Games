@@ -403,12 +403,17 @@ async function irAddi(env, url) {
   if (!/^[A-Za-z0-9_-]{1,60}$/.test(reserva || "") || !/^[A-Za-z0-9]{8,40}$/.test(codigo || "") || !env.FIREBASE_SA) return html("Este link no es válido.");
   try {
     const tk = await tokenServicio(env);
-    const ruta = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID + "?mask.fieldPaths=" + encodeURIComponent("reservas.`" + reserva + "`.credito");
-    const d = await (await fetch("https://firestore.googleapis.com/v1/" + ruta, { headers: { Authorization: "Bearer " + tk } })).json();
+    // Nombre de campo simple (letra inicial, letras y números) sin comillas; si no, entre comillas invertidas
+    const campo = /^[A-Za-z_][A-Za-z0-9_]*$/.test(reserva) ? reserva : "`" + reserva + "`";
+    const ruta = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID + "?mask.fieldPaths=" + encodeURIComponent("reservas." + campo + ".credito");
+    const rr = await fetch("https://firestore.googleapis.com/v1/" + ruta, { headers: { Authorization: "Bearer " + tk } });
+    const d = await rr.json().catch(() => ({}));
+    if (!rr.ok) return html("No pudimos abrir el pago (código F" + rr.status + "). Escríbenos por WhatsApp.");
     const c = d?.fields?.reservas?.mapValue?.fields?.[reserva]?.mapValue?.fields?.credito?.mapValue?.fields || {};
-    if (c.codigo?.stringValue !== codigo || !c.url?.stringValue) return html("Este link no es válido. Escríbenos por WhatsApp.");
+    if (!c.url?.stringValue) return html("Este link no es válido (código A1: el pago aún no está autorizado). Escríbenos por WhatsApp.");
+    if (c.codigo?.stringValue !== codigo) return html("Este link ya no es válido (código A2: se generó uno más nuevo). Escríbenos por WhatsApp y te lo reenviamos.");
     const t = Number(c.t?.integerValue || 0);
     if (Date.now() - t > 2 * 3600e3) return html("Este link venció (dura 2 horas). Escríbenos por WhatsApp y te enviamos uno nuevo.");
     return Response.redirect(c.url.stringValue, 302);
-  } catch { return html("No pudimos abrir el pago. Intenta de nuevo en un momento."); }
+  } catch (e) { return html("No pudimos abrir el pago (código F0). Intenta de nuevo en un momento."); }
 }
