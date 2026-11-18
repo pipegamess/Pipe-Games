@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117s">
+<link rel="stylesheet" href="estilos.css?v=20261117t">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117s";
-import * as C from "./comun.js?v=20261117s";
-import * as T from "./tarifas-envio.js?v=20261117s";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117s";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117t";
+import * as C from "./comun.js?v=20261117t";
+import * as T from "./tarifas-envio.js?v=20261117t";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117t";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1573,7 +1573,7 @@ function pintarCobros() {
       <div class="meta">${c.tipo === "link" ? "Total " + C.cop(c.r.total || 0) + (c.r.confirmacion ? " · el cliente ya llenó sus datos" : " · esperando datos del cliente") : "Saldo " + C.cop(c.saldo) + " · " + esc((c.metodoTxt || "").split(" · ")[0])} · ${C.fecha(c.creado)}${c.pagado && c.saldo > 0 ? " · pagado " + C.fecha(c.pagado) : ""}</div>
       <div class="meta">WhatsApp: ${tel ? `<b>${esc(tel)}</b>` : `<span style="color:var(--err)">sin número</span>`}</div>
       ${cbEditTel === k ? `<div class="fila" style="grid-template-columns:1fr auto auto;gap:6px;align-items:end"><label>WhatsApp del cliente<input id="cbEdTel" maxlength="40" placeholder="3001234567 o @usuario" autocapitalize="off" spellcheck="false" value="${esc(c.telefono || "")}"></label><button class="btn chico" data-cbtelok="${esc(k)}">Guardar</button><button class="btn sec chico" data-cbtelno="1">Cancelar</button></div>` : ""}
-      <div class="btns"><button class="btn chico" data-cbreenv="${esc(k)}">${tel ? "Enviar por WhatsApp" : "Enviar por WhatsApp (escoge el chat)"}</button><button class="btn sec chico" data-cbcop="${esc(k)}">${c.tipo === "link" ? "Copiar link" : "Copiar mensaje"}</button><button class="btn sec chico" data-cbtel="${esc(k)}">${tel ? "Editar número" : "Agregar número"}</button>${c.tipo === "cobro" ? `${!c.pagado ? `<button class="btn sec chico" data-cbpag="${c.id}">Marcar pagado</button>` : ""}<button class="btn sec chico" data-cbusar="${c.id}">Abrir en la calculadora</button><button class="btn sec chico" data-cbdel="${c.id}">Borrar</button>` : `<button class="btn sec chico" data-cbirres="${c.id}">Ver en reservas</button>`}</div></div>`; }).join("")
+      <div class="btns"><button class="btn chico" data-cbreenv="${esc(k)}">${tel ? "Enviar por WhatsApp" : "Enviar por WhatsApp (escoge el chat)"}</button><button class="btn sec chico" data-cbcop="${esc(k)}">${c.tipo === "link" ? "Copiar link" : "Copiar mensaje"}</button><button class="btn sec chico" data-cbtel="${esc(k)}">${tel ? "Editar número" : "Agregar número"}</button>${c.tipo === "cobro" ? `${!c.pagado ? `<button class="btn sec chico" data-cbpag="${c.id}">Marcar pagado</button>` : ""}<button class="btn sec chico" data-cbusar="${c.id}">Abrir en la calculadora</button><button class="btn peligro chico" data-cbdel="cobro:${c.id}">Eliminar</button>` : `<button class="btn sec chico" data-cbirres="${c.id}">Ver en reservas</button><button class="btn peligro chico" data-cbdel="link:${c.id}">Eliminar</button>`}</div></div>`; }).join("")
     : `<div class="vacio">Aquí quedan los cobros y links de saldo que envíes, para marcar cuáles ya pagaron.</div>`;
 }
 let cbEditTel = null;
@@ -1609,7 +1609,17 @@ $("#cbLista").addEventListener("click", async e => {
   }
   try {
     if (b.dataset.cbpag) await updateDoc(ref, { [`cobros.${b.dataset.cbpag}.pagado`]: Date.now() });
-    if (b.dataset.cbdel) await updateDoc(ref, { [`cobros.${b.dataset.cbdel}`]: deleteField() });
+    if (b.dataset.cbdel) {
+      // Dos toques para eliminar. Un link de saldo se borra también de Reservas y deja de funcionar para el cliente.
+      const [tipo, id] = b.dataset.cbdel.split(":");
+      if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.textContent = tipo === "link" ? "¿Eliminar? El link dejará de funcionar" : "¿Eliminar? Toca otra vez"; setTimeout(() => { if (b.isConnected) { b.dataset.ok = ""; b.textContent = "Eliminar"; } }, 4000); return; }
+      if (tipo === "link") {
+        const tok = S.reservas?.[id]?.saldoToken;
+        await updateDoc(ref, { [`reservas.${id}`]: deleteField() });
+        if (tok) await deleteDoc(doc(db, "saldos", tok)).catch(() => {});
+      } else await updateDoc(ref, { [`cobros.${id}`]: deleteField() });
+      toast("Cobro eliminado");
+    }
     if (b.dataset.cbusar) {
       const c = S.cobros[b.dataset.cbusar]; if (!c) return;
       $("#cbCli").value = c.cliente || ""; $("#cbPrecio").value = miles(c.unitario || c.precio); $("#cbUnid").value = c.unidades || 1;
@@ -2290,7 +2300,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117s";
+const VERSION_PANEL = "20261117t";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
