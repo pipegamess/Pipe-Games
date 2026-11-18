@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117t">
+<link rel="stylesheet" href="estilos.css?v=20261117u">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -368,7 +368,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
             <datalist id="cbCatalogo"></datalist></div>
           <div id="cbAbonos" class="lista" style="gap:8px"></div>
           <button class="btn sec chico" type="button" id="cbMasAbono" style="align-self:flex-start">+ Agregar otro abono</button>
-          <label>Envío<select id="cbCiudad"><option value="bogota">Bogotá · domicilio $10.000</option><option value="chia">Chía · domicilio $10.000</option><option value="soacha">Soacha · domicilio $10.000</option><option value="otro">Otra ciudad (escribir valor)</option></select></label>
+          <label>Envío<select id="cbCiudad"><option value="cliente">El cliente elige (en el link)</option><option value="bogota">Bogotá · domicilio $10.000</option><option value="chia">Chía · domicilio $10.000</option><option value="soacha">Soacha · domicilio $10.000</option><option value="otro">Otra ciudad (escribir valor)</option></select></label>
           <div class="fila" id="cbOtro" hidden><label>Ciudad<input id="cbOtroCiudad" placeholder="Ej. Medellín"></label><label>Valor del envío<input class="din" id="cbOtroValor" inputmode="numeric" placeholder="16.000"></label></div>
           <div><b style="font-size:14px">Medio de pago del saldo</b><div class="cb-metodos" id="cbMetodos"></div></div>
           <div class="aviso" id="cbAviso" hidden></div>
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117t";
-import * as C from "./comun.js?v=20261117t";
-import * as T from "./tarifas-envio.js?v=20261117t";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117t";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117u";
+import * as C from "./comun.js?v=20261117u";
+import * as T from "./tarifas-envio.js?v=20261117u";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117u";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -765,8 +765,9 @@ function datosCobro() {
   const abonado = abonos.reduce((a, b) => a + b, 0);
   const ciudad = $("#cbCiudad").value;
   const otro = ciudad === "otro";
-  const envio = otro ? num($("#cbOtroValor").value) : C.ENVIO_LOCAL;
-  const destino = otro ? $("#cbOtroCiudad").value.trim() : NOMBRE_CIUDAD[ciudad];
+  // "cliente": la ciudad y el envío los elige el cliente en el link (aquí no se suma envío)
+  const envio = ciudad === "cliente" ? 0 : otro ? num($("#cbOtroValor").value) : C.ENVIO_LOCAL;
+  const destino = ciudad === "cliente" ? "" : otro ? $("#cbOtroCiudad").value.trim() : NOMBRE_CIUDAD[ciudad];
   const permitidos = C.METODOS_PAGO.filter(m => !(m.credito && precio >= C.LIMITE_CREDITO));
   if (cbMetodo !== "cliente" && !permitidos.some(m => m.id === cbMetodo)) cbMetodo = "cliente";
   const base = precio + envio - abonado; // saldo antes del recargo
@@ -786,7 +787,7 @@ function calcular() {
   const htmlCli = `<button type="button" class="cb-m${d.metodo === "cliente" ? " on" : ""}" data-met="cliente"><span class="rad"></span><span class="info"><b>Escoger medio de pago</b><small>El cliente elige en el link (transferencia, tarjeta, Addi o Sistecrédito)</small></span><span class="v">${C.cop(Math.max(d.base, 0))}<small>sin recargo</small></span></button>`;
   if (calcular.htmlMet !== htmlCli + htmlMet) { calcular.htmlMet = htmlCli + htmlMet; $("#cbMetodos").innerHTML = htmlCli + htmlMet; }
   const linea = (t, v, signo = "") => `<div style="display:flex;justify-content:space-between;gap:10px"><span>${t}</span><span>${signo}${C.cop(v)}</span></div>`;
-  $("#cbResumen").innerHTML = `${linea((d.producto ? esc(d.producto) : "Precio final") + (d.unidades > 1 ? ` (${d.unidades} × ${C.cop(d.unitario)})` : ""), d.unitario * d.unidades)}${d.extras.map(x => linea(esc(x.n) + (x.q > 1 ? ` (${x.q} × ${C.cop(x.v)})` : ""), x.q * x.v)).join("")}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
+  $("#cbResumen").innerHTML = `${linea((d.producto ? esc(d.producto) : "Precio final") + (d.unidades > 1 ? ` (${d.unidades} × ${C.cop(d.unitario)})` : ""), d.unitario * d.unidades)}${d.extras.map(x => linea(esc(x.n) + (x.q > 1 ? ` (${x.q} × ${C.cop(x.v)})` : ""), x.q * x.v)).join("")}${(d.ciudad === "cliente" ? `<div style="display:flex;justify-content:space-between;gap:10px"><span>Envío</span><span>lo elige el cliente</span></div>` : linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ "))}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
     <div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700"><span>${d.saldo < 0 ? "Saldo a favor del cliente" : "Saldo a pagar"}</span><span style="color:${d.saldo > 0 ? "var(--accent)" : "var(--ok)"}">${C.cop(Math.abs(d.saldo))}</span></div>`;
   const a = S.ajustesCobro || {};
   const aviso = d.precio >= C.LIMITE_CREDITO ? "Desde $1.000.000 solo aplica transferencia Bre-B o tarjeta de crédito (no Addi ni Sistecrédito)."
@@ -802,7 +803,7 @@ function mensajeCobro(d) {
   const nomP = d.producto || "Precio final";
   if (base) l.push(d.unidades > 1 ? `${nomP}: ${d.unidades} unidades x ${v(d.unitario)} = ${v(base)}` : `${nomP}: ${v(base)}`);
   d.extras.forEach(x => l.push(`${x.n}${x.q > 1 ? ` (${x.q} x ${v(x.v)})` : ""}: ${v(x.q * x.v)}`));
-  l.push(d.ciudad === "otro" ? `Envío${d.destino ? " a " + d.destino : ""}: ${v(d.envio)}` : `Domicilio ${d.destino}: ${v(d.envio)}`);
+  l.push(d.ciudad === "cliente" ? "Envío: según tu ciudad (domicilio en Bogotá, Chía y Soacha $10.000; otras ciudades según la transportadora)" : d.ciudad === "otro" ? `Envío${d.destino ? " a " + d.destino : ""}: ${v(d.envio)}` : `Domicilio ${d.destino}: ${v(d.envio)}`);
   d.abonos.forEach((x, i) => l.push(`${i === 0 ? "Abono" : "Abono " + (i + 1)}: -${v(x)}`));
   if (d.saldo <= 0) { l.push("", d.saldo < 0 ? `Saldo a tu favor: ${v(-d.saldo)}` : "Tu pedido ya está pago."); return l.join("\n"); }
   if (d.recargo) l.push(`Recargo ${d.metodoTxt.split(" · ")[0].toLowerCase()}: ${v(d.recargo)}`);
@@ -883,17 +884,21 @@ $("#cbLink").onclick = async () => {
   const hoy = new Date().toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "2-digit" }).replace(/\./g, "").replace(/ /g, "-");
   const b = writeBatch(db);
   // Si escribiste el valor del envío (Envío → Otro), el cliente ve ese envío y no elige transportadora
-  const envioFijo = d.ciudad === "otro" && d.envio > 0 ? d.envio : 0;
-  b.set(doc(db, "saldos", token), { qr: S.ajustesCobro?.qr || "", nombre: titulo(d.cliente), producto: resumen, items, ...(envioFijo ? { envioFijo, ciudadSugerida: d.destino || "" } : {}), unidades: 1, unitario: total, abonos: d.abonos, abono: d.abonado, reservaId: id, venta: true, estado: "enviado", creado: Date.now(), ...(cbMetodo !== "cliente" ? { pre: { metodo: cbMetodo, fijo: true } } : {}) });
+  // Si elegiste Bogotá, Chía o Soacha, el link trae esa ciudad y el domicilio fijos; con "El cliente elige", él escoge la ciudad
+  const ETQ_LOCAL = { bogota: "Bogotá - Cundinamarca", chia: "Chía - Cundinamarca", soacha: "Soacha - Cundinamarca" };
+  const envioFijo = (d.ciudad === "otro" || ETQ_LOCAL[d.ciudad]) && d.envio > 0 ? d.envio : 0;
+  const ciudadLink = ETQ_LOCAL[d.ciudad] || d.destino || "";
+  b.set(doc(db, "saldos", token), { qr: S.ajustesCobro?.qr || "", nombre: titulo(d.cliente), producto: resumen, items, ...(envioFijo ? { envioFijo, ciudadSugerida: ciudadLink } : {}), unidades: 1, unitario: total, abonos: d.abonos, abono: d.abonado, reservaId: id, venta: true, estado: "enviado", creado: Date.now(), ...(cbMetodo !== "cliente" ? { pre: { metodo: cbMetodo, fijo: true } } : {}) });
   b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { nombre: d.cliente, contacto: dest.tel || "", producto: "Ventas con link de cobro", detalle: resumen, items, total, ...(envioFijo ? { envioFijo } : {}), unidades: 1, abono: d.abonado, abonos: d.abonos, red: "Link de cobro", fecha: hoy, orden: Date.now(), venta: true, saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
   try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
   const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL;
   // El medio de pago que elegiste en la calculadora ya va marcado en el link
   const mElegido = cbMetodo !== "cliente" ? C.METODOS_PAGO.find(m => m.id === cbMetodo) : null;
   const conQue = mElegido ? { addi: "Addi", siste: "Sistecrédito", tarjeta: "tarjeta de crédito", transf: "transferencia Bre-B" }[cbMetodo] || mElegido.t.split(" · ")[0] : "";
-  const texto = conQue
-    ? `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen} con pago por ${conQue}.\nRevisa el total y deja tus datos de envío aquí:\n${link}`
-    : `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}`;
+  // El mensaje solo pide elegir lo que no quedó definido (ciudad de envío y/o medio de pago)
+  const ciudadFija = envioFijo && ciudadLink ? ciudadLink.split(" - ")[0] : "";
+  const falta = [ciudadFija ? "" : "la ciudad de envío", conQue ? "" : "el medio de pago"].filter(Boolean);
+  const texto = `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen}${ciudadFija ? " con envío a " + ciudadFija : ""}${conQue ? (ciudadFija ? " y" : "") + " con pago por " + conQue : ""}.\nRevisa el total${falta.length ? ", elige " + falta.join(" y ") : ""} y deja tus datos de envío aquí:\n${link}`;
   const url = C.urlWhatsApp(dest.tel, texto);
   ventana?.close();
   // El link queda a la vista: copiarlo, abrir la pantalla de saldo o enviarlo por WhatsApp
@@ -1624,7 +1629,7 @@ $("#cbLista").addEventListener("click", async e => {
       const c = S.cobros[b.dataset.cbusar]; if (!c) return;
       $("#cbCli").value = c.cliente || ""; $("#cbPrecio").value = miles(c.unitario || c.precio); $("#cbUnid").value = c.unidades || 1;
       cbReserva = c.reserva || c.telefono ? { id: c.reserva || null, tel: c.telefono || S.reservas?.[c.reserva]?.contacto || "", contacto: c.telefono || "", nombre: c.cliente || "" } : null;
-      $("#cbCiudad").value = NOMBRE_CIUDAD[c.ciudad] || c.ciudad === "otro" ? c.ciudad : "bogota";
+      $("#cbCiudad").value = NOMBRE_CIUDAD[c.ciudad] || c.ciudad === "otro" || c.ciudad === "cliente" ? c.ciudad : "cliente";
       if (c.ciudad === "otro") { $("#cbOtroCiudad").value = c.destino || ""; $("#cbOtroValor").value = miles(c.envio); }
       $("#cbAbonos").innerHTML = ""; (c.abonos?.length ? c.abonos : [""]).forEach(v => agregarAbono(v));
       cbMetodo = c.metodo || "cliente";
@@ -2300,7 +2305,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117t";
+const VERSION_PANEL = "20261117u";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
