@@ -48,10 +48,12 @@ export default {
       });
     }
     if (req.method === "GET" && url.pathname === "/conectar") return conectar(url, env);
+    if (req.method === "GET" && url.pathname === "/diagnostico") return diagnostico(url, env);
     if (req.method === "GET" && url.pathname === "/callback") return callback(url, env);
     if (req.method !== "POST" || url.pathname !== "/webhook") return new Response("Pipe Games", { status: 404 });
 
     const cuerpo = await req.text();
+    console.log("webhook recibido", cuerpo.slice(0, 300));
     const firma = req.headers.get("x-hub-signature-256");
     if (!(await firmaValida(cuerpo, firma, env.META_APP_SECRET) || await firmaValida(cuerpo, firma, env.IG_APP_SECRET))) {
       return new Response("Firma no válida", { status: 401 });
@@ -78,7 +80,10 @@ async function procesar(datos, env) {
   if (!env.AGENTE) { console.log("Falta el KV AGENTE"); return; }
   for (const entrada of datos.entry || []) {
     const cuenta = String(entrada.id || "");
-    for (const ev of entrada.messaging || []) {
+    // Meta puede mandar los mensajes en "messaging" o en "changes" (field: messages)
+    const eventos = (entrada.messaging || []).concat(
+      (entrada.changes || []).filter(c => c && c.field === "messages" && c.value).map(c => c.value));
+    for (const ev of eventos) {
       const m = ev.message;
       if (!m || !m.mid) continue;
       if (await env.AGENTE.get("visto:" + m.mid)) continue;                 // reintento de Meta
@@ -346,4 +351,24 @@ async function callback(url, env) {
   if (nombre) await env.AGENTE.put("fb_cuenta_nombre", nombre);
   const sus = js.success ? "La cuenta quedó suscrita a los mensajes." : "Aviso: no se pudo suscribir la cuenta a los mensajes automáticamente (" + esc(js.error && js.error.message || "sin respuesta") + "). Se puede hacer desde la configuración de webhooks de la app.";
   return pagina("Instagram conectado", `<p>El agente quedó conectado a <b>@${esc(nombre || cuenta)}</b>.</p><p>${sus}</p><p>Ya puedes cerrar esta página.</p>`, true);
+}
+
+/* ---------- diagnóstico: pregunta a Meta por la suscripción de la cuenta ---------- */
+async function diagnostico(url, env) {
+  if (!env.VERIFY_TOKEN || url.searchParams.get("clave") !== env.VERIFY_TOKEN) return new Response("Falta ?clave=", { status: 403 });
+  const token = env.AGENTE && await env.AGENTE.get("fb_token"), cuenta = env.AGENTE && await env.AGENTE.get("fb_cuenta");
+  if (!token || !cuenta) return Response.json({ conectado: false, nota: "Abre /conectar?clave=... primero" });
+  const auth = { Authorization: "Bearer " + token };
+  const sacar = async (r) => { const j = await r.json().catch(() => ({})); return { http: r.status, ...j }; };
+  const out = { conectado: true, cuenta, nombre: await env.AGENTE.get("fb_cuenta_nombre") };
+  out.cuenta_info = await sacar(await fetch(`${GRAPH_FB}/${cuenta}?fields=id,username,name`, { headers: auth }));
+  out.suscripcion_antes = await sacar(await fetch(`${GRAPH_FB}/${cuenta}/subscribed_apps`, { headers: auth }));
+  if (url.searchParams.get("suscribir") !== "no") {
+    out.suscribir = await sacar(await fetch(`${GRAPH_FB}/${cuenta}/subscribed_apps?subscribed_fields=messages`, { method: "POST", headers: auth }));
+    out.suscripcion_despues = await sacar(await fetch(`${GRAPH_FB}/${cuenta}/subscribed_apps`, { headers: auth }));
+  }
+  const dbg = await fetch(`${GRAPH_FB}/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(env.META_APP_ID + "|" + env.META_APP_SECRET)}`);
+  const jd = await dbg.json().catch(() => ({}));
+  out.token = jd.data ? { valido: jd.data.is_valid, tipo: jd.data.type, permisos: jd.data.scopes, vence: jd.data.expires_at } : { http: dbg.status, error: jd.error && jd.error.message };
+  return new Response(JSON.stringify(out, null, 2), { headers: { "Content-Type": "application/json; charset=utf-8" } });
 }
