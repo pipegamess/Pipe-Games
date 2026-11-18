@@ -11,12 +11,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261118a">
+<link rel="stylesheet" href="estilos.css?v=20261118b">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261118a";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261118b";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261118a">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261118b">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -98,9 +98,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118a";
-import * as C from "./comun.js?v=20261118a";
-import * as T from "./tarifas-envio.js?v=20261118a";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118b";
+import * as C from "./comun.js?v=20261118b";
+import * as T from "./tarifas-envio.js?v=20261118b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -320,7 +320,15 @@ $("#fSaldo").onsubmit = async e => {
   try {
     await updateDoc(doc(db, "saldos", id), { estado: "confirmado", respuesta, confirmado: Date.now() });
     confirmado(respuesta, true);
-  } catch { err("No se pudo enviar. Revisa tu conexión e intenta de nuevo."); b.disabled = false; b.textContent = "Confirmar"; }
+  } catch (e) {
+    // Con señal débil el primer envío puede quedar guardado sin que llegue la respuesta: el reintento automático
+    // choca con el pedido ya confirmado. Antes de mostrar error se revisa cómo quedó el link.
+    let d = null; try { const s = await getDoc(doc(db, "saldos", id)); d = s.exists() ? s.data() : "borrado"; } catch {}
+    if (d && d !== "borrado" && d.estado !== "enviado" && d.respuesta) { S = d; confirmado(d.respuesta, true); return; }
+    if (d === "borrado") { $("#fSaldo").hidden = true; scrollTo(0, 0); mensaje("Este enlace ya no está activo (la tienda lo cambió o lo eliminó). Escríbenos por WhatsApp y te enviamos uno nuevo."); return; }
+    err(d ? "No se pudo enviar. Intenta de nuevo en un momento; si sigue fallando, escríbenos por WhatsApp. (" + (e?.code || e?.message || "error") + ")" : "No se pudo enviar. Revisa tu conexión (datos o wifi) e intenta de nuevo.");
+    b.disabled = false; b.textContent = "Confirmar";
+  }
 };
 function confirmado(r, recien) {
   setTimeout(() => prepararBold(r, recien), 0);
