@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117n">
+<link rel="stylesheet" href="estilos.css?v=20261117o">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117n";
-import * as C from "./comun.js?v=20261117n";
-import * as T from "./tarifas-envio.js?v=20261117n";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117n";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117o";
+import * as C from "./comun.js?v=20261117o";
+import * as T from "./tarifas-envio.js?v=20261117o";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117o";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1445,6 +1445,19 @@ async function procesarSaldos(lista) {
   }
   procesandoSaldos = false;
 }
+// Pagos con tarjeta (Bold) pendientes: cada 3 minutos se le pregunta a Bold si ya pagaron (por si el webhook no avisó)
+let revisandoBold = false;
+async function revisarPagosBold() {
+  if (revisandoBold || !esMaestro() || !auth.currentUser) return;
+  const tokens = Object.values(S.reservas || {}).filter(r => r.confirmacion?.metodo === "tarjeta" && !r.pagado && r.saldoToken && Date.now() - (r.confirmacion.t || 0) < 4 * 864e5).map(r => r.saldoToken).slice(0, 15);
+  if (!tokens.length) return;
+  revisandoBold = true;
+  try {
+    const url = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, "");
+    await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + await auth.currentUser.getIdToken(), "Content-Type": "application/json" }, body: JSON.stringify({ metodo: "BOLD_REVISAR", tokens }) });
+  } catch {} finally { revisandoBold = false; }
+}
+setInterval(revisarPagosBold, 180000); setTimeout(revisarPagosBold, 20000);
 // Reserva para un pedido que el cliente armó en el catálogo; revisa los precios contra el catálogo
 function reservaDeCatalogo(sd) {
   const items = (sd.items || []).map(i => ({ n: String(i.n || ""), q: +i.q || 1, v: +i.v || 0 }));
@@ -2269,7 +2282,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117n";
+const VERSION_PANEL = "20261117o";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {

@@ -87,6 +87,13 @@ export default {
       try { return responder(await crearAddi(pedido.pedido || {}, env, url)); }
       catch (e) { return responder({ error: "Addi: " + (e.message || e) }, 400); }
     }
+    // El panel revisa los pagos con tarjeta pendientes (por si Bold no avisó por webhook)
+    if (String(pedido.metodo || "").toUpperCase() === "BOLD_REVISAR") {
+      const tokens = (Array.isArray(pedido.tokens) ? pedido.tokens : []).filter(t => /^[A-Z0-9]{18}$/.test(t)).slice(0, 15);
+      const res = {};
+      for (const t of tokens) { try { res[t] = await revisarBold(env, t); } catch (e) { res[t] = "error"; } }
+      return responder({ estados: res });
+    }
     // Abrir un link corto de Google Maps (maps.app.goo.gl) para leer las coordenadas del punto
     if (String(pedido.metodo || "").toUpperCase() === "EXPANDIR") {
       try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
@@ -413,6 +420,7 @@ async function linkBold(token, env) {
   if (rsp.envioPorConfirmar) throw new Error("El envío aún no tiene valor: te escribimos por WhatsApp");
   const bold = sd.bold || {};
   if (bold.estado === "pagado") return { pagado: true };
+  if (bold.link) { try { if (await revisarBold(env, token, sd) === "pagado") return { pagado: true }; } catch {} }
   if (bold.url && bold.total === Math.round(rsp.total) && Date.now() - (bold.t || 0) < 20 * 3600e3) return { url: bold.url };
   const total = Math.round(Number(rsp.total) || 0);
   if (total < 1000 || total > 50000000) throw new Error("Total no válido");
@@ -431,6 +439,27 @@ async function linkBold(token, env) {
   await guardarBoldEnSaldo(env, token, { url, link: link || "", referencia, total, t: Date.now(), estado: "creado" });
   return { url };
 }
+// Pago confirmado (por el webhook o consultando el link): saldo y reserva quedan pagados
+async function marcarPagadoBold(env, token, pago, monto) {
+  await guardarBoldEnSaldo(env, token, { estado: "pagado", pago: String(pago || ""), monto: Number(monto) || 0, tPago: Date.now() });
+  const sd = await leerSaldo(env, token);
+  if (sd?.reservaId) await escribirReserva(env, sd.reservaId, { pagado: { integerValue: String(Date.now()) }, pagoBold: { mapValue: { fields: aCamposFS({ pago: String(pago || ""), monto: Number(monto) || 0, t: Date.now() }) } } }, ["pagado", "pagoBold"]);
+}
+// Consulta el estado del link en Bold (sirve aunque no esté configurado el webhook)
+async function revisarBold(env, token, sd) {
+  sd = sd || await leerSaldo(env, token);
+  const b = sd?.bold || {};
+  if (!b.link || b.estado === "pagado" || !env.BOLD_API_KEY) return b.estado || "";
+  const r = await fetch(BOLD_API + "/online/link/v1/" + encodeURIComponent(b.link), { headers: { Authorization: "x-api-key " + env.BOLD_API_KEY, Accept: "application/json" } });
+  const txt = await r.text();
+  if (!r.ok) return b.estado || "";
+  if (/"(status|payment_status|state)"\s*:\s*"PAID"/i.test(txt)) {
+    let monto = b.total; try { const j = JSON.parse(txt); monto = Number(j?.payload?.total || j?.payload?.amount?.total_amount || j?.payload?.amount || j?.total) || b.total; } catch {}
+    await marcarPagadoBold(env, token, b.link, monto);
+    return "pagado";
+  }
+  return b.estado || "";
+}
 async function firmaBold(texto, secreto) {
   const bytes = new TextEncoder().encode(texto);
   let bin = ""; for (const b of bytes) bin += String.fromCharCode(b);
@@ -446,13 +475,9 @@ async function avisoBold(req, env, ctx) {
   const m = /^PG-([A-Z0-9]{18})-/.exec(String(d?.data?.metadata?.reference || "").toUpperCase());
   const tipo = String(d.type || "");
   if (m && env.FIREBASE_SA && /^SALE_(APPROVED|REJECTED)$/.test(tipo)) {
-    const trabajo = (async () => {
-      const token = m[1], aprobado = tipo === "SALE_APPROVED";
-      await guardarBoldEnSaldo(env, token, { estado: aprobado ? "pagado" : "rechazado", pago: String(d.data?.payment_id || ""), monto: Number(d.data?.amount?.total) || 0, tPago: Date.now() });
-      if (!aprobado) return;
-      const sd = await leerSaldo(env, token);
-      if (sd?.reservaId) await escribirReserva(env, sd.reservaId, { pagado: { integerValue: String(Date.now()) }, pagoBold: { mapValue: { fields: aCamposFS({ pago: String(d.data?.payment_id || ""), monto: Number(d.data?.amount?.total) || 0, t: Date.now() }) } } }, ["pagado", "pagoBold"]);
-    })().catch(e => console.warn("aviso Bold", e));
+    const trabajo = (tipo === "SALE_APPROVED"
+      ? marcarPagadoBold(env, m[1], String(d.data?.payment_id || ""), Number(d.data?.amount?.total) || 0)
+      : guardarBoldEnSaldo(env, m[1], { estado: "rechazado", tRechazo: Date.now() })).catch(e => console.warn("aviso Bold", e));
     if (ctx?.waitUntil) ctx.waitUntil(trabajo); else await trabajo;
   }
   return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }); // Bold espera 200 en menos de 2 segundos
