@@ -2,9 +2,16 @@
 // Recibe los mensajes directos de @pipe_games_ (webhook de Meta), consulta el catálogo con el
 // stock en vivo (catalogo-meta.csv) y responde con Claude siguiendo las reglas de la tienda.
 //
+// Hay dos formas de conectar Instagram:
+//  A) Inicio de sesión unificado (apps nuevas de Meta): META_APP_ID + META_APP_SECRET + META_CONFIG_ID,
+//     y luego abrir https://<tu-worker>/conectar?clave=<VERIFY_TOKEN>. El token se guarda solo y no vence.
+//  B) Inicio de sesión de Instagram: IG_TOKEN + IG_APP_SECRET.
 // Variables del Worker (Cloudflare → tu Worker → Settings → Variables and Secrets):
-//   IG_TOKEN           (Secret)  Token de acceso de Instagram (API setup with Instagram login → Generate token)
-//   IG_APP_SECRET      (Secret)  Instagram app secret (misma pantalla de la app de Meta)
+//   META_APP_ID        (Text)    Identificador de la app (App settings → Basic)
+//   META_APP_SECRET    (Secret)  Clave secreta de la app (App settings → Basic)
+//   META_CONFIG_ID     (Text)    Identificador de la configuración del inicio de sesión unificado
+//   IG_TOKEN           (Secret)  (forma B) Token de acceso de Instagram
+//   IG_APP_SECRET      (Secret)  (forma B) Instagram app secret
 //   VERIFY_TOKEN       (Secret)  Una palabra que tú inventas; se repite al configurar el webhook en Meta
 //   ANTHROPIC_API_KEY  (Secret)  Clave de la API de Claude (console.anthropic.com)
 //   ANTHROPIC_MODEL    (Text, opcional) claude-sonnet-5-5
@@ -15,6 +22,7 @@
 // Disparador programado (Settings → Triggers → Cron): 0 9 * * 1   (renueva el token cada lunes)
 
 const GRAPH = "https://graph.instagram.com/v24.0";
+const GRAPH_FB = "https://graph.facebook.com/v24.0";
 const CATALOGO_CSV = "https://pipegames.com.co/catalogo-meta.csv";
 const MAX_TURNOS = 16;          // mensajes que recuerda por chat
 const MAX_DIARIOS = 40;         // respuestas máximas por cliente al día (control de gasto)
@@ -30,15 +38,22 @@ export default {
       return ok ? new Response(url.searchParams.get("hub.challenge") || "") : new Response("No autorizado", { status: 403 });
     }
     if (req.method === "GET" && url.pathname === "/salud") {
+      const fb = env.AGENTE && await env.AGENTE.get("fb_token");
       return Response.json({
-        ok: true, activo: env.AGENTE_ACTIVO !== "no", token: !!(env.IG_TOKEN || (env.AGENTE && await env.AGENTE.get("token"))),
-        secreto: !!env.IG_APP_SECRET, verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE
+        ok: true, activo: env.AGENTE_ACTIVO !== "no",
+        token: !!(fb || env.IG_TOKEN || (env.AGENTE && await env.AGENTE.get("token"))),
+        cuenta: (env.AGENTE && await env.AGENTE.get("fb_cuenta_nombre")) || null,
+        secreto: !!(env.META_APP_SECRET || env.IG_APP_SECRET), app: !!(env.META_APP_ID && env.META_CONFIG_ID),
+        verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE
       });
     }
+    if (req.method === "GET" && url.pathname === "/conectar") return conectar(url, env);
+    if (req.method === "GET" && url.pathname === "/callback") return callback(url, env);
     if (req.method !== "POST" || url.pathname !== "/webhook") return new Response("Pipe Games", { status: 404 });
 
     const cuerpo = await req.text();
-    if (!(await firmaValida(cuerpo, req.headers.get("x-hub-signature-256"), env.IG_APP_SECRET))) {
+    const firma = req.headers.get("x-hub-signature-256");
+    if (!(await firmaValida(cuerpo, firma, env.META_APP_SECRET) || await firmaValida(cuerpo, firma, env.IG_APP_SECRET))) {
       return new Response("Firma no válida", { status: 401 });
     }
     let datos; try { datos = JSON.parse(cuerpo); } catch { return new Response("ok"); }
@@ -49,6 +64,7 @@ export default {
 
   // Renueva el token de Instagram (dura 60 días) y lo guarda en el KV
   async scheduled(evento, env) {
+    if (env.AGENTE && await env.AGENTE.get("fb_token")) return; // el token unificado no vence
     const actual = (env.AGENTE && await env.AGENTE.get("token")) || env.IG_TOKEN;
     if (!actual) return;
     const r = await fetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(actual)}`);
@@ -221,11 +237,13 @@ async function preguntarClaude(env, historial) {
 
 /* ---------- Instagram ---------- */
 async function enviar(env, cliente, texto) {
-  const token = (await env.AGENTE.get("token")) || env.IG_TOKEN;
-  if (!token) { console.log("Falta IG_TOKEN"); return; }
+  const fbToken = await env.AGENTE.get("fb_token"), fbCuenta = await env.AGENTE.get("fb_cuenta");
+  const token = fbToken || (await env.AGENTE.get("token")) || env.IG_TOKEN;
+  if (!token) { console.log("Falta conectar Instagram"); return; }
+  const destino = fbToken && fbCuenta ? `${GRAPH_FB}/${fbCuenta}/messages` : GRAPH + "/me/messages";
   await env.AGENTE.put("enviando:" + cliente, "1", { expirationTtl: 60 });
   for (const parte of partir(texto, 950)) {
-    const r = await fetch(GRAPH + "/me/messages", {
+    const r = await fetch(destino, {
       method: "POST",
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify({ recipient: { id: cliente }, message: { text: parte } })
@@ -257,4 +275,75 @@ async function firmaValida(cuerpo, cabecera, secreto) {
   if (hex.length !== esperado.length) return false;
   let dif = 0; for (let k = 0; k < hex.length; k++) dif |= hex.charCodeAt(k) ^ esperado.charCodeAt(k);
   return dif === 0;
+}
+
+/* ---------- conexión con el inicio de sesión unificado de Meta ---------- */
+function pagina(titulo, texto, ok) {
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${titulo}</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0f;color:#e8e8f0;font:16px/1.5 -apple-system,Segoe UI,Arial,sans-serif;padding:16px}
+.c{background:#12121a;border-radius:14px;padding:28px 24px;max-width:560px}h1{font-size:20px;margin:0 0 10px;color:${ok ? "#3ecf8e" : "#f5c400"}}p{margin:8px 0;color:#c8c8d8}</style></head>
+<body><div class="c"><h1>${titulo}</h1>${texto}</div></body></html>`;
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+const esc = t => String(t == null ? "" : t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+async function conectar(url, env) {
+  if (!env.VERIFY_TOKEN || url.searchParams.get("clave") !== env.VERIFY_TOKEN) return pagina("Falta la clave", "<p>Abre esta página agregando <b>?clave=</b> y tu VERIFY_TOKEN al final de la dirección.</p>");
+  if (!env.META_APP_ID || !env.META_CONFIG_ID || !env.META_APP_SECRET) return pagina("Faltan datos de la app", "<p>Agrega en Cloudflare META_APP_ID, META_APP_SECRET y META_CONFIG_ID, presiona Deploy y vuelve a abrir esta página.</p>");
+  if (!env.AGENTE) return pagina("Falta el KV", "<p>Conecta el KV namespace con el nombre AGENTE.</p>");
+  const estado = crypto.randomUUID();
+  await env.AGENTE.put("estado:" + estado, "1", { expirationTtl: 900 });
+  const dialogo = new URL("https://www.facebook.com/v24.0/dialog/oauth");
+  dialogo.searchParams.set("client_id", env.META_APP_ID);
+  dialogo.searchParams.set("config_id", env.META_CONFIG_ID);
+  dialogo.searchParams.set("redirect_uri", url.origin + "/callback");
+  dialogo.searchParams.set("response_type", "code");
+  dialogo.searchParams.set("state", estado);
+  return Response.redirect(dialogo.toString(), 302);
+}
+
+async function callback(url, env) {
+  if (url.searchParams.get("error")) return pagina("Meta no autorizó la conexión", `<p>${esc(url.searchParams.get("error_description") || url.searchParams.get("error"))}</p>`);
+  const code = url.searchParams.get("code"), estado = url.searchParams.get("state");
+  if (!code) return pagina("Falta el código", "<p>Inicia la conexión desde /conectar.</p>");
+  if (estado && !(await env.AGENTE.get("estado:" + estado))) return pagina("El enlace venció", "<p>Vuelve a abrir /conectar?clave=… para empezar otra vez.</p>");
+  if (!estado) {
+    // Si Meta no devuelve el estado, se acepta solo dentro de los 15 minutos siguientes a abrir /conectar
+    const recientes = await env.AGENTE.list({ prefix: "estado:" });
+    if (!recientes.keys.length) return pagina("El enlace venció", "<p>Vuelve a abrir /conectar?clave=… para empezar otra vez.</p>");
+    for (const k of recientes.keys) await env.AGENTE.delete(k.name);
+  } else await env.AGENTE.delete("estado:" + estado);
+
+  const tk = new URL(GRAPH_FB + "/oauth/access_token");
+  tk.searchParams.set("client_id", env.META_APP_ID);
+  tk.searchParams.set("client_secret", env.META_APP_SECRET);
+  tk.searchParams.set("redirect_uri", url.origin + "/callback");
+  tk.searchParams.set("code", code);
+  const rt = await fetch(tk); const jt = await rt.json().catch(() => ({}));
+  if (!jt.access_token) return pagina("No se pudo obtener el token", `<p>${esc(jt.error && jt.error.message || ("HTTP " + rt.status))}</p>`);
+  const token = jt.access_token;
+  const auth = { Authorization: "Bearer " + token };
+
+  // Cuenta de Instagram autorizada
+  let cuenta = null, nombre = "";
+  const ra = await fetch(GRAPH_FB + "/me/assigned_instagram_accounts?fields=id,username", { headers: auth });
+  const ja = await ra.json().catch(() => ({}));
+  if (ja.data && ja.data.length) { cuenta = ja.data[0].id; nombre = ja.data[0].username || ""; }
+  if (!cuenta) {
+    const rp = await fetch(GRAPH_FB + "/me/accounts?fields=instagram_business_account{id,username}", { headers: auth });
+    const jp = await rp.json().catch(() => ({}));
+    const pg = (jp.data || []).find(p => p.instagram_business_account);
+    if (pg) { cuenta = pg.instagram_business_account.id; nombre = pg.instagram_business_account.username || ""; }
+  }
+  if (!cuenta) return pagina("No se encontró la cuenta de Instagram", `<p>El inicio de sesión funcionó pero Meta no devolvió la cuenta de Instagram. Respuesta: ${esc(JSON.stringify(ja).slice(0, 300))}</p>`);
+
+  // Suscribir la cuenta a los mensajes
+  const rs = await fetch(`${GRAPH_FB}/${cuenta}/subscribed_apps?subscribed_fields=messages`, { method: "POST", headers: auth });
+  const js = await rs.json().catch(() => ({}));
+
+  await env.AGENTE.put("fb_token", token);
+  await env.AGENTE.put("fb_cuenta", String(cuenta));
+  if (nombre) await env.AGENTE.put("fb_cuenta_nombre", nombre);
+  const sus = js.success ? "La cuenta quedó suscrita a los mensajes." : "Aviso: no se pudo suscribir la cuenta a los mensajes automáticamente (" + esc(js.error && js.error.message || "sin respuesta") + "). Se puede hacer desde la configuración de webhooks de la app.";
+  return pagina("Instagram conectado", `<p>El agente quedó conectado a <b>@${esc(nombre || cuenta)}</b>.</p><p>${sus}</p><p>Ya puedes cerrar esta página.</p>`, true);
 }
