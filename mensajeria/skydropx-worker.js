@@ -131,6 +131,36 @@ export default {
 };
 
 /* ---------- Cotizador público: valor del envío a municipios sin tarifa fija ---------- */
+// Remitente guardado en el panel (Conexión y datos del remitente). Se lee con la cuenta de servicio y se guarda 1 hora.
+let remitenteCache = { t: 0, v: null };
+async function origenesRemitente(env) {
+  if (!remitenteCache.v || Date.now() - remitenteCache.t > 3600e3) {
+    let rem = {}, variante = 0;
+    try {
+      if (env.FIREBASE_SA) {
+        const tk = await tokenServicio(env);
+        const ruta = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID + "?mask.fieldPaths=skydropx";
+        const d = await (await fetch("https://firestore.googleapis.com/v1/" + ruta, { headers: { Authorization: "Bearer " + tk } })).json();
+        const sk = d?.fields?.skydropx?.mapValue?.fields || {}, r = sk.remitente?.mapValue?.fields || {};
+        const sv = k => r[k]?.stringValue || "";
+        rem = { ciudad: sv("ciudad"), depto: sv("depto"), barrio: sv("barrio"), cp: sv("cp") };
+        variante = Number(sk.variante?.integerValue || 0);
+      }
+    } catch {}
+    remitenteCache = { t: Date.now(), v: { rem, variante } };
+  }
+  const { rem, variante } = remitenteCache.v;
+  const sinT = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const c = sinT(rem.ciudad || "Bogota"), dp = sinT(rem.depto || "Cundinamarca"), esBog = /^bogota/i.test(c), barrio = sinT(rem.barrio), cp = String(rem.cp || "").replace(/\D/g, "");
+  // Las mismas formas (y en el mismo orden) que usa el panel para cotizar
+  const l = esBog ? [["Cundinamarca", "Bogota"], ["Bogota D.C.", "Bogota"], ["Bogota, D.C.", "Bogota, D.C."], ["Distrito Capital", "Bogota"], ["Bogota", "Bogota"], [dp, c]] : [[dp, c], [dp, c.split(",")[0]]];
+  const vistos = new Set(), formas = l.filter(([a, b]) => { const k = a + "|" + b; if (vistos.has(k)) return false; vistos.add(k); return true; });
+  const dir = (a1, a2, conCp) => ({ country_code: "co", ...(conCp ? { postal_code: cp } : {}), area_level1: a1, area_level2: a2, area_level3: barrio || a2 });
+  const todas = [...(cp ? formas.map(([a, b]) => dir(a, b, true)) : []), ...formas.map(([a, b]) => dir(a, b, false)), ...(cp ? [] : formas.map(([a, b]) => ({ ...dir(a, b, false), postal_code: "110911" })))];
+  // Primero la forma que ya funcionó en el panel
+  const i = Math.min(Math.max(variante, 0), todas.length - 1);
+  return [todas[i], ...todas.filter((_, j) => j !== i)];
+}
 // Cotiza un sobre de videojuego (22×19×4 cm, 1 kg, valor $50.000) desde Bogotá con Envía e Interrapidísimo.
 // Devuelve la tarifa más barata de cada una; el catálogo la redondea a los mil de arriba.
 const cacheCot = new Map();
@@ -143,27 +173,29 @@ async function cotizarPublico(b, env, base, responder) {
   const k = (ciudad + "|" + depto).toLowerCase();
   const c = cacheCot.get(k); if (c && !b.detalle && Date.now() - c.t < 6 * 3600e3) return responder(c.r);
   if (!env.SKYDROPX_CLIENT_ID || !env.SKYDROPX_CLIENT_SECRET) return responder({ error: "Faltan las credenciales de Skydropx en el Worker" }, 500);
-  const origenes = [["Cundinamarca", "Bogota"], ["Bogota D.C.", "Bogota"], ["Distrito Capital", "Bogota"], ["Bogota", "Bogota"]];
+  // Origen: el mismo remitente del panel (Firestore → skydropx.remitente), con las mismas formas que prueba el panel
+  const origenes = await origenesRemitente(env);
   const deptos = [depto, ...(ALIAS_DEPTO_W[depto.toLowerCase()] || [])];
   const ciudades = [...new Set([ciudad, ciudad.replace(/\s*\(.*\)/, ""), ciudad.split(",")[0].trim()])];
   const destinos = []; deptos.forEach(d => ciudades.forEach(cc => destinos.push([d, cc])));
   const paquete = { length: 22, width: 19, height: 4, weight: 1 }, valor = 50000;
   try {
     let tk = await tokenDeSkydropx(env, base), iO = 0, iD = 0, conCarriers = true, q = null;
-    for (let intento = 0; intento < 14 && !q; intento++) {
-      const [o1, o2] = origenes[Math.min(iO, origenes.length - 1)], [d1, d2] = destinos[Math.min(iD, destinos.length - 1)];
-      const cuerpo = { quotation: { address_from: { country_code: "co", area_level1: o1, area_level2: o2, area_level3: o2 }, address_to: { country_code: "co", area_level1: d1, area_level2: d2, area_level3: d2 },
+    for (let intento = 0; intento < 24 && !q; intento++) {
+      const of = origenes[Math.min(iO, origenes.length - 1)], [d1, d2] = destinos[Math.min(iD, destinos.length - 1)];
+      const cuerpo = { quotation: { address_from: of, address_to: { country_code: "co", area_level1: d1, area_level2: d2, area_level3: d2 },
         parcels: [{ ...paquete, declared_amount: valor }], declared_amount: valor, ...(conCarriers ? { requested_carriers: ["envia", "interrapidisimo"] } : {}) } };
       let r = await llamar(base, "/quotations", "POST", cuerpo, tk);
       if (r.status === 401) { tokenSkydropx.vence = 0; tk = await tokenDeSkydropx(env, base); r = await llamar(base, "/quotations", "POST", cuerpo, tk); }
       const j = await r.json().catch(() => ({}));
       const msg = JSON.stringify(j);
-      traza.push({ intento, origen: o1 + "/" + o2, destino: d1 + "/" + d2, carriers: conCarriers, estado: r.status, respuesta: r.ok ? undefined : msg.slice(0, 300) });
+      traza.push({ intento, origen: [of.postal_code, of.area_level1, of.area_level2, of.area_level3].filter(Boolean).join("/"), destino: d1 + "/" + d2, carriers: conCarriers, estado: r.status, respuesta: r.ok ? undefined : msg.slice(0, 300) });
       if (r.ok) { q = j; break; }
       if (r.status !== 422) throw new Error("Skydropx respondió " + r.status);
       if (/requested_carriers/.test(msg) && conCarriers) { conCarriers = false; continue; }
       let avanzo = false;
       if (/address_from/.test(msg) && iO < origenes.length - 1) { iO++; avanzo = true; }
+      else if (/address_from/.test(msg)) throw new Error("Skydropx no acepta la dirección de recogida: revisa ciudad, departamento y código postal del remitente en el panel");
       if (/address_to/.test(msg) && iD < destinos.length - 1) { iD++; avanzo = true; }
       if (!avanzo) throw new Error("Skydropx no reconoce " + ciudad + " - " + depto);
     }
