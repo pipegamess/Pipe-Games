@@ -5920,7 +5920,7 @@ async function pagarTarjetaCatalogo(nombre, ciudad, items) {
     nombre: (nombre || 'Cliente').slice(0, 80),
     producto: (its[0].n + (its.length > 1 ? ` y ${its.length - 1} artículo${its.length > 2 ? 's' : ''} más` : '')).slice(0, 300),
     items: its, unidades: 1, unitario: total, abono: 0, abonos: [], venta: true, estado: 'enviado', creado: Date.now(), origen: 'catalogo',
-    ciudadSugerida: String(env.ciudad || ciudad || '').slice(0, 80), pre: { metodo: 'tarjeta', transp: env.tipo === 'nacional' ? (env.transp || '') : '' }
+    ciudadSugerida: String(env.ciudad || ciudad || '').slice(0, 80), pre: { metodo: 'tarjeta', fijo: true, transp: env.tipo === 'nacional' ? (env.transp || '') : '' }
   };
   try {
     const r = await fetch(`${PC_FIRESTORE}?documentId=${token}&key=${PC_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' },

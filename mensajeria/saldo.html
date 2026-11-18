@@ -11,12 +11,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117r">
+<link rel="stylesheet" href="estilos.css?v=20261117s">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261117r";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261117s";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261117r">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261117s">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -98,9 +98,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117r";
-import * as C from "./comun.js?v=20261117r";
-import * as T from "./tarifas-envio.js?v=20261117r";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117s";
+import * as C from "./comun.js?v=20261117s";
+import * as T from "./tarifas-envio.js?v=20261117s";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -196,6 +196,8 @@ function calculo() {
   return { envio, base, m, total, recargo: total - base, permitidos };
 }
 let ultimoMet = "";
+// Link con el medio de pago ya elegido por la tienda (pre.fijo): solo se muestra ese, si aplica para el valor del pedido
+function metodoFijo(c) { const p = S?.pre || {}; return p.fijo && p.metodo && c.permitidos.some(m => m.id === p.metodo) ? p.metodo : ""; }
 // El correo solo se pide fuera de Bogotá, Chía y Soacha (lo exige la transportadora), o si paga con Addi o Sistecrédito
 function pideCorreo() { const m = METODOS.find(x => x.id === metodo); return !claveLocal(env) || !!(metodoElegido && m?.credito); }
 function pintar() {
@@ -218,10 +220,12 @@ function pintar() {
   $("#sCorreoCaja").hidden = !pideCorreo();
   const local = !!claveLocal(env);
   $("#cajaMapa").hidden = !local;
-  $("#tPago").textContent = "2. ¿Cómo quieres pagar?";
+  // Medio de pago fijado por la tienda al enviar el link: no se vuelve a preguntar
+  const fijo = metodoFijo(c);
+  $("#tPago").textContent = fijo ? "2. Medio de pago" : "2. ¿Cómo quieres pagar?";
   if (local) prepararMapa();
   // Medios de pago
-  const htmlMet = c.permitidos.map(m => { const t = c.base > 0 ? m.calc(c.base) : c.base, r = t - c.base;
+  const htmlMet = (fijo ? c.permitidos.filter(m => m.id === fijo) : c.permitidos).map(m => { const t = c.base > 0 ? m.calc(c.base) : c.base, r = t - c.base;
     return `<button type="button" class="op${metodoElegido && m.id === metodo ? " on" : ""}" data-m="${m.id}"><span class="rad"></span><span class="info"><b>${esc(m.t)}</b><small>${esc(m.d)}</small></span><span class="v">${C.cop(Math.max(t, 0))}<small>${r > 0 ? "+" + C.cop(r) : "Sin recargo"}</small></span></button>`; }).join("");
   if (htmlMet !== ultimoMet) { ultimoMet = htmlMet; $("#sMetodos").innerHTML = htmlMet; }
   $("#sLimite").hidden = precioTotal() < C.LIMITE_CREDITO;

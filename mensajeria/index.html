@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117r">
+<link rel="stylesheet" href="estilos.css?v=20261117s">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117r";
-import * as C from "./comun.js?v=20261117r";
-import * as T from "./tarifas-envio.js?v=20261117r";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117r";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117s";
+import * as C from "./comun.js?v=20261117s";
+import * as T from "./tarifas-envio.js?v=20261117s";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117s";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -717,7 +717,7 @@ async function desconectarMensajero(id, b) {
 const num = v => parseInt(String(v || "").replace(/\D/g, ""), 10) || 0;
 const miles = n => n ? n.toLocaleString("es-CO") : "";
 const NOMBRE_CIUDAD = { bogota: "Bogotá", soacha: "Soacha", chia: "Chía" };
-let cbMetodo = "transf";
+let cbMetodo = "cliente"; // "cliente": el cliente escoge el medio de pago en el link
 let ajustesCargados = false;
 // Datos fijos de pago (Bre-B)
 const LLAVE_BREB = "0093607368", TITULAR_BREB = "Pipe Games";
@@ -768,9 +768,10 @@ function datosCobro() {
   const envio = otro ? num($("#cbOtroValor").value) : C.ENVIO_LOCAL;
   const destino = otro ? $("#cbOtroCiudad").value.trim() : NOMBRE_CIUDAD[ciudad];
   const permitidos = C.METODOS_PAGO.filter(m => !(m.credito && precio >= C.LIMITE_CREDITO));
-  if (!permitidos.some(m => m.id === cbMetodo)) cbMetodo = "transf";
+  if (cbMetodo !== "cliente" && !permitidos.some(m => m.id === cbMetodo)) cbMetodo = "cliente";
   const base = precio + envio - abonado; // saldo antes del recargo
-  const m = C.METODOS_PAGO.find(x => x.id === cbMetodo);
+  // "Escoger medio de pago": se calcula como transferencia (sin recargo); el recargo lo verá el cliente al elegir
+  const m = cbMetodo === "cliente" ? { ...C.METODOS_PAGO.find(x => x.id === "transf"), id: "cliente", t: "El cliente escoge el medio de pago" } : C.METODOS_PAGO.find(x => x.id === cbMetodo);
   const total = base > 0 ? m.calc(base) : base;
   return { cliente: $("#cbCli").value.trim(), producto: $("#cbProd").value.trim(), unitario, unidades, extras, precioExtras, precio, abonos, abonado, ciudad, destino, envio, base, metodo: cbMetodo, metodoTxt: m.t, recargo: base > 0 ? total - base : 0, saldo: total, permitidos };
 }
@@ -782,7 +783,8 @@ function calcular() {
     const tot = d.base > 0 ? m.calc(d.base) : d.base, rec = tot - d.base;
     return `<button type="button" class="cb-m${m.id === d.metodo ? " on" : ""}" data-met="${m.id}"><span class="rad"></span><span class="info"><b>${m.t}</b><small>${m.d}</small></span><span class="v">${C.cop(Math.max(tot, 0))}<small>${rec > 0 ? "+" + C.cop(rec) : "Sin recargo"}</small></span></button>`;
   }).join("");
-  if (calcular.htmlMet !== htmlMet) { calcular.htmlMet = htmlMet; $("#cbMetodos").innerHTML = htmlMet; }
+  const htmlCli = `<button type="button" class="cb-m${d.metodo === "cliente" ? " on" : ""}" data-met="cliente"><span class="rad"></span><span class="info"><b>Escoger medio de pago</b><small>El cliente elige en el link (transferencia, tarjeta, Addi o Sistecrédito)</small></span><span class="v">${C.cop(Math.max(d.base, 0))}<small>sin recargo</small></span></button>`;
+  if (calcular.htmlMet !== htmlCli + htmlMet) { calcular.htmlMet = htmlCli + htmlMet; $("#cbMetodos").innerHTML = htmlCli + htmlMet; }
   const linea = (t, v, signo = "") => `<div style="display:flex;justify-content:space-between;gap:10px"><span>${t}</span><span>${signo}${C.cop(v)}</span></div>`;
   $("#cbResumen").innerHTML = `${linea((d.producto ? esc(d.producto) : "Precio final") + (d.unidades > 1 ? ` (${d.unidades} × ${C.cop(d.unitario)})` : ""), d.unitario * d.unidades)}${d.extras.map(x => linea(esc(x.n) + (x.q > 1 ? ` (${x.q} × ${C.cop(x.v)})` : ""), x.q * x.v)).join("")}${linea(d.ciudad === "otro" ? `Envío${d.destino ? " a " + esc(d.destino) : ""}` : "Domicilio en " + d.destino, d.envio, "+ ")}${d.abonado ? linea(d.abonos.length > 1 ? `Abonos (${d.abonos.length})` : "Reserva o abono", d.abonado, "− ") : ""}${d.recargo ? linea("Recargo por medio de pago", d.recargo, "+ ") : ""}
     <div style="display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;font-family:var(--f-display);font-size:24px;font-weight:700"><span>${d.saldo < 0 ? "Saldo a favor del cliente" : "Saldo a pagar"}</span><span style="color:${d.saldo > 0 ? "var(--accent)" : "var(--ok)"}">${C.cop(Math.abs(d.saldo))}</span></div>`;
@@ -809,6 +811,7 @@ function mensajeCobro(d) {
   if (d.metodo === "tarjeta") l.push("Pago con tarjeta de crédito: te enviamos el link de pago.");
   if (d.metodo === "addi" || d.metodo === "siste") l.push(`Pago a cuotas con ${d.metodo === "addi" ? "Addi" : "Sistecrédito"}: envíanos tu número de cédula y tu correo.`);
   if (d.metodo === "contraentrega") l.push("Pago contra entrega, en efectivo o Nequi.");
+  if (d.metodo === "cliente") l.push(`Puedes pagar por transferencia Bre-B a la llave ${LLAVE_BREB} (sin recargo), con tarjeta de crédito, Addi o Sistecrédito. Dime cuál prefieres.`);
   return l.join("\n");
 }
 async function registrarCobro(d, dest = destinoCobro()) {
@@ -881,13 +884,13 @@ $("#cbLink").onclick = async () => {
   const b = writeBatch(db);
   // Si escribiste el valor del envío (Envío → Otro), el cliente ve ese envío y no elige transportadora
   const envioFijo = d.ciudad === "otro" && d.envio > 0 ? d.envio : 0;
-  b.set(doc(db, "saldos", token), { qr: S.ajustesCobro?.qr || "", nombre: titulo(d.cliente), producto: resumen, items, ...(envioFijo ? { envioFijo, ciudadSugerida: d.destino || "" } : {}), unidades: 1, unitario: total, abonos: d.abonos, abono: d.abonado, reservaId: id, venta: true, estado: "enviado", creado: Date.now(), pre: { metodo: cbMetodo } });
+  b.set(doc(db, "saldos", token), { qr: S.ajustesCobro?.qr || "", nombre: titulo(d.cliente), producto: resumen, items, ...(envioFijo ? { envioFijo, ciudadSugerida: d.destino || "" } : {}), unidades: 1, unitario: total, abonos: d.abonos, abono: d.abonado, reservaId: id, venta: true, estado: "enviado", creado: Date.now(), ...(cbMetodo !== "cliente" ? { pre: { metodo: cbMetodo, fijo: true } } : {}) });
   b.set(doc(db, "usuarios", ADMIN_UID), { reservas: { [id]: { nombre: d.cliente, contacto: dest.tel || "", producto: "Ventas con link de cobro", detalle: resumen, items, total, ...(envioFijo ? { envioFijo } : {}), unidades: 1, abono: d.abonado, abonos: d.abonos, red: "Link de cobro", fecha: hoy, orden: Date.now(), venta: true, saldoToken: token, linkEnviado: Date.now() } } }, { merge: true });
   try { await b.commit(); } catch (err) { ventana?.close(); toast(C.mensajeError(err)); return; }
   const link = URL_SALDO + "?c=" + token + "&v=" + VERSION_PANEL;
   // El medio de pago que elegiste en la calculadora ya va marcado en el link
-  const mElegido = cbMetodo !== "transf" ? C.METODOS_PAGO.find(m => m.id === cbMetodo) : null;
-  const conQue = mElegido ? { addi: "Addi", siste: "Sistecrédito", tarjeta: "tarjeta de crédito" }[cbMetodo] || mElegido.t.split(" · ")[0] : "";
+  const mElegido = cbMetodo !== "cliente" ? C.METODOS_PAGO.find(m => m.id === cbMetodo) : null;
+  const conQue = mElegido ? { addi: "Addi", siste: "Sistecrédito", tarjeta: "tarjeta de crédito", transf: "transferencia Bre-B" }[cbMetodo] || mElegido.t.split(" · ")[0] : "";
   const texto = conQue
     ? `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen} con pago por ${conQue}.\nRevisa el total y deja tus datos de envío aquí:\n${link}`
     : `Hola ${C.primerNombre(titulo(d.cliente))}, este es el link para completar tu pedido de ${resumen}.\nRevisa el total, elige la ciudad de envío y el medio de pago y deja tus datos aquí:\n${link}`;
@@ -948,7 +951,7 @@ $("#cbGuia").onclick = () => {
   $("#nTel").focus();
   toast("Datos pasados a Nueva guía: completa celular y dirección");
 };
-$("#cbLimpiar").onclick = () => { $("#fCobro").classList.remove("solo-link"); $("#cbLinkRes").hidden = true; cbLinkReserva = null; cbLinkInfo = null; modoLink(false); cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbTel").value = ""; $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "transf"; calcular(); };
+$("#cbLimpiar").onclick = () => { $("#fCobro").classList.remove("solo-link"); $("#cbLinkRes").hidden = true; cbLinkReserva = null; cbLinkInfo = null; modoLink(false); cbReserva = null; pintarDestinoWa(); $("#fCobro").reset(); $("#cbTel").value = ""; $("#cbUnid").value = 1; $("#cbAbonos").innerHTML = ""; $("#cbArts").innerHTML = ""; agregarAbono(); cbMetodo = "cliente"; calcular(); };
 /* ---------- RESERVAS (preventas): importar, ver saldos y cobrar ---------- */
 let cbReserva = null; // reserva cargada en la calculadora {id, tel}
 // Busca el celular del cliente: primero la reserva cargada con "Cobrar"; si no, por nombre
@@ -1550,7 +1553,7 @@ function cargarReserva(id) {
   $("#cbProd").value = r.detalle || r.producto || "";
   $("#cbUnid").value = r.unidades || 1;
   (r.abonos?.length ? r.abonos : [r.abono || ""]).forEach(v => agregarAbono(v));
-  cbMetodo = "transf";
+  cbMetodo = "cliente";
   cbReserva = { id, tel: r.contacto, contacto: r.contacto, nombre: titulo(r.nombre) };
   pintarDestinoWa(); calcular();
   $("#fCobro").scrollIntoView({ behavior: "smooth" });
@@ -1614,7 +1617,7 @@ $("#cbLista").addEventListener("click", async e => {
       $("#cbCiudad").value = NOMBRE_CIUDAD[c.ciudad] || c.ciudad === "otro" ? c.ciudad : "bogota";
       if (c.ciudad === "otro") { $("#cbOtroCiudad").value = c.destino || ""; $("#cbOtroValor").value = miles(c.envio); }
       $("#cbAbonos").innerHTML = ""; (c.abonos?.length ? c.abonos : [""]).forEach(v => agregarAbono(v));
-      cbMetodo = c.metodo || "transf";
+      cbMetodo = c.metodo || "cliente";
       calcular(); $("#fCobro").scrollIntoView({ behavior: "smooth" });
     }
   } catch (err) { toast(C.mensajeError(err)); }
@@ -2287,7 +2290,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117r";
+const VERSION_PANEL = "20261117s";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
