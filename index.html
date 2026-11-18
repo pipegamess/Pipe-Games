@@ -5991,7 +5991,22 @@ function reservarGTA6() {
   const body = (cfg.gta6.waMessage && cfg.gta6.waMessage.trim() !== "")
     ? cfg.gta6.waMessage
     : 'Estoy interesado en la *PREVENTA de GTA VI PS5 (versión LATAM, código en caja)* 🎮 ¿Me pueden dar más información para reservar el mío?';
+  if (comprarPreventa(cfg.gta6)) return;
   abrirModalPreventa(body);
+}
+/* Preventa con precio: abre la compra completa (datos de envío y medio de pago), igual que cualquier producto.
+   Si el precio está "por definir", sigue el mensaje de WhatsApp de siempre. */
+function comprarPreventa(b) {
+  const precio = priceToNum(String(b && b.price || '').replace(/[^\d.,]/g, ''));
+  if (!b || !(precio >= 1000)) return false;
+  const t = String(b.title || 'Preventa').replace(/\s+/g, ' ').trim();
+  const plat = /switch\s*2|sw2/i.test(t) ? 'SWITCH 2' : /switch/i.test(t) ? 'SWITCH' : /ps5/i.test(t) ? 'PS5' : /ps4/i.test(t) ? 'PS4' : '';
+  const nombre = t.replace(/^\s*preventa\s*(de\s*)?/i, '').replace(/\s*·\s*/g, ' ').replace(/\b(ps5|ps4)\b/ig, '').replace(/\s{2,}/g, ' ').trim() || t;
+  try { closePhysicalModal(); } catch (e) {}
+  openSimulador(false);
+  simItem = { tipo:'item', name:nombre.slice(0, 110), platform:plat, price:numToPrice(precio), img:'', qty:1 };
+  simIrACheckout();
+  return true;
 }
 
 function actualizarCountdownGTA6() {
@@ -6814,6 +6829,7 @@ function reservarExtraBanner(id) {
   const body = (b.waMessage && b.waMessage.trim() !== "")
     ? b.waMessage
     : ('Estoy interesado en la *' + (b.title || 'preventa') + '* 🎮 ¿Me pueden dar más información?');
+  if (comprarPreventa(b)) return;
   abrirModalPreventa(body);
 }
 
