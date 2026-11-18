@@ -25,8 +25,8 @@ jobs:
   copiar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: node mensajeria/scripts/extraer-tarifas.js
@@ -42,8 +42,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898799+github-actions[bot]@users.noreply.github.com"
           git commit -m "Tarifas, productos y catálogo de Meta actualizados desde el catálogo"
-          git pull --rebase
-          git push
+          # Si el Excel sube stock varias veces seguidas, otro push puede llegar primero: se reintenta
+          for i in 1 2 3 4 5; do
+            git pull --rebase --no-tags origin main && git push origin HEAD:main && break
+            if [ "$i" = 5 ]; then echo "No se pudo guardar tras 5 intentos"; exit 1; fi
+            sleep $((i * 5))
+          done
           echo "publicar=1" >> "$GITHUB_OUTPUT"
       # Los commits del bot no publican la página solos: se pide la publicación
       - name: Publicar sitio
