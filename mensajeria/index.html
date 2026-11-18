@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261117w">
+<link rel="stylesheet" href="estilos.css?v=20261117x">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117w";
-import * as C from "./comun.js?v=20261117w";
-import * as T from "./tarifas-envio.js?v=20261117w";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261117w";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261117x";
+import * as C from "./comun.js?v=20261117x";
+import * as T from "./tarifas-envio.js?v=20261117x";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261117x";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -2305,7 +2305,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261117w";
+const VERSION_PANEL = "20261117x";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2663,11 +2663,15 @@ async function sugerirBarrioCorr(g) {
     if (sug) { S.corrBarrio = sug; const i = $("#corrBarrio"); if (i) i.value = sug; }
   } catch {}
 }
-document.addEventListener("input", e => { if (e.target.id === "corrBarrio") { S.corrBarrio = e.target.value; S.corrBarrioManual = true; } });
+document.addEventListener("input", e => {
+  if (e.target.id === "corrBarrio") { S.corrBarrio = e.target.value; S.corrBarrioManual = true; }
+  if (e.target.id === "corrDir") S.corrDir = e.target.value;
+  if (e.target.id === "corrComp") S.corrComp = e.target.value;
+});
 function cerrarDetalle() { if (mapaMens) { mapaMens.remove(); mapaMens = null; } mapaMensVista = null; S.corr = null; S.corrVista = null; if (mapaCorr) { mapaCorr.remove(); mapaCorr = null; } S.abierta = null; $("#vDetalle").hidden = true; ajustado = ""; pintarMapa(); }
 let fotoCache = {};
 async function abrirDetalle(n) {
-  S.corr = null; S.corrVista = null; S.editUbic = false; S.corrBarrio = null; S.corrBarrioManual = false; S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
+  S.corr = null; S.corrVista = null; S.editUbic = false; S.corrBarrio = null; S.corrBarrioManual = false; S.corrDir = null; S.corrComp = null; S.abierta = n; $("#vDetalle").hidden = false; ajustado = ""; pintarDetalle(); pintarMapa();
   const g = S.guias[n];
   const kf = n + ":" + g?.estado;
   if ((g?.estado === "entregada" || g?.estado === "novedad") && !fotoCache[kf]) {
@@ -2695,7 +2699,7 @@ function pintarDetalle() {
     <div class="panel">
       <dl class="kv">
         <dt>Cliente</dt><dd>${esc(g.cliente)} · ${esc(g.telefono)}</dd>
-        <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${refLimpia(g) ? " · " + esc(refLimpia(g)) : ""}</dd>
+        <dt>Entrega</dt><dd>${esc(g.destino?.direccion)} · ${esc(g.destino?.localidad)}${refLimpia(g) ? " · " + esc(refLimpia(g)) : ""}${!g.destino?.verificar && !S.editUbic && !["entregada", "cancelada", "devuelta"].includes(g.estado) ? ` <button class="btn sec chico" data-acc="editUbic" style="padding:3px 8px;margin-left:4px">✏️ Editar</button>` : ""}</dd>
         <dt>Recogida</dt><dd>${esc(g.remitente)} · ${esc(g.origen?.direccion)} · ${esc(g.origen?.localidad)}</dd>
         <dt>Contenido</dt><dd>${esc(g.contenido) || "—"}</dd>
         <dt>Clave de rastreo</dt><dd><span class="guia">${esc(g.clave || "generando…")}</span>${g.clave ? (C.esClaveCodigo(g.clave) ? " · código impreso en la etiqueta" : " · últimos 4 dígitos del celular") : ""}</dd>
@@ -2723,8 +2727,10 @@ function pintarDetalle() {
       <div class="error" id="corrErr"></div>
       <div class="lista" id="corrRes" style="gap:6px"></div>
       <div id="mapaCorr" class="mapa" style="height:260px"></div>
+      <label>Dirección<input id="corrDir" maxlength="120" value="${esc(S.corrDir ?? g.destino?.direccion ?? "")}" placeholder="Ej. Cra 26 # 63B-13"></label>
+      <label>Complemento de la dirección<input id="corrComp" maxlength="80" value="${esc(S.corrComp ?? g.destino?.complemento ?? "")}" placeholder="Torre, apartamento, casa…"></label>
       <div class="fila" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end"><label>Barrio<input id="corrBarrio" maxlength="60" value="${esc(S.corrBarrio ?? g.destino?.barrio ?? "")}" placeholder="Barrio de la entrega"></label><div class="nota" id="corrLoc" style="margin:0 0 10px">${S.corr ? "Localidad: <b>" + esc(locDeCorr(g, S.corr)) + "</b>" : "Mueve el punto para actualizar la localidad"}</div></div>
-      <div class="btns"><button class="btn chico" data-acc="guardarUbic" ${S.corr ? "" : "disabled"}>Guardar ubicación</button>${g.destino?.verificar ? `<button class="btn sec chico" data-acc="ubicOk">La ubicación está bien</button>` : `<button class="btn sec chico" data-acc="editUbicNo">Cancelar</button>`}</div></div>` : ""}
+      <div class="btns"><button class="btn chico" data-acc="guardarUbic">Guardar cambios</button>${g.destino?.verificar ? `<button class="btn sec chico" data-acc="ubicOk">La ubicación está bien</button>` : `<button class="btn sec chico" data-acc="editUbicNo">Cancelar</button>`}</div></div>` : ""}
     ${tipoAviso(g) && g.telefono ? `<div class="panel"><h3>Aviso al cliente</h3>${botonAviso(g)}<p class="nota" style="margin:0">Se abre WhatsApp con el mensaje escrito. Solo presiona Enviar.</p></div>` : ""}
     <div class="btns">
       ${imprimible(g) ? `<button class="btn chico" data-acc="imprimir">Imprimir guía</button>` : ""}
@@ -2732,7 +2738,7 @@ function pintarDetalle() {
       <a class="btn sec chico" target="_blank" rel="noopener" href="${C.linkRastreo(g)}">Abrir rastreo</a>
       <a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(C.direccionTexto(g.destino))}">Ver dirección en Google Maps</a>
       ${g.destino?.lat != null ? `<a class="btn sec chico" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${g.destino.lat},${g.destino.lng}">Ver punto guardado en Google Maps</a>` : ""}
-      ${!g.destino?.verificar && !S.editUbic && !["entregada", "cancelada", "devuelta"].includes(g.estado) ? `<button class="btn sec chico" data-acc="editUbic">Editar ubicación</button>` : ""}
+      ${!g.destino?.verificar && !S.editUbic && !["entregada", "cancelada", "devuelta"].includes(g.estado) ? `<button class="btn sec chico" data-acc="editUbic">Editar dirección y ubicación</button>` : ""}
       ${g.telefono ? `<a class="btn sec chico" target="_blank" rel="noopener"${attrWA(g.telefono)} href="${C.linkWhatsApp(g.telefono, `Hola ${C.primerNombre(g.cliente)}, tu pedido de ${g.remitente} quedó registrado con la guía ${g.numero}. Síguelo aquí: ${C.linkRastreo(g)}`)}">Enviar guía por WhatsApp</a>` : ""}
     </div>
     ${acciones.length ? `<div class="btns">${acciones.join("")}</div>` : ""}
@@ -2772,7 +2778,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
   if (a === "cerrar") return cerrarDetalle();
   if (a === "corrElegir") { S.corr = { lat: +b.dataset.lat, lng: +b.dataset.lng }; S.corrVista = null; setTimeout(() => sugerirBarrioCorr(g), 0); const t = $("#corrLink").value; pintarDetalle(); if ($("#corrLink")) $("#corrLink").value = t; ultimaCorr = ""; toast("Punto ubicado: revisa y toca Guardar ubicación"); return; }
   if (a === "editUbic") { S.editUbic = true; S.corr = null; S.corrVista = null; pintarDetalle(); setTimeout(() => document.getElementById("mapaCorr")?.scrollIntoView({ behavior: "smooth", block: "center" }), 80); return; }
-  if (a === "editUbicNo") { S.editUbic = false; S.corr = null; S.corrVista = null; pintarDetalle(); return; }
+  if (a === "editUbicNo") { S.editUbic = false; S.corr = null; S.corrVista = null; S.corrDir = null; S.corrComp = null; S.corrBarrio = null; S.corrBarrioManual = false; pintarDetalle(); return; }
   if (a === "usarLink") {
     const txt = $("#corrLink").value.trim(); $("#corrErr").textContent = "";
     let pos = ubicacionDeTexto(txt);
@@ -2806,18 +2812,21 @@ $("#hojaDetalle").addEventListener("click", async e => {
     S.corr = pos; S.corrVista = null; pintarDetalle(); sugerirBarrioCorr(g); toast("Punto ubicado: revisa y toca Guardar ubicación"); return;
   }
   if (a === "guardarUbic" || a === "ubicOk") {
-    const p = a === "guardarUbic" ? S.corr : g.destino;
-    if (!p) return;
+    // Sin mover el punto se guarda el mismo; dirección, complemento y barrio se guardan siempre
+    const p = a === "guardarUbic" ? (S.corr || g.destino) : g.destino;
+    if (!p || p.lat == null) { toast("Ubica el punto en el mapa"); return; }
     b.disabled = true;
     try {
       // Localidad del punto nuevo, barrio corregido (en el campo y en la referencia) y zonas del mensajero
       const loc = locDeCorr(g, p), barrio = ($("#corrBarrio")?.value ?? g.destino?.barrio ?? "").trim().replace(/^barrio\s+/i, "");
-      const viejo = g.destino?.barrio || "";
-      const partes = String(g.destino?.referencia || "").split(" · ").filter(x => x && !(viejo && x.toLowerCase() === ("barrio " + viejo).toLowerCase()) && !/^barrio\s/i.test(x));
-      const referencia = [...partes, barrio ? "Barrio " + barrio : ""].filter(Boolean).join(" · ");
+      const direccion = ($("#corrDir")?.value ?? g.destino?.direccion ?? "").trim() || g.destino?.direccion || "";
+      const complemento = limpiaComp(($("#corrComp")?.value ?? g.destino?.complemento ?? "").trim());
+      const viejo = g.destino?.barrio || "", compViejo = (g.destino?.complemento || "").trim().toLowerCase();
+      const partes = String(g.destino?.referencia || "").split(" · ").filter(x => x && !(viejo && x.toLowerCase() === ("barrio " + viejo).toLowerCase()) && !/^barrio\s/i.test(x) && !(compViejo && x.trim().toLowerCase() === compViejo));
+      const referencia = [complemento, ...partes.filter(x => x.trim().toLowerCase() !== complemento.toLowerCase()), barrio ? "Barrio " + barrio : ""].filter(Boolean).join(" · ");
       const zonas = [...new Set([...(g.zonas || []).filter(z => z !== g.destino?.localidad || z === g.origen?.localidad), loc].filter(Boolean))];
-      await guardarGuia(n, { destino: { ...g.destino, lat: p.lat, lng: p.lng, localidad: loc, barrio, referencia, aprox: false, verificar: false }, zonas });
-      S.corr = null; S.editUbic = false; S.corrBarrio = null; S.corrBarrioManual = false; toast(a === "guardarUbic" ? "Ubicación guardada" : "Ubicación comprobada");
+      await guardarGuia(n, { destino: { ...g.destino, direccion, complemento, lat: p.lat, lng: p.lng, localidad: loc, barrio, referencia, aprox: false, verificar: false }, zonas });
+      S.corr = null; S.editUbic = false; S.corrBarrio = null; S.corrBarrioManual = false; S.corrDir = null; S.corrComp = null; toast(a === "guardarUbic" ? "Dirección y ubicación guardadas" : "Ubicación comprobada");
     } catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
     return;
   }
