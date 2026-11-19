@@ -11,12 +11,12 @@
 <meta name="robots" content="noindex">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261118f">
+<link rel="stylesheet" href="estilos.css?v=20261119a">
 <script>
 // Si el navegador entregó una copia vieja de esta página, cargar la publicada
-(function(){var V="20261118f";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
+(function(){var V="20261119a";fetch("version.json?t="+Date.now(),{cache:"no-store"}).then(function(r){return r.json()}).then(function(j){if(String(j.v||"")>V){var u=new URL(location.href);if(u.searchParams.get("v")!==j.v){u.searchParams.set("v",j.v);location.replace(u.toString());}}}).catch(function(){});})();
 </script>
-<link rel="stylesheet" href="tema-catalogo.css?v=20261118f">
+<link rel="stylesheet" href="tema-catalogo.css?v=20261119a">
 <style>
 .envoltura{max-width:620px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
 .paso{font-family:var(--f-display);font-size:20px;font-weight:700;margin:0}
@@ -98,9 +98,9 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
-import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118f";
-import * as C from "./comun.js?v=20261118f";
-import * as T from "./tarifas-envio.js?v=20261118f";
+import { firebaseConfig, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261119a";
+import * as C from "./comun.js?v=20261119a";
+import * as T from "./tarifas-envio.js?v=20261119a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getFirestore, doc, getDoc, updateDoc } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
@@ -397,6 +397,7 @@ async function bajarQr(boton) {
 try {
   const s = id && /^[A-Za-z0-9]{12,40}$/.test(id) ? await getDoc(doc(db, "saldos", id)) : null;
   if ((!s || !s.exists()) && new URLSearchParams(location.search).has("addi")) mensaje("Gracias. Addi nos confirmará el resultado de tu crédito y te escribiremos por WhatsApp para coordinar el envío.");
+  else if ((!s || !s.exists()) && new URLSearchParams(location.search).has("siste")) mensaje("Gracias. Sistecrédito nos confirmará el resultado de tu crédito y te escribiremos por WhatsApp para coordinar el envío.");
   else if (!s || !s.exists()) mensaje("Este enlace no es válido. Escríbenos por WhatsApp y te ayudamos.");
   else {
     S = s.data();

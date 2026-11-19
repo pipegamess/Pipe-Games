@@ -46,7 +46,8 @@ export default {
     const url = new URL(req.url);
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
-        addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA });
+        addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
+        sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -54,6 +55,9 @@ export default {
     if (req.method === "POST" && url.pathname === "/bold/aviso") return avisoBold(req, env, ctx);
     // Link corto para el cliente: /addi/ir?c=<reserva>.<código> → página de Addi
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
+    // Sistecrédito: link corto del cliente (crea la transacción al abrirlo) y aviso de cambios de estado
+    if (req.method === "GET" && url.pathname === "/sc/ir") return irSiste(req, env, url, ctx);
+    if ((req.method === "POST" || req.method === "GET") && url.pathname === "/sc/aviso") return avisoSiste(req, env, url);
     // Prueba del cotizador desde el navegador: /cotizar?c=Girardot&d=Cundinamarca (muestra el detalle de Skydropx)
     if (req.method === "GET" && url.pathname === "/cotizar") return cotizarPublico({ ciudad: url.searchParams.get("c"), depto: url.searchParams.get("d"), detalle: true }, env, base, responder);
     if (req.method !== "POST") return responder({ error: "Método no permitido" }, 405);
@@ -83,6 +87,11 @@ export default {
     let pedido;
     try { pedido = await req.json(); } catch { return responder({ error: "Cuerpo inválido" }, 400); }
     // Crear la solicitud de crédito en Addi (solo desde el panel, después de autorizar por WhatsApp)
+    // Sistecrédito: comprueba que las llaves funcionan (el panel lo usa antes de enviar el link al cliente)
+    if (String(pedido.metodo || "").toUpperCase() === "SC_PROBAR") {
+      try { const cfg = scConfig(env); if (!cfg) throw new Error("faltan las llaves de Sistecrédito en el Worker"); await scHeaders(cfg); return responder({ ok: true, modo: cfg.modo, origen: cfg.origen }); }
+      catch (e) { return responder({ error: "Sistecrédito: " + (e.message || e) }, 400); }
+    }
     if (String(pedido.metodo || "").toUpperCase() === "ADDI_CREAR") {
       try { return responder(await crearAddi(pedido.pedido || {}, env, url)); }
       catch (e) { return responder({ error: "Addi: " + (e.message || e) }, 400); }
@@ -524,6 +533,131 @@ async function leerCredito(env, reserva) {
   if (!rr.ok) throw new Error("F" + rr.status);
   const d = await rr.json(), cf = d?.fields?.reservas?.mapValue?.fields?.[reserva]?.mapValue;
   return cf ? deFS({ mapValue: cf }).credito || null : null;
+}
+/* ---------- Sistecrédito (pasarela de pagos) ----------
+   Secretos del Worker:
+   - SC_SUBSCRIPTION_KEY (Ocp-Apim-Subscription-Key) y SC_ORIGEN ("Staging" para pruebas, "Production" por defecto)
+   - Integración nueva (checkout, guía I-S-092-09): SC_ALLIED_KEY (alliedPublicKey)
+   - Integración anterior (api.credinet.co/pay): SC_APP_KEY (ApplicationKey) y SC_APP_TOKEN (ApplicationToken)
+   - SC_METODO: paymentMethodId (2 por defecto) · SC_SANDBOX: "Approved", "Rejected"… para simular sin ir a Sistecrédito
+   La página de pago de Sistecrédito es de un solo uso y vence en unos 15 minutos: se crea una transacción nueva
+   cada vez que el cliente abre el link corto (el link corto dura 2 días). */
+function scConfig(env) {
+  if (!env.SC_SUBSCRIPTION_KEY) return null;
+  const origen = /^stag/i.test(env.SC_ORIGEN || "") ? "Staging" : "Production";
+  if (env.SC_ALLIED_KEY) {
+    const host = origen === "Staging" ? "https://api-co-stg.sistecreditocloud.com" : "https://api.sistecredito.com";
+    return { modo: "checkout", origen, auth: host + "/Spay/PasCheckout/auth/authentication", crear: host + "/Spay/PasCheckout/checkout-integration/create/transaction",
+      consultar: id => host + "/Spay/PasCheckout/checkout-integration/get/transaction?paymentRef=" + encodeURIComponent(id), env };
+  }
+  if (env.SC_APP_KEY && env.SC_APP_TOKEN) return { modo: "credinet", origen, crear: "https://api.credinet.co/pay/create",
+    consultar: id => "https://api.credinet.co/pay/GetTransactionResponse?transactionId=" + encodeURIComponent(id), env };
+  return null;
+}
+async function scHeaders(cfg) {
+  const env = cfg.env, h = { "Ocp-Apim-Subscription-Key": env.SC_SUBSCRIPTION_KEY, SCLocation: "0,0", SCOrigen: cfg.origen, country: "co", "Content-Type": "application/json", Accept: "application/json" };
+  if (cfg.modo === "credinet") return { ...h, ApplicationKey: env.SC_APP_KEY, ApplicationToken: env.SC_APP_TOKEN };
+  const r = await fetch(cfg.auth, { headers: { "Ocp-Apim-Subscription-Key": env.SC_SUBSCRIPTION_KEY, alliedPublicKey: env.SC_ALLIED_KEY, SCOrigen: cfg.origen, country: "co" } });
+  const j = await r.json().catch(() => ({}));
+  const token = j?.data?.token || j?.token;
+  if (!r.ok || !token) throw new Error("no entregó token (" + r.status + "): " + String(j?.message || JSON.stringify(j)).slice(0, 200));
+  return { ...h, Authorization: "Bearer " + token };
+}
+async function scConsultar(cfg, id, h) {
+  const r = await fetch(cfg.consultar(id), { headers: h || await scHeaders(cfg) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error("consulta " + r.status + ": " + String(j?.message || "").slice(0, 200));
+  return j.data || {};
+}
+const scFallido = e => ["Rejected", "Cancelled", "Expired", "Abandoned", "Failed"].includes(e);
+async function crearSiste(cfg, p, extra) {
+  const limpiar = (t, n) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 #\-.,]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+  const partes = String(p.nombre || "").trim().split(/\s+/);
+  const nombre = partes.length > 2 ? partes.slice(0, partes.length - 2).join(" ") : partes[0] || "";
+  const apellido = partes.length > 2 ? partes.slice(-2).join(" ") : partes.slice(1).join(" ") || partes[0] || "";
+  const total = Math.round(Number(p.total) || 0);
+  if (total < 1000) throw new Error("total no válido");
+  const ciudad = limpiar(String(p.ciudad || "").split(" - ")[0], 50).replace(/^Bogota.*$/i, "Bogota");
+  const cuerpo = {
+    invoice: extra.invoice, description: limpiar(p.descripcion || "Pedido Pipe Games", 100) || "Pedido Pipe Games",
+    paymentMethod: { paymentMethodId: Number(cfg.env.SC_METODO || 2), bankCode: 1, userType: 0 },
+    currency: "COP", value: total, tax: 0, taxBase: total,
+    sandbox: cfg.env.SC_SANDBOX ? { isActive: true, status: cfg.env.SC_SANDBOX } : { isActive: false, status: "Approved" },
+    urlResponse: "https://pipegames.com.co/mensajeria/saldo.html?siste=1", urlConfirmation: extra.aviso, methodConfirmation: "POST",
+    client: { docType: "CC", document: String(p.cedula || "").replace(/\D/g, ""), name: limpiar(nombre, 50), lastName: limpiar(apellido, 50), email: String(p.correo || "").trim().slice(0, 80),
+      indCountry: "57", phone: String(p.telefono || "").replace(/\D/g, "").slice(-10), country: "co", city: ciudad || "Bogota", address: limpiar(p.direccion, 100), ipAddress: extra.ip || "0.0.0.0" },
+    extraData: { reserva: extra.reserva }
+  };
+  const h = await scHeaders(cfg);
+  const r = await fetch(cfg.crear, { method: "POST", headers: h, body: JSON.stringify(cuerpo) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j?.data?._id) {
+    const msg = String(j?.message || ""), cod = (msg.match(/^(\d{3})\s*-/) || [])[1] || String(j?.errorCode || r.status);
+    const e = new Error(cod + ": " + msg.slice(0, 200)); e.codigo = cod; throw e;
+  }
+  let d = j.data;
+  // La página de pago puede tardar unos segundos en estar lista: se consulta hasta que aparezca
+  for (let i = 0; i < 12 && !d.paymentMethodResponse?.paymentRedirectUrl && !scFallido(d.transactionStatus); i++) {
+    await new Promise(ok => setTimeout(ok, 1200));
+    try { d = await scConsultar(cfg, d._id, h); } catch {}
+  }
+  return d;
+}
+async function irSiste(req, env, url, ctx) {
+  const html = t => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:24px;text-align:center"><h2>Pipe Games</h2><p>${t}</p></body>`, { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } });
+  const [reserva, codigo] = String(url.searchParams.get("c") || "").split(".");
+  if (!/^[A-Za-z0-9_-]{1,60}$/.test(reserva || "") || !/^[A-Z0-9]{6,20}$/.test(codigo || "")) return html("Este link no es válido.");
+  const cfg = scConfig(env);
+  if (!cfg || !env.FIREBASE_SA) return html("El pago con Sistecrédito no está disponible en este momento (código S0). Escríbenos por WhatsApp.");
+  let c;
+  try { c = await leerCredito(env, reserva); } catch { return html("No pudimos abrir el pago (código S1). Intenta de nuevo en un momento."); }
+  if (!c || c.medio !== "siste" || !c.pedido) return html("Este link no es válido (código S2: el pago aún no está autorizado). Escríbenos por WhatsApp.");
+  if (c.codigo !== codigo) return html("Este link ya no es válido (código S3: se generó uno más nuevo). Escríbenos por WhatsApp y te lo reenviamos.");
+  if (c.estado === "approved") return html("¡Tu crédito con Sistecrédito ya fue aprobado! Tu pedido está pago. Pronto te escribimos por WhatsApp con el envío.");
+  if (c.estado === "rejected") return html("Sistecrédito no aprobó esta solicitud. Escríbenos por WhatsApp y te ayudamos con otro medio de pago.");
+  if (Date.now() - Number(c.t || 0) > 48 * 3600e3) return html("Este link venció. Escríbenos por WhatsApp y te enviamos uno nuevo.");
+  try {
+    const d = await crearSiste(cfg, c.pedido, { invoice: reserva + "-" + Date.now().toString(36), reserva,
+      aviso: url.origin + "/sc/aviso?r=" + encodeURIComponent(reserva) + "&k=" + encodeURIComponent(codigo), ip: req.headers.get("CF-Connecting-IP") || "" });
+    const destino = d.paymentMethodResponse?.paymentRedirectUrl;
+    const cambios = { tx: String(d._id), estado: "pendiente", tUrl: Date.now() };
+    const guardar = escribirReserva(env, reserva, { credito: { mapValue: { fields: aCamposFS(cambios) } } }, Object.keys(cambios).map(k => "credito." + k)).catch(() => {});
+    if (ctx?.waitUntil) ctx.waitUntil(guardar); else await guardar;
+    if (destino) return Response.redirect(destino, 302);
+    if (scFallido(d.transactionStatus)) return html("Sistecrédito no pudo iniciar el pago" + (d.paymentMethodResponse?.description ? " (" + String(d.paymentMethodResponse.description).slice(0, 120).replace(/[<>]/g, "") + ")" : "") + ". Escríbenos por WhatsApp.");
+    return html("Sistecrédito está tardando en responder. Vuelve a abrir este mismo link en un minuto.");
+  } catch (e) {
+    if (e.codigo === "801" || e.codigo === "738") return html("Ya tienes una solicitud abierta con Sistecrédito. Termínala en la ventana donde la abriste, o espera 15 minutos y vuelve a abrir este link.");
+    if (e.codigo === "802") return html("El valor de la compra es menor al mínimo que financia Sistecrédito. Escríbenos por WhatsApp y te ayudamos con otro medio de pago.");
+    return html("No pudimos abrir el pago con Sistecrédito (código S4-" + String(e.codigo || "x").slice(0, 4) + "). Intenta de nuevo en un momento o escríbenos por WhatsApp.");
+  }
+}
+async function avisoSiste(req, env, url) {
+  const ok = () => new Response('{"ok":true}', { headers: { "Content-Type": "application/json" } });
+  const reserva = url.searchParams.get("r") || "", k = url.searchParams.get("k") || "";
+  let d = {};
+  try { const t = req.method === "POST" ? await req.text() : ""; const j = t ? JSON.parse(t) : Object.fromEntries(url.searchParams); d = j.data || j; } catch {}
+  const id = String(d._id || d.transactionId || "");
+  const cfg = scConfig(env);
+  if (!cfg || !env.FIREBASE_SA || !/^[A-Za-z0-9_-]{1,60}$/.test(reserva) || !id) return ok();
+  try {
+    const c = await leerCredito(env, reserva);
+    if (!c || c.medio !== "siste" || c.codigo !== k) return ok();
+    // No se confía en el aviso: se consulta la transacción directamente a Sistecrédito
+    const real = await scConsultar(cfg, id);
+    if (String(real._id) !== id || !String(real.invoice || "").startsWith(reserva + "-")) return ok();
+    const est = String(real.transactionStatus || "");
+    // Un aviso de una transacción anterior (el cliente abrió el link otra vez) solo cuenta si fue aprobada
+    if (est !== "Approved" && c.tx && c.tx !== id) return ok();
+    const estado = est === "Approved" ? "approved" : est === "Rejected" ? "rejected" : scFallido(est) ? "abandoned" : "pendiente";
+    if (c.estado === "approved") return ok();
+    const credito = { estado, tx: id, monto: Number(real.value) || 0, solicitud: String(real.paymentMethodResponse?.authorizationCode || ""), detalle: String(real.paymentMethodResponse?.description || est).slice(0, 120), tAviso: Date.now() };
+    const campos = { credito: { mapValue: { fields: aCamposFS(credito) } } };
+    const mascara = Object.keys(credito).map(x => "credito." + x);
+    if (estado === "approved") { campos.pagado = { integerValue: String(Date.now()) }; mascara.push("pagado"); }
+    await escribirReserva(env, reserva, campos, mascara);
+  } catch (e) { return new Response('{"error":"reintentar"}', { status: 500 }); }
+  return ok();
 }
 async function irAddi(env, url) {
   const html = (t) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:24px;text-align:center"><h2>Pipe Games</h2><p>${t}</p></body>`, { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } });

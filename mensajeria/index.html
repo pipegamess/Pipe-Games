@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261118f">
+<link rel="stylesheet" href="estilos.css?v=20261119a">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118f";
-import * as C from "./comun.js?v=20261118f";
-import * as T from "./tarifas-envio.js?v=20261118f";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261118f";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261119a";
+import * as C from "./comun.js?v=20261119a";
+import * as T from "./tarifas-envio.js?v=20261119a";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261119a";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1063,17 +1063,22 @@ function pintarEstadoLink() {
   const chicos = `<div class="btns"><button class="btn sec chico" type="button" data-cbcopiar>Copiar link</button><a class="btn sec chico" href="${esc(i.link)}" target="_blank" rel="noopener">Ver lo que ve el cliente</a></div>`;
   const guia = c?.guia ? ` · guía <b>${esc(c.guia)}</b>` : "";
   let h;
-  if (r.pagado) h = `${paso(3, "✅ Pagado")}<span class="nota">${cr.estado === "approved" ? "Addi aprobó el crédito." : "Pago registrado."}${c?.guia ? ` Ya puedes despachar la guía ${esc(c.guia)}.` : c?.ciudadLocal ? " Creando la guía…" : c ? " Revisa la orden en Skydropx para despachar." : ""}</span>${c?.guia ? `<div class="btns"><button class="btn sec chico" type="button" data-cbverguia="${esc(c.guia)}">Ver guía ${esc(c.guia)}</button></div>` : ""}`;
+  if (r.pagado) h = `${paso(3, "✅ Pagado")}<span class="nota">${cr.estado === "approved" ? (cr.medio === "siste" ? "Sistecrédito aprobó el crédito." : "Addi aprobó el crédito.") : "Pago registrado."}${c?.guia ? ` Ya puedes despachar la guía ${esc(c.guia)}.` : c?.ciudadLocal ? " Creando la guía…" : c ? " Revisa la orden en Skydropx para despachar." : ""}</span>${c?.guia ? `<div class="btns"><button class="btn sec chico" type="button" data-cbverguia="${esc(c.guia)}">Ver guía ${esc(c.guia)}</button></div>` : ""}`;
   else if (!c) h = `${paso(1, `Envíale el link a ${nom}`)}<span class="nota">${nom} elige ciudad, medio de pago y deja sus datos. Esto se actualiza solo cuando confirme.</span>
     <div class="btns"><a class="btn" href="${esc(i.url)}"${attrWA(i.tel)} target="_blank" rel="noopener">Enviar link por WhatsApp${C.esUsuarioWhatsApp(i.tel) ? " (" + esc(i.tel) + ")" : i.tel ? "" : " (escoge el chat)"}</a></div>${chicos}`;
   else if (c.metodo === "siste" && (cr.estado === "rejected" || cr.estado === "declined")) h = `${paso(2, "❌ Sistecrédito no aprobó el crédito")}<span class="nota">Ofrécele a ${nom} pagar por Bre-B. Si paga, márcalo pagado${c.guia ? `; si no compra, borra la guía ${esc(c.guia)}` : ""}.</span>
     <div class="btns"><button class="btn" type="button" data-cbbreb>Enviar datos de Bre-B por WhatsApp</button><button class="btn sec chico" type="button" data-cbpagado>Marcar pagado</button></div>`;
+  else if (c.metodo === "siste" && cr.medio === "siste" && cr.codigo && cr.estado !== "abandoned") h = `${paso(2, `⏳ Esperando que ${nom} complete Sistecrédito`)}<span class="nota">${cr.estado === "pendiente" ? `${nom} ya abrió el link de Sistecrédito.` : "Le enviaste el link de Sistecrédito (dura 2 días)."} Esto se actualiza solo cuando Sistecrédito responda; al aprobarse queda pagado.</span>
+    <div class="btns"><button class="btn sec chico" type="button" data-cbsiste="${esc(cbLinkReserva)}">Reenviar link de Sistecrédito</button><button class="btn sec chico" type="button" data-cbsistenoap>No aprobó</button></div>`;
   else if (c.metodo === "siste" && cr.estado === "opciones") h = `${paso(2, `⏳ Esperando que ${nom} elija sus cuotas`)}<span class="nota">Cuando te responda, regístralo en el portal de Sistecrédito. Al quedar aprobado, márcalo pagado.</span>
     <div class="aviso" style="margin:0">Cédula: <b>${esc(c.cedula || "")}</b> <button class="btn sec chico" type="button" data-cbcedula>Copiar</button></div>
     <div class="btns"><button class="btn" type="button" data-cbpagado>Sistecrédito aprobó · Marcar pagado</button><button class="btn sec chico" type="button" data-cbsistenoap>No aprobó</button><button class="btn sec chico" type="button" data-cbsisteopc>Reenviar mensaje</button></div>`;
-  else if (c.metodo === "siste") h = `${paso(2, `${nom} eligió Sistecrédito · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}. 1) Ingresa la cédula en el portal de Sistecrédito. 2) Envíale por WhatsApp las opciones de cuotas que te muestre (puedes adjuntar la captura).</span>
+  else if (c.metodo === "siste") h = `${paso(2, `${nom} eligió Sistecrédito · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}.${cr.estado === "abandoned" ? " No terminó la solicitud anterior." : ""} Si estás de acuerdo, autoriza y se le envía el link de Sistecrédito: ahí elige sus cuotas y confirma con el código que le llega al celular.</span>
+    <div class="btns"><button class="btn btn-amarillo" type="button" data-cbsiste="${esc(cbLinkReserva)}">Autorizar Sistecrédito</button></div>
+    <details><summary class="nota" style="cursor:pointer">Hacerlo por el portal de Sistecrédito</summary>
+    <span class="nota">1) Ingresa la cédula en el portal. 2) Envíale por WhatsApp las opciones de cuotas que te muestre.</span>
     <div class="aviso" style="margin:0">Cédula: <b>${esc(c.cedula || "")}</b> <button class="btn sec chico" type="button" data-cbcedula>Copiar</button></div>
-    <div class="btns"><button class="btn btn-amarillo" type="button" data-cbsisteopc>Enviar opciones de cuotas por WhatsApp</button></div>`;
+    <div class="btns"><button class="btn sec chico" type="button" data-cbsisteopc>Enviar opciones de cuotas por WhatsApp</button></div></details>`;
   else if (c.metodo !== "addi") h = `${paso(2, `${nom} confirmó: ${esc(c.metodoTxt?.split(" · ")[0] || c.metodo)} · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}. Cuando recibas el pago, márcalo.</span>
     <div class="btns"><button class="btn" type="button" data-cbpagado>Marcar pagado</button></div>`;
   else if (cr.estado === "rejected" || cr.estado === "declined") h = `${paso(2, "❌ Addi no aprobó el crédito")}<span class="nota">${cr.solicitud ? "Addi respondió que no aprobó la solicitud " + esc(cr.solicitud) + (cr.tAviso ? " (" + C.fecha(cr.tAviso) + ")" : "") + ". " : ""}Si los datos del cliente estaban mal (cédula, nombre o correo), corrígelos en Reservas → Editar y toca “Intentar de nuevo con Addi” en la reserva. Si no, ofrécele a ${nom} pagar por Bre-B. Si paga, márcalo pagado${c.guia ? `; si no compra, borra la guía ${esc(c.guia)}` : ""}.</span>
@@ -1117,6 +1122,29 @@ document.addEventListener("click", async e => {
   abrirWA(tel, texto);
 });
 document.addEventListener("click", e => { const b = e.target.closest("[data-cbaddi]"); if (b) autorizarAddi(b.dataset.cbaddi, b); });
+document.addEventListener("click", e => { const b = e.target.closest("[data-cbsiste]"); if (b) autorizarSiste(b.dataset.cbsiste, b); });
+// Crédito Sistecrédito: al autorizar se guarda el pedido y se envía un link corto; la transacción se crea cuando el cliente lo abre
+// (la página de Sistecrédito es de un solo uso y vence en 15 minutos)
+async function autorizarSiste(id, b) {
+  const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
+  const tel = waDe(c.telefono) || waDe(r.contacto, r.red);
+  const urlW = (S.skx?.url || SKYDROPX_URL).replace(/\/+$/, "");
+  const enviar = cr => abrirWA(tel, `Hola ${C.primerNombre(titulo(r.nombre))}, autorizamos tu pedido. Completa tu pago a cuotas con Sistecrédito por ${C.copTxt(c.total)} aquí (el link dura 2 días). Ten a la mano el celular que tienes registrado en Sistecrédito, porque te llega un código para confirmar:\n${urlW}/sc/ir?c=${id}.${cr.codigo}`);
+  if (r.credito?.medio === "siste" && r.credito.codigo && Date.now() - (r.credito.t || 0) < 47 * 3600e3 && !["rejected", "approved"].includes(r.credito.estado)) { enviar(r.credito); return; }
+  if (!/^\d{5,13}$/.test(c.cedula || "")) { toast("Falta la cédula del cliente (debe confirmar con Sistecrédito en el link de saldo)"); return; }
+  const txt = b.textContent; b.disabled = true; b.textContent = "Revisando la conexión con Sistecrédito…";
+  try {
+    const token = await auth.currentUser.getIdToken();
+    const j = await (await fetch(urlW, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo: "SC_PROBAR" }) })).json();
+    if (!j.ok) throw new Error(j.error || "Sistecrédito no respondió");
+    const resumen = (r.items || []).map(x => x.n + (x.q > 1 ? " x" + x.q : "")).join(", ") || r.detalle || r.producto || "Pedido Pipe Games";
+    const cr = { estado: "autorizado", medio: "siste", codigo: C.nuevoCodigo() + C.nuevoCodigo(), t: Date.now(),
+      pedido: { total: c.total, nombre: titulo(r.nombre), cedula: c.cedula, correo: c.correo || "", telefono: c.telefono || r.contacto || "", direccion: [c.direccion, c.complemento].filter(Boolean).join(" "), ciudad: (c.ciudad || "").split(" - ")[0], descripcion: "Pipe Games: " + resumen } };
+    await updateDoc(doc(db, "usuarios", ADMIN_UID), { [`reservas.${id}.credito`]: cr });
+    enviar(cr); toast("Listo: envíale el link de Sistecrédito al cliente");
+  } catch (err) { toast(String(err.message || err).slice(0, 300)); }
+  if (b.isConnected) { b.disabled = false; b.textContent = txt; }
+}
 // Crédito Addi: el cliente confirmó con Addi y escribió por WhatsApp; al autorizar se crea la solicitud y se le envía el link
 async function autorizarAddi(id, b) {
   const r = S.reservas?.[id], c = r?.confirmacion; if (!c) return;
@@ -1528,7 +1556,7 @@ async function crearGuiaPagada(id) {
         zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
         estado: "disponible", mensajeroId: null, mensajeroNombre: "", mensajeroPlaca: "",
         reserva: id, origenWeb: true, creado: Date.now(), actualizado: Date.now(),
-        eventos: [C.evento("disponible", "Pedido del catálogo pagado" + (r.credito?.estado === "approved" ? " con Addi" : ""), "Catálogo")]
+        eventos: [C.evento("disponible", "Pedido del catálogo pagado" + (r.credito?.estado === "approved" ? (r.credito.medio === "siste" ? " con Sistecrédito" : " con Addi") : ""), "Catálogo")]
       };
       g.clave = C.claveDeseada(g);
       tx.set(doc(db, "guias", numero), g);
@@ -2320,7 +2348,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261118f";
+const VERSION_PANEL = "20261119a";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
