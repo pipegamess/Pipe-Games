@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261119c">
+<link rel="stylesheet" href="estilos.css?v=20261119d">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -436,10 +436,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261119c";
-import * as C from "./comun.js?v=20261119c";
-import * as T from "./tarifas-envio.js?v=20261119c";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261119c";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261119d";
+import * as C from "./comun.js?v=20261119d";
+import * as T from "./tarifas-envio.js?v=20261119d";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261119d";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1779,14 +1779,22 @@ $("#skxTraer").onclick = async () => {
     S.skx = { ...(S.skx || {}), direccionSkx: campos };
     $("#skxDirSkx").textContent = "Dirección de Skydropx guardada: las órdenes usarán estos mismos campos. Revisa el formulario y toca Guardar.";
     toast("Dirección de recogida traída de Skydropx");
-  } catch (e) { toast("No se pudo traer la dirección: " + (e.message || e)); $("#skxRaw").closest("details").open = true; }
+  } catch (e) {
+    const no = /404/.test(String(e.message || ""));
+    toast(no ? "Skydropx no deja leer las direcciones guardadas desde el panel. Usa “Ver remitente de la última orden” y mándale la captura a Claude." : "No se pudo traer la dirección: " + (e.message || e));
+    $("#skxDirSkx").textContent = no ? "Tu cuenta de Skydropx no permite leer las direcciones guardadas por API (404)." : "";
+  }
   b.disabled = false; b.textContent = t;
 };
 // Muestra cómo quedó el remitente en la última orden enviada (para revisar en qué campo cayó cada dato)
 $("#skxUltima").onclick = async () => {
   const ult = Object.values(S.skxOrdenes || {}).filter(o => o.orden && o.orden !== "creada").sort((a, b) => b.t - a.t)[0];
   if (!ult) { toast("Aún no hay órdenes enviadas con número de Skydropx"); return; }
-  try { await skx("GET", "/orders/" + ult.orden); } catch (e) { toast(String(e.message || e).slice(0, 200)); }
+  // Lo que Skydropx devolvió al crear la orden (guardado en el panel): ahí se ve en qué campo quedó cada dato
+  let guardada = null; try { guardada = JSON.parse(ult.resp || "null"); } catch {}
+  const buscar = (o, p = 0) => { if (!o || typeof o !== "object" || p > 8) return null; for (const [k, v] of Object.entries(o)) { if (/shipper|address_from|origin|sender/i.test(k) && v && typeof v === "object") return { [k]: v }; const x = buscar(v, p + 1); if (x) return x; } return null; };
+  let actual = null; try { actual = await skx("GET", "/orders/" + ult.orden); } catch {}
+  $("#skxRaw").textContent = `Orden ${ult.orden} · ${ult.cliente} · ${new Date(ult.t).toLocaleString("es-CO")}\n\nREMITENTE SEGÚN SKYDROPX (al crearla):\n${JSON.stringify(buscar(guardada) || guardada, null, 1)}${actual ? "\n\nREMITENTE SEGÚN SKYDROPX (ahora):\n" + JSON.stringify(buscar(actual) || actual, null, 1) : ""}`.slice(0, 20000);
   $("#skxRaw").closest("details").open = true; $("#skxRaw").scrollIntoView({ block: "center" });
 };
 const resumenError = d => { const e = d?.errors || d?.error || d?.message || d; return (typeof e === "string" ? e : JSON.stringify(e)).slice(0, 300); };
@@ -2399,7 +2407,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261119c";
+const VERSION_PANEL = "20261119d";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
