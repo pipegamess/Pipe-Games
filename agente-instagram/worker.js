@@ -26,6 +26,7 @@
 const GRAPH = "https://graph.instagram.com/v24.0";
 const GRAPH_FB = "https://graph.facebook.com/v24.0";
 const CATALOGO_CSV = "https://pipegames.com.co/catalogo-meta.csv";
+const STOCK_JSON = "https://pipegames.com.co/stock.json";
 const MAX_TURNOS = 16;          // mensajes que recuerda por chat
 const MAX_DIARIOS = 40;         // respuestas máximas por cliente al día (control de gasto)
 
@@ -211,14 +212,26 @@ async function catalogo() {
   const filas = leerCsv(await r.text());
   const cab = filas.shift() || [];
   const i = n => cab.indexOf(n);
-  const lineas = [], enlaces = {};
+  const lineas = [], enlaces = {}, agotados = [];
   for (const f of filas) {
-    if (f[i("availability")] !== "in stock") continue;
+    if (f[i("availability")] !== "in stock") { if (f[i("title")]) agotados.push(f[i("title")]); continue; }
     const precio = Number(String(f[i("price")] || "").replace(/[^\d]/g, "")) || 0;
     lineas.push(`${f[i("id")]} | ${f[i("title")]} | $${precio.toLocaleString("es-CO")}`);
     enlaces[f[i("id")]] = f[i("link")];
   }
-  return { lista: lineas.join("\n"), enlaces };
+  // Productos del inventario (Excel) que no están en la lista del catálogo, por ejemplo preventas de banner como GTA VI
+  const otros = [];
+  try {
+    const st = await (await fetch(STOCK_JSON, { cf: { cacheTtl: 120 } })).json();
+    const ids = new Set(filas.map(f => f[i("id")]));
+    const nombre = k => { const [n, p] = k.split("|"); return n.replace(/GTAVI(?=[A-Z]|$)/, "GTA VI ").replace(/LATAM/, " LATAM").replace(/CDIGOENCAJA|CODIGOENCAJA/, " CODIGO EN CAJA").trim() + " (" + (p || "") + ")"; };
+    for (const [k, c] of Object.entries(st.productos || {})) {
+      if (ids.has(k.replace(/\|/g, "-"))) continue;
+      if (c === 0) agotados.push(nombre(k).replace(/\s+/g, " "));
+      else if (c > 0) otros.push(nombre(k).replace(/\s+/g, " "));
+    }
+  } catch {}
+  return { lista: lineas.join("\n"), enlaces, agotados: agotados.join("\n"), otros: otros.join("\n") };
 }
 function leerCsv(t) {
   const filas = []; let fila = [], campo = "", comillas = false;
@@ -270,7 +283,7 @@ function horario(ahora = new Date()) {
   return { dentro, festivo: festivosColombia(bog.getUTCFullYear()).has(fecha(bog)), siguiente: nombreSig + " desde las 9:30 a. m." };
 }
 
-function instrucciones(lista, primera) {
+function instrucciones(lista, primera, agotados = "", otros = "") {
   const ahora = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
   const h = horario();
   const estado = h.dentro
@@ -295,7 +308,10 @@ CÓMO ESCRIBES
 - Sé conciso y claro: mensajes cortos, como en un chat, directo a lo que el cliente preguntó. Un emoji de vez en cuando está bien, sin exagerar.
 - No seas repetitivo: no repitas información que ya diste en la conversación ni cierres todos los mensajes con la misma frase o pregunta. Si el cliente hace varias preguntas, respóndelas todas en un solo mensaje ordenado.
 - Nunca inventes productos, precios, fechas ni promociones. Solo puedes ofrecer lo que está en la LISTA DISPONIBLE.
-- Si el cliente pregunta por algo que no está en la lista, dile que en este momento no está disponible y ofrece una alternativa parecida de la lista si la hay.
+- DISPONIBILIDAD (regla más importante): un producto solo está disponible si aparece EXACTAMENTE en la LISTA DISPONIBLE, con el mismo nombre, la misma edición y la misma consola. Nunca uses lo que sepas por tu cuenta sobre lanzamientos, preventas o fechas de salida, ni lo que se haya dicho antes en el chat: la lista de abajo es el stock de este momento y manda sobre todo lo demás.
+- No confundas juegos con nombres parecidos: GTA VI (Grand Theft Auto VI) NO es GTA V (Grand Theft Auto V); tampoco mezcles ediciones (estándar, deluxe, open box, código en caja) ni secuelas.
+- Si el cliente pregunta por algo que no está en la LISTA DISPONIBLE (esté o no en la lista de AGOTADOS), dile claramente que en este momento está agotado o no lo tenemos. Ofrece una alternativa parecida de la lista si la hay, y dile que si quiere que le avisen cuando llegue, escriba PIPE y Felipe lo anota en la lista de espera.
+- Los lanzamientos y preventas (por ejemplo GTA VI) solo están disponibles si aparecen en la LISTA DISPONIBLE. Si no aparecen, están agotados: no prometas unidades, fechas de llegada ni reservas.
 - Antes de dar un precio, confirma la consola si el juego existe en varias (PS4, PS5, Switch o Switch 2). No mezcles PS4 con PS5 ni Switch con Switch 2.
 - Cuando el cliente quiera comprar un producto, escribe [PEDIDO:ID] con el ID del producto de la lista (por ejemplo [PEDIDO:MINECRAFT-PS5]); el sistema lo cambia por un enlace que abre el catálogo con ese producto en el carrito, donde escoge envío y forma de pago. No escribas enlaces de pedido tú mismo.
 
@@ -315,8 +331,14 @@ Escribe al final de tu mensaje la marca [HUMANO] (el cliente no la ve; avisa a F
 En esos casos responde solo una frase corta: ${h.dentro ? `"¡Listo! Ya le avisé a Felipe y te atenderá personalmente en breve. 🙌"` : `"¡Listo! Ya le avisé a Felipe. Como estamos fuera del horario de atención (lunes a sábado de 9:30 a. m. a 7:00 p. m.), te responderá personalmente ${h.siguiente}. 🙌"`}
 - Si el texto empieza con "[Felipe respondió]", es un mensaje que escribió Felipe: tenlo en cuenta y no lo contradigas.
 
-LISTA DISPONIBLE (ID | nombre - consola | precio). Todo lo de esta lista está en stock ahora:
-${lista || "(no se pudo cargar la lista: no confirmes disponibilidad ni precios; pide al cliente escribir al WhatsApp)"}`;
+LISTA DISPONIBLE (ID | nombre - consola | precio). Todo lo de esta lista está en stock ahora y es lo ÚNICO que puedes ofrecer:
+${lista || "(no se pudo cargar la lista: no confirmes disponibilidad ni precios; pide al cliente escribir PIPE para que Felipe le confirme)"}
+${agotados ? `
+AGOTADOS EN ESTE MOMENTO (no los ofrezcas; si preguntan por ellos, di que están agotados):
+${agotados}` : ""}
+${otros ? `
+DISPONIBLES SOLO POR ATENCIÓN PERSONAL (nombres del inventario, sin espacios; hay unidades pero no se compran en el carrito: preventas, open box, ediciones especiales). Si preguntan por uno, di que sí hay unidades y que escriba PIPE para que Felipe le confirme precio y entrega; no des precio:
+${otros}` : ""}`;
 }
 
 async function preguntarClaude(env, historial) {
@@ -331,7 +353,7 @@ async function preguntarClaude(env, historial) {
     body: JSON.stringify({
       model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
       max_tokens: 600,
-      system: [{ type: "text", text: instrucciones(cat.lista, !historial.some(t => t.role === "assistant" && !String(t.content).startsWith("[Felipe respondió]"))) }],
+      system: [{ type: "text", text: instrucciones(cat.lista, !historial.some(t => t.role === "assistant" && !String(t.content).startsWith("[Felipe respondió]")), cat.agotados, cat.otros) }],
       messages: mensajes
     })
   });
