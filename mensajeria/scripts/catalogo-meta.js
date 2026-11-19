@@ -75,11 +75,19 @@ async function foto(src) {
       // Disponibilidad: misma regla del catálogo (aplicarStockExcel)
       let activo = x.active !== false;
       if (usarStock) {
-        let c = stock[k];
+        let c;
+        if (Array.isArray(k)) {
+          // mismo producto con varios nombres en el Excel (p. ej. stock actual + pedido en importación)
+          const vals = k.map(x => stock[x]).filter(v => v !== undefined);
+          if (vals.length) {
+            const disp = vals.filter(v => v > 0).reduce((a, v) => a + v, 0);
+            c = disp > 0 ? disp : (vals.some(v => v < 0) ? -1 : 0);
+          }
+        } else c = stock[k];
         if (c === undefined && enlazado) c = 0;
-        if (c !== undefined && c >= 0) activo = c > 0;
+        if (c !== undefined) activo = c > 0; // c < 0: solo EN IMPORTACION (aún no llega): no disponible
       }
-      let id = k.replace(/\|/g, "-");
+      let id = (Array.isArray(k) ? k[0] : k).replace(/\|/g, "-");
       while (ids.has(id)) id += "-2";
       ids.add(id);
       const img = await foto(x.img);
