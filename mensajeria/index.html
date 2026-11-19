@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261118d">
+<link rel="stylesheet" href="estilos.css?v=20261118e">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118d";
-import * as C from "./comun.js?v=20261118d";
-import * as T from "./tarifas-envio.js?v=20261118d";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261118d";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261118e";
+import * as C from "./comun.js?v=20261118e";
+import * as T from "./tarifas-envio.js?v=20261118e";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261118e";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -1078,7 +1078,7 @@ function pintarEstadoLink() {
     <div class="btns"><button class="btn" type="button" data-cbpagado>Marcar pagado</button></div>`;
   else if (cr.estado === "rejected" || cr.estado === "declined") h = `${paso(2, "❌ Addi no aprobó el crédito")}<span class="nota">${cr.solicitud ? "Addi respondió que no aprobó la solicitud " + esc(cr.solicitud) + (cr.tAviso ? " (" + C.fecha(cr.tAviso) + ")" : "") + ". " : ""}Si los datos del cliente estaban mal (cédula, nombre o correo), corrígelos en Reservas → Editar y toca “Intentar de nuevo con Addi” en la reserva. Si no, ofrécele a ${nom} pagar por Bre-B. Si paga, márcalo pagado${c.guia ? `; si no compra, borra la guía ${esc(c.guia)}` : ""}.</span>
     <div class="btns"><button class="btn" type="button" data-cbbreb>Enviar datos de Bre-B por WhatsApp</button><button class="btn sec chico" type="button" data-cbpagado>Marcar pagado</button></div>`;
-  else if (cr.estado === "autorizado" && cr.codigo) h = `${paso(2, `⏳ Esperando que ${nom} complete Addi`)}<span class="nota">Le enviaste el link de Addi (vence en 2 horas). Esto se actualiza solo cuando Addi responda.</span>
+  else if (cr.estado === "autorizado" && cr.codigo) h = `${paso(2, `⏳ Esperando que ${nom} complete Addi`)}<span class="nota">Le enviaste el link de Addi (dura 2 días). Esto se actualiza solo cuando Addi responda.</span>
     <div class="btns"><button class="btn sec chico" type="button" data-cbaddi="${esc(cbLinkReserva)}">Reenviar link de Addi</button></div>`;
   else h = `${paso(2, `${nom} eligió Addi · ${C.cop(c.total)}`)}<span class="nota">${esc(c.ciudad || "")}${guia}.${cr.estado === "abandoned" ? " No terminó la solicitud anterior." : ""} Si estás de acuerdo, autoriza y se le envía el link de Addi.</span>
     <div class="btns"><button class="btn btn-amarillo" type="button" data-cbaddi="${esc(cbLinkReserva)}">Autorizar crédito Addi</button></div>`;
@@ -2320,7 +2320,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261118d";
+const VERSION_PANEL = "20261118e";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
