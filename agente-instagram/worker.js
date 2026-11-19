@@ -19,7 +19,9 @@
 //   HORAS_PAUSA        (Text, opcional) horas que el agente se calla en un chat después de que respondes tú (por defecto 12)
 // Enlace de almacenamiento (Settings → Bindings → KV namespace):
 //   AGENTE             KV namespace para el historial de cada chat y las pausas
-// Disparador programado (Settings → Triggers → Cron): 0 9 * * 1   (renueva el token cada lunes)
+// Disparadores programados (Settings → Trigger Events → Cron):
+//   * * * * *   revisa los chats nuevos cada minuto (por si Meta no envía los avisos)
+//   0 9 * * 1   renueva el token cada lunes (solo forma B)
 
 const GRAPH = "https://graph.instagram.com/v24.0";
 const GRAPH_FB = "https://graph.facebook.com/v24.0";
@@ -65,7 +67,8 @@ export default {
   },
 
   // Renueva el token de Instagram (dura 60 días) y lo guarda en el KV
-  async scheduled(evento, env) {
+  async scheduled(evento, env, ctx) {
+    if (evento.cron !== "0 9 * * 1") { await revisarChats(env).catch(e => console.log("error revisando", e && e.stack || e)); return; }
     if (env.AGENTE && await env.AGENTE.get("fb_token")) return; // el token unificado no vence
     const actual = (env.AGENTE && await env.AGENTE.get("token")) || env.IG_TOKEN;
     if (!actual) return;
@@ -111,25 +114,76 @@ async function procesar(datos, env) {
         continue;
       }
       await guardarTurno(env, cliente, "user", texto);
-      if (env.AGENTE_ACTIVO === "no") continue;
-      if (await env.AGENTE.get("pausa:" + cliente)) continue;
-
-      const dia = "dia:" + cliente + ":" + new Date().toISOString().slice(0, 10);
-      const usados = Number(await env.AGENTE.get(dia)) || 0;
-      if (usados >= MAX_DIARIOS) continue;
-      await env.AGENTE.put(dia, String(usados + 1), { expirationTtl: 172800 });
-
-      const historial = await leerHistorial(env, cliente);
-      let respuesta = await preguntarClaude(env, historial);
-      if (!respuesta) continue;
-      let pasarAFelipe = false;
-      if (respuesta.includes("[HUMANO]")) { pasarAFelipe = true; respuesta = respuesta.replace(/\[HUMANO\]/g, "").trim(); }
-      if (respuesta) {
-        await enviar(env, cliente, respuesta);
-        await guardarTurno(env, cliente, "assistant", respuesta);
-      }
-      if (pasarAFelipe) await env.AGENTE.put("pausa:" + cliente, "humano", { expirationTtl: 12 * 3600 });
+      await responderCliente(env, cliente);
     }
+  }
+}
+
+async function responderCliente(env, cliente) {
+  if (env.AGENTE_ACTIVO === "no") return;
+  if (await env.AGENTE.get("pausa:" + cliente)) return;
+  const dia = "dia:" + cliente + ":" + new Date().toISOString().slice(0, 10);
+  const usados = Number(await env.AGENTE.get(dia)) || 0;
+  if (usados >= MAX_DIARIOS) return;
+  await env.AGENTE.put(dia, String(usados + 1), { expirationTtl: 172800 });
+
+  const historial = await leerHistorial(env, cliente);
+  let respuesta = await preguntarClaude(env, historial);
+  if (!respuesta) return;
+  let pasarAFelipe = false;
+  if (respuesta.includes("[HUMANO]")) { pasarAFelipe = true; respuesta = respuesta.replace(/\[HUMANO\]/g, "").trim(); }
+  if (respuesta) {
+    await env.AGENTE.put("ultimo_bot:" + cliente, respuesta.slice(0, 4000), { expirationTtl: 86400 });
+    await enviar(env, cliente, respuesta);
+    await guardarTurno(env, cliente, "assistant", respuesta);
+  }
+  if (pasarAFelipe) await env.AGENTE.put("pausa:" + cliente, "humano", { expirationTtl: 12 * 3600 });
+}
+
+/* ---------- revisión de chats cada minuto (por si Meta no envía los avisos) ---------- */
+async function revisarChats(env) {
+  if (!env.AGENTE) return;
+  const token = await env.AGENTE.get("fb_token"), cuenta = await env.AGENTE.get("fb_cuenta");
+  if (!token || !cuenta) return;
+  const ahora = Date.now();
+  let inicio = Number(await env.AGENTE.get("revision_inicio"));
+  if (!inicio) { inicio = ahora; await env.AGENTE.put("revision_inicio", String(ahora)); return; } // no contesta chats viejos
+  const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from}&limit=15`,
+    { headers: { Authorization: "Bearer " + token } });
+  const j = await r.json().catch(() => ({}));
+  if (!j.data) { console.log("revisar chats", r.status, JSON.stringify(j).slice(0, 300)); return; }
+  for (const conv of j.data) {
+    if (Date.parse(conv.updated_time) < ahora - 20 * 60000) continue; // solo chats con movimiento reciente
+    const otro = ((conv.participants && conv.participants.data) || []).find(p => String(p.id) !== String(cuenta));
+    if (!otro) continue;
+    const cliente = String(otro.id);
+    const msgs = ((conv.messages && conv.messages.data) || []).slice().reverse(); // del más viejo al más nuevo
+    let pendiente = false, ultimoCliente = 0;
+    for (const m of msgs) {
+      const t = Date.parse(m.created_time) || 0;
+      const deTienda = m.from && String(m.from.id) === String(cuenta);
+      if (!deTienda) ultimoCliente = t;
+      if (t < inicio || !m.id) continue;
+      if (await env.AGENTE.get("visto:" + m.id)) { if (!deTienda) pendiente = false; continue; }
+      await env.AGENTE.put("visto:" + m.id, "1", { expirationTtl: 3 * 86400 });
+      const texto = String(m.message || "").trim();
+      if (deTienda) {
+        const delBot = await env.AGENTE.get("mio:" + m.id) ||
+          (texto && (await env.AGENTE.get("ultimo_bot:" + cliente) || "").includes(texto.slice(0, 60)));
+        const automatica = !delBot && ultimoCliente && t - ultimoCliente < 15000 && t - ultimoCliente >= 0; // respuesta instantánea de Instagram
+        if (automatica) continue;           // no cuenta como respuesta: el cliente sigue esperando
+        pendiente = false;
+        if (!delBot) {
+          const horas = Number(env.HORAS_PAUSA) || 12;
+          await env.AGENTE.put("pausa:" + cliente, "tu", { expirationTtl: Math.max(60, horas * 3600) });
+          if (texto) await guardarTurno(env, cliente, "assistant", "[Felipe respondió] " + texto);
+        }
+        continue;
+      }
+      await guardarTurno(env, cliente, "user", texto || "[El cliente envió una foto, audio o adjunto]");
+      pendiente = !!texto;
+    }
+    if (pendiente) await responderCliente(env, cliente);
   }
 }
 
