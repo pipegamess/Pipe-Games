@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="estilos.css?v=20261119a">
+<link rel="stylesheet" href="estilos.css?v=20261119b">
 <style>
 .envoltura{max-width:1240px;margin:0 auto;padding:12px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
 header.barra{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
@@ -435,10 +435,10 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
-import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261119a";
-import * as C from "./comun.js?v=20261119a";
-import * as T from "./tarifas-envio.js?v=20261119a";
-import { PRODUCTOS } from "./productos-catalogo.js?v=20261119a";
+import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261119b";
+import * as C from "./comun.js?v=20261119b";
+import * as T from "./tarifas-envio.js?v=20261119b";
+import { PRODUCTOS } from "./productos-catalogo.js?v=20261119b";
 const V = FIREBASE_VERSION;
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
@@ -2348,7 +2348,7 @@ function escuchar() {
 }
 
 // Si se abre una versión más nueva del panel en cualquier equipo, los paneles viejos se recargan solos
-const VERSION_PANEL = "20261119a";
+const VERSION_PANEL = "20261119b";
 let versionRevisada = false;
 // Además, se compara con version.json (sin caché): si el navegador entregó una copia vieja, recarga con ?v=
 async function revisarVersionPublicada() {
@@ -2794,6 +2794,7 @@ function pintarDetalle() {
   // Solo el panel maestro: marcar entregada a mano (pruebas)
   if (esMaestro() && ["disponible", "tomada", "recogida", "novedad"].includes(g.estado)) acciones.push(`<button class="btn sec chico" data-acc="caminoManual" title="Para pruebas: marca la guía en camino sin pasar por la app">Marcar en camino (prueba)</button>`);
   if (esMaestro() && !["entregada", "cancelada", "devuelta"].includes(g.estado)) acciones.push(`<button class="btn ok chico" data-acc="entregarManual" title="Para pruebas: marca la guía como entregada sin pasar por la app">Marcar entregada (prueba)</button>`);
+  if (g.destino?.direccion && claveCiudad(g.destino.ciudad)) acciones.unshift(`<button class="btn chico" data-acc="repetir" title="Abre Nueva guía con el nombre, el celular, la dirección y la ubicación de este cliente">🔁 Nueva guía para este cliente</button>`);
   if (g.estado !== "disponible") acciones.push(`<button class="btn sec chico" data-acc="reiniciar" title="Para pruebas: la guía vuelve a quedar disponible para escanear">Reiniciar guía (pruebas)</button>`);
   acciones.push(`<button class="btn peligro chico" data-acc="eliminar" title="Borra la guía, su rastreo y sus fotos. No se puede deshacer.">Eliminar guía</button>`);
   $("#hojaDetalle").innerHTML = `
@@ -2880,6 +2881,7 @@ $("#hojaDetalle").addEventListener("click", async e => {
   const n = S.abierta, g = S.guias[n];
   const a = b.dataset.acc;
   if (a === "cerrar") return cerrarDetalle();
+  if (a === "repetir") { cerrarDetalle(); irA("nueva"); setTimeout(() => { llenarDesdeGuia(g); $("#fNueva").scrollIntoView({ behavior: "smooth" }); toast("Datos de " + titulo(g.cliente) + " listos: completa el paquete y crea la guía"); }, 250); return; }
   if (a === "entAbrir") { S.ent = { fotos: [], recibe: "cliente", nombre: "", medio: g.recaudo?.medio || "" }; pintarDetalle(); setTimeout(() => document.getElementById("entPanel")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); return; }
   if (a === "entCancelar") { S.ent = null; pintarDetalle(); return; }
   if (a === "entQuitar") { S.ent?.fotos.splice(+b.dataset.i, 1); pintarDetalle(); return; }
@@ -3650,15 +3652,39 @@ function pintarFrecuente() {
   el.hidden = false;
 }
 $("#nTel").addEventListener("input", pintarFrecuente);
+// Buscar un cliente que ya tiene envíos por nombre (si aún no se escribió el celular)
+$("#nCli").addEventListener("input", () => {
+  const el = $("#nFrec"), q = normNombre($("#nCli").value);
+  if (soloDig($("#nTel").value).length >= 10) return;
+  if (q.length < 3) { el.hidden = true; return; }
+  const vistas = new Set();
+  const prev = Object.values(S.guias).filter(g => g.destino?.direccion && claveCiudad(g.destino.ciudad) && normNombre(g.cliente).includes(q))
+    .sort((a, b) => b.creado - a.creado)
+    .filter(g => { const k = soloDig(g.telefono) + "|" + (g.destino.direccion || "").toLowerCase().replace(/\s+/g, ""); if (vistas.has(k)) return false; vistas.add(k); return true; })
+    .slice(0, 5);
+  if (!prev.length) { el.hidden = true; return; }
+  el.innerHTML = `<span class="nota"><b>Clientes con envíos anteriores.</b> Toca uno para llenar sus datos:</span>` + prev.map(g => `<div class="item" data-frec="${esc(g.numero)}" tabindex="0"><b>${esc(g.cliente)}</b><span class="meta">${esc(g.telefono || "")} · ${esc(g.destino.direccion)}${g.destino.referencia ? " · " + esc(g.destino.referencia) : ""} · último envío ${C.fecha(g.creado)}</span></div>`).join("");
+  el.hidden = false;
+});
+// Ciudad local de una guía (las guías antiguas no guardaban la ciudad: son de Bogotá)
+const claveCiudad = nombre => !nombre ? "bogota" : Object.keys(C.CIUDADES).find(k => C.CIUDADES[k].nombre === nombre || normNombre(nombre).startsWith(normNombre(C.CIUDADES[k].nombre))) || null;
+// Llena el formulario de Nueva guía con los datos de una guía anterior del mismo cliente
+function llenarDesdeGuia(g) {
+  $("#nCli").value = g.cliente || ""; $("#nTel").value = g.telefono || "";
+  const k = claveCiudad(g.destino?.ciudad); if (k) $("#nCiudad").value = k;
+  $("#nDir").value = g.destino?.direccion || ""; $("#nRef").value = g.destino?.referencia || "";
+  ultimaBuscada = $("#nDir").value.trim(); $("#nCands").innerHTML = "";
+  if (g.destino?.lat != null && !g.destino.verificar) {
+    ponerPin({ lat: g.destino.lat, lng: g.destino.lng, aprox: false }, "Ubicación de la entrega anterior a este cliente. Revisa el marcador.");
+    if (mapa) mapa.setView([g.destino.lat, g.destino.lng], 16);
+  } else $("#nPin").textContent = "La guía anterior no tenía la ubicación confirmada: toca “Ubicar dirección en el mapa”.";
+  $("#nFrec").hidden = true; $("#nCont").focus({ preventScroll: true });
+}
 $("#nFrec").addEventListener("click", e => {
   const it = e.target.closest("[data-frec]"); if (!it) return;
-  const g = S.guias[it.dataset.frec]; if (!g) return;
-  $("#nCli").value = g.cliente || ""; $("#nDir").value = g.destino.direccion || ""; $("#nRef").value = g.destino.referencia || "";
-  ultimaBuscada = $("#nDir").value.trim(); $("#nCands").innerHTML = "";
-  ponerPin({ lat: g.destino.lat, lng: g.destino.lng, aprox: false }, "Ubicación de la entrega anterior a este cliente. Revisa el marcador.");
-  if (mapa) mapa.setView([g.destino.lat, g.destino.lng], 16);
-  $("#nFrec").hidden = true; $("#nCont").focus();
+  const g = S.guias[it.dataset.frec]; if (g) llenarDesdeGuia(g);
 });
+$("#nFrec").addEventListener("keydown", e => { if (e.key === "Enter") e.target.closest("[data-frec]")?.click(); });
 
 /* ---------- MENSAJEROS ---------- */
 function pintarMensajeros() {
