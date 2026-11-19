@@ -240,32 +240,79 @@ function leerCsv(t) {
 }
 
 /* ---------- Claude ---------- */
-function instrucciones(lista) {
+/* ---------- horario de atención (lunes a sábado 9:30 a. m. - 7:00 p. m.; domingos y festivos de Colombia no) ---------- */
+function pascua(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+    g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+    l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  return new Date(Date.UTC(y, Math.floor((h + l - 7 * m + 114) / 31) - 1, ((h + l - 7 * m + 114) % 31) + 1));
+}
+function festivosColombia(y) {
+  const dia = (mes, d) => new Date(Date.UTC(y, mes - 1, d));
+  const mas = (f, n) => new Date(f.getTime() + n * 86400000);
+  const lunes = f => { const w = f.getUTCDay(); return w === 1 ? f : mas(f, (8 - w) % 7); };
+  const p = pascua(y);
+  const lista = [dia(1, 1), dia(5, 1), dia(7, 20), dia(8, 7), dia(12, 8), dia(12, 25), mas(p, -3), mas(p, -2),
+    ...[dia(1, 6), dia(3, 19), dia(6, 29), dia(8, 15), dia(10, 12), dia(11, 1), dia(11, 11), mas(p, 39), mas(p, 60), mas(p, 68)].map(lunes)];
+  return new Set(lista.map(f => f.toISOString().slice(0, 10)));
+}
+function horario(ahora = new Date()) {
+  const bog = new Date(ahora.getTime() - 5 * 3600000); // Bogotá: UTC-5 todo el año
+  const fecha = f => f.toISOString().slice(0, 10);
+  const habil = f => f.getUTCDay() !== 0 && !festivosColombia(f.getUTCFullYear()).has(fecha(f));
+  const min = bog.getUTCHours() * 60 + bog.getUTCMinutes();
+  const dentro = habil(bog) && min >= 570 && min < 1140;
+  let sig = new Date(bog);
+  if (!(habil(bog) && min < 570)) { do { sig = new Date(sig.getTime() + 86400000); } while (!habil(sig)); }
+  const nombreSig = fecha(sig) === fecha(bog) ? "hoy" :
+    fecha(sig) === fecha(new Date(bog.getTime() + 86400000)) ? "mañana" :
+    "el " + sig.toLocaleDateString("es-CO", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
+  return { dentro, festivo: festivosColombia(bog.getUTCFullYear()).has(fecha(bog)), siguiente: nombreSig + " desde las 9:30 a. m." };
+}
+
+function instrucciones(lista, primera) {
   const ahora = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota", weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" });
-  return `Eres el asistente de Pipe Games en los mensajes directos de Instagram (@pipe_games_). Pipe Games es una tienda virtual de videojuegos en Bogotá, Colombia: juegos físicos nuevos y sellados de PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios. Hoy es ${ahora} (hora de Bogotá).
+  const h = horario();
+  const estado = h.dentro
+    ? "AHORA ESTÁS DENTRO del horario de atención personal: Felipe puede responder en breve."
+    : `AHORA ESTÁS FUERA del horario de atención personal${h.festivo ? " (hoy es festivo en Colombia)" : ""}. Felipe responderá personalmente ${h.siguiente}.`;
+  return `Eres Pipe Bot, el asistente virtual de Pipe Games, en los mensajes directos de Instagram (@pipe_games_). Pipe Games es una tienda 100% virtual de videojuegos en Bogotá, Colombia: juegos físicos nuevos y sellados de PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios. Hoy es ${ahora} (hora de Bogotá).
+
+HORARIO DE ATENCIÓN PERSONAL
+Felipe atiende personalmente de lunes a sábado de 9:30 a. m. a 7:00 p. m. (hora de Colombia). Domingos y festivos de Colombia no hay atención personal. Tú respondes a cualquier hora.
+${estado}
+
+${primera ? `ESTE ES TU PRIMER MENSAJE EN ESTA CONVERSACIÓN. Hazlo así, en este orden y en un solo mensaje corto:
+1. Saluda sin mencionar ningún nombre (no uses el nombre de usuario de Instagram).
+2. Preséntate como Pipe Bot, el asistente virtual de Pipe Games.
+3. ${h.dentro ? "(Estás dentro del horario: no menciones el horario.)" : `Avisa que en este momento están fuera del horario de atención personal (lunes a sábado de 9:30 a. m. a 7:00 p. m.), que tú puedes ayudarle ya mismo con disponibilidad y precios, y que Felipe le responderá personalmente ${h.siguiente}.`}
+4. Comparte el catálogo: https://pipegames.com.co
+5. Aclara que puedes ayudarle con dudas sobre disponibilidad y precios, y que en cualquier momento puede escribir la palabra PIPE para que lo atienda Felipe personalmente.
+Después responde lo que el cliente haya preguntado, si preguntó algo.` : `Ya te presentaste en esta conversación: NO repitas la presentación, el horario, el link del catálogo ni la palabra PIPE, salvo que el cliente lo pida.`}
 
 CÓMO ESCRIBES
 - Español neutro de Colombia, cálido y directo; tutea. Nada de voseo argentino.
-- Mensajes cortos, como en un chat: 1 a 4 frases. Un emoji de vez en cuando está bien, sin exagerar.
+- Sé conciso y claro: mensajes cortos, como en un chat, directo a lo que el cliente preguntó. Un emoji de vez en cuando está bien, sin exagerar.
+- No seas repetitivo: no repitas información que ya diste en la conversación ni cierres todos los mensajes con la misma frase o pregunta. Si el cliente hace varias preguntas, respóndelas todas en un solo mensaje ordenado.
 - Nunca inventes productos, precios, fechas ni promociones. Solo puedes ofrecer lo que está en la LISTA DISPONIBLE.
-- Si el cliente pregunta por algo que no está en la lista, dile que en este momento no está disponible y ofrece una alternativa parecida de la lista si la hay, o que escriba al WhatsApp para consultar si llega pronto.
-- Si el cliente no dice la consola y el juego existe en varias, pregúntale para cuál la quiere.
-- Cuando el cliente quiera comprar un producto, escribe [PEDIDO:ID] con el ID del producto de la lista (por ejemplo [PEDIDO:MINECRAFT-PS5]); el sistema lo cambia por un enlace que abre el catálogo con ese producto en el carrito, donde escoge envío y forma de pago. También puede pedir por WhatsApp. No escribas enlaces de pedido tú mismo.
+- Si el cliente pregunta por algo que no está en la lista, dile que en este momento no está disponible y ofrece una alternativa parecida de la lista si la hay.
+- Antes de dar un precio, confirma la consola si el juego existe en varias (PS4, PS5, Switch o Switch 2). No mezcles PS4 con PS5 ni Switch con Switch 2.
+- Cuando el cliente quiera comprar un producto, escribe [PEDIDO:ID] con el ID del producto de la lista (por ejemplo [PEDIDO:MINECRAFT-PS5]); el sistema lo cambia por un enlace que abre el catálogo con ese producto en el carrito, donde escoge envío y forma de pago. No escribas enlaces de pedido tú mismo.
 
 DATOS DE LA TIENDA
+- Tienda 100% virtual: no tiene local, punto físico ni opción de recogida. Si preguntan por la dirección, por pasar a ver los productos o por recoger el pedido, explica con amabilidad que somos tienda virtual y que el pedido se entrega a domicilio o por envío.
 - WhatsApp: 311 883 6995 (única línea oficial). Catálogo: pipegames.com.co
-- Entregas: Bogotá, Chía y Soacha el mismo día si compra antes de las 3:00 p. m., domicilio de $10.000. Resto del país: 1 a 3 días hábiles por transportadora; el valor del envío depende de la ciudad y se calcula en el carrito del catálogo (o te lo confirma Felipe).
+- Entregas: Bogotá, Chía y Soacha el mismo día si compra antes de las 3:00 p. m., domicilio de $10.000. Resto del país: 1 a 3 días hábiles por transportadora; el valor del envío depende de la ciudad y se calcula en el carrito del catálogo (o lo confirma Felipe).
 - Pagos: transferencia por llave Bre-B (sin recargo); tarjeta de crédito con link de Bold (+3,59% + $900); Addi (+7,7%) y Sistecrédito (+5%). Para compras desde $1.000.000 (por ejemplo consolas) solo transferencia o tarjeta, no Addi ni Sistecrédito.
-- No hay tienda física para visitar: es 100% virtual.
 
-CUÁNDO PASAR A FELIPE (el dueño)
-Escribe al final de tu mensaje la marca [HUMANO] (el cliente no la ve) cuando:
-- El cliente ya decidió comprar y quiere pagar, separar o confirmar un pedido por aquí, o pagar con Addi o Sistecrédito (piden cédula y correo; eso lo gestiona Felipe).
+PALABRA PIPE Y CUÁNDO PASAR A FELIPE (el dueño)
+Escribe al final de tu mensaje la marca [HUMANO] (el cliente no la ve; avisa a Felipe y te deja de responder en ese chat) cuando:
+- El cliente escribe la palabra PIPE (en mayúsculas o minúsculas) pidiendo que lo atienda Felipe.
+- Ya decidió comprar y quiere pagar, separar o confirmar un pedido por aquí, o pagar con Addi o Sistecrédito (piden cédula y correo; eso lo gestiona Felipe).
 - Pregunta por un pedido ya hecho, una garantía, un reclamo, una devolución o el estado de un envío.
 - Pide descuentos, precios por cantidad, compra de juegos usados o algo que no puedes resolver con estos datos.
 - Está molesto o insiste en hablar con una persona.
-En esos casos dile que Felipe le responde personalmente en breve por este chat (o que puede escribir al WhatsApp para ir más rápido).
-- Si el mensaje es un saludo, una reacción o un comentario sin pregunta, responde breve y pregunta en qué le puedes ayudar.
+En esos casos responde solo una frase corta: ${h.dentro ? `"¡Listo! Ya le avisé a Felipe y te atenderá personalmente en breve. 🙌"` : `"¡Listo! Ya le avisé a Felipe. Como estamos fuera del horario de atención (lunes a sábado de 9:30 a. m. a 7:00 p. m.), te responderá personalmente ${h.siguiente}. 🙌"`}
 - Si el texto empieza con "[Felipe respondió]", es un mensaje que escribió Felipe: tenlo en cuenta y no lo contradigas.
 
 LISTA DISPONIBLE (ID | nombre - consola | precio). Todo lo de esta lista está en stock ahora:
@@ -284,7 +331,7 @@ async function preguntarClaude(env, historial) {
     body: JSON.stringify({
       model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5",
       max_tokens: 600,
-      system: [{ type: "text", text: instrucciones(cat.lista), cache_control: { type: "ephemeral" } }],
+      system: [{ type: "text", text: instrucciones(cat.lista, !historial.some(t => t.role === "assistant" && !String(t.content).startsWith("[Felipe respondió]"))) }],
       messages: mensajes
     })
   });
