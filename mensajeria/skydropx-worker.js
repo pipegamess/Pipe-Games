@@ -381,6 +381,12 @@ async function avisoAddi(req, env, url) {
   const estado = String(d.status || d.applicationStatus || "").toLowerCase();
   if (reserva && /^[A-Za-z0-9_-]{1,60}$/.test(reserva) && env.FIREBASE_SA) {
     // Solo se actualizan estos campos del crédito: el link (url, codigo, t) que creó el panel se conserva
+    // Al renovar la página de pago se crean solicitudes nuevas: los avisos de una solicitud vieja (vencida o abandonada)
+    // no deben tapar el estado de la actual. Un aprobado siempre cuenta.
+    const orden = url.searchParams.get("o") || "";
+    if (estado !== "approved" && orden) {
+      try { const c = await leerCredito(env, reserva); if (c?.orden && c.orden !== orden) return json(cuerpoTxt || "{}"); } catch {}
+    }
     const credito = { estado, monto: Number(d.approvedAmount) || 0, solicitud: String(d.applicationId || ""), tAviso: Date.now() };
     const campos = { credito: { mapValue: { fields: aCamposFS(credito) } } };
     const mascara = Object.keys(credito).map(k => "credito." + k);
@@ -511,6 +517,14 @@ async function escribirReserva(env, reserva, campos, mascara) {
   if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
 }
 
+async function leerCredito(env, reserva) {
+  const campo = /^[A-Za-z_][A-Za-z0-9_]*$/.test(reserva) ? reserva : "`" + reserva + "`";
+  const ruta = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID + "?mask.fieldPaths=" + encodeURIComponent("reservas." + campo + ".credito");
+  const rr = await fetch("https://firestore.googleapis.com/v1/" + ruta, { headers: { Authorization: "Bearer " + await tokenServicio(env) } });
+  if (!rr.ok) throw new Error("F" + rr.status);
+  const d = await rr.json(), cf = d?.fields?.reservas?.mapValue?.fields?.[reserva]?.mapValue;
+  return cf ? deFS({ mapValue: cf }).credito || null : null;
+}
 async function irAddi(env, url) {
   const html = (t) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;padding:24px;text-align:center"><h2>Pipe Games</h2><p>${t}</p></body>`, { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } });
   const [reserva, codigo] = String(url.searchParams.get("c") || "").split(".");
@@ -523,11 +537,27 @@ async function irAddi(env, url) {
     const rr = await fetch("https://firestore.googleapis.com/v1/" + ruta, { headers: { Authorization: "Bearer " + tk } });
     const d = await rr.json().catch(() => ({}));
     if (!rr.ok) return html("No pudimos abrir el pago (código F" + rr.status + "). Escríbenos por WhatsApp.");
-    const c = d?.fields?.reservas?.mapValue?.fields?.[reserva]?.mapValue?.fields?.credito?.mapValue?.fields || {};
-    if (!c.url?.stringValue) return html("Este link no es válido (código A1: el pago aún no está autorizado). Escríbenos por WhatsApp.");
-    if (c.codigo?.stringValue !== codigo) return html("Este link ya no es válido (código A2: se generó uno más nuevo). Escríbenos por WhatsApp y te lo reenviamos.");
-    const t = Number(c.t?.integerValue || 0);
+    const cf = d?.fields?.reservas?.mapValue?.fields?.[reserva]?.mapValue || null;
+    const c = cf ? deFS({ mapValue: cf }).credito || {} : {};
+    if (!c.url) return html("Este link no es válido (código A1: el pago aún no está autorizado). Escríbenos por WhatsApp.");
+    if (c.codigo !== codigo) return html("Este link ya no es válido (código A2: se generó uno más nuevo). Escríbenos por WhatsApp y te lo reenviamos.");
+    if (c.estado === "approved") return html("¡Tu crédito con Addi ya fue aprobado! Tu pedido está pago. Pronto te escribimos por WhatsApp con el envío.");
+    if (["rejected", "declined"].includes(c.estado)) return html("Addi no aprobó esta solicitud. Escríbenos por WhatsApp y te ayudamos con otro medio de pago.");
+    const t = Number(c.t || 0);
+    // Links con los datos del pedido guardados: duran 2 días. La página de pago de Addi vence en pocos minutos,
+    // así que si la que hay ya tiene más de 5 minutos se crea una nueva al abrir el link.
+    if (c.pedido && c.pedido.total) {
+      if (Date.now() - t > 48 * 3600e3) return html("Este link venció. Escríbenos por WhatsApp y te enviamos uno nuevo.");
+      let destino = c.url;
+      if (Date.now() - Number(c.tUrl || t) > 5 * 60e3) {
+        const nuevo = await crearAddi({ ...c.pedido, reserva, orderId: reserva + "-" + Date.now().toString(36) }, env, url);
+        destino = nuevo.url;
+        const cambios = { url: nuevo.url, tUrl: Date.now(), orden: nuevo.orderId };
+        await escribirReserva(env, reserva, { credito: { mapValue: { fields: aCamposFS(cambios) } } }, Object.keys(cambios).map(k => "credito." + k)).catch(() => {});
+      }
+      return Response.redirect(destino, 302);
+    }
     if (Date.now() - t > 2 * 3600e3) return html("Este link venció (dura 2 horas). Escríbenos por WhatsApp y te enviamos uno nuevo.");
-    return Response.redirect(c.url.stringValue, 302);
-  } catch (e) { return html("No pudimos abrir el pago (código F0). Intenta de nuevo en un momento."); }
+    return Response.redirect(c.url, 302);
+  } catch (e) { return html("No pudimos abrir el pago (código F0" + (String(e?.message || "").startsWith("respondió") ? "-" + String(e.message).slice(9, 13).trim() : "") + "). Intenta de nuevo en un momento o escríbenos por WhatsApp."); }
 }
