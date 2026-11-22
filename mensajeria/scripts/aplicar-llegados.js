@@ -1,0 +1,85 @@
+// Aplica al catálogo (index.html) lo que llegó de importación según el Excel (stock.json → "llegados"):
+//  - Si el producto ya está en el catálogo: le pone el precio de la hoja LISTADO.
+//  - Si no está: lo crea con el nombre y precio de LISTADO, sin foto (queda pendiente de foto en el panel).
+// Lo corre GitHub Actions cuando cambia stock.json (.github/workflows/tarifas-envio.yml).
+const fs = require("fs");
+const path = require("path");
+
+const RAIZ = path.join(__dirname, "..", "..");
+const ARCHIVO = path.join(RAIZ, "index.html");
+let html = fs.readFileSync(ARCHIVO, "utf8");
+
+let llegados = [];
+try { llegados = JSON.parse(fs.readFileSync(path.join(RAIZ, "stock.json"), "utf8")).llegados || []; } catch {}
+if (!llegados.length) { console.log("Sin productos llegados de importación"); process.exit(0); }
+
+const llave = v => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const llavePlat = v => { const x = llave(v); return ({ SW2: "SWITCH2", NS2: "SWITCH2", SW: "SWITCH", NS: "SWITCH" })[x] || x; };
+const precioTxt = n => "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+const precioNum = t => Number(String(t || "").replace(/[^\d]/g, "")) || 0;
+
+// Datos del catálogo
+const NOMBRES = { ps4: "ps4", ps5: "ps5", sw: "sw", acc: "acc" };
+const datos = {};
+for (const n of Object.keys(NOMBRES)) {
+  const m = html.match(new RegExp("^const " + n + " = (\\[.*\\]);\\s*$", "m"));
+  if (!m) { console.log("No se encontró la lista " + n + " en index.html: no se cambia nada"); process.exit(0); }
+  datos[n] = JSON.parse(m[1]);
+}
+const mMapa = html.match(/^const PG_STOCK_MAP = (\{.*\});\s*$/m);
+if (!mMapa) { console.log("No se encontró PG_STOCK_MAP: no se cambia nada"); process.exit(0); }
+const mapa = JSON.parse(mMapa[1]);
+
+// Llave del Excel de cada producto del catálogo (igual que el catálogo)
+function llavesDe(g) {
+  const nk = g.name + "|" + g.platform;
+  if (Object.prototype.hasOwnProperty.call(mapa, nk)) { const k = mapa[nk]; return Array.isArray(k) ? k : [k]; }
+  return [llave(g.name) + "|" + llavePlat(g.platform)];
+}
+const porLlave = {};
+for (const n of Object.keys(datos)) for (const g of datos[n]) for (const k of llavesDe(g)) (porLlave[k] = porLlave[k] || []).push(g);
+
+const PLATS_JUEGO = { PS4: "ps4", PS5: "ps5", SWITCH: "sw", SWITCH2: "sw" };
+function platCatalogo(pl, esAcc) {
+  const p = llavePlat(pl);
+  if (p === "SWITCH2") return "SWITCH 2";
+  if (p === "PS4" || p === "PS5" || p === "SWITCH") return p;
+  return esAcc ? "OTROS" : "OTROS";
+}
+
+let precios = 0, nuevos = 0;
+for (const [k, nombre, pl, precio, esAcc] of llegados) {
+  if (!k || !(precio > 0)) continue;
+  const enCatalogo = porLlave[k];
+  if (enCatalogo && enCatalogo.length) {
+    for (const g of enCatalogo) {
+      if (precioNum(g.price) !== Math.round(precio)) { console.log(`Precio ${g.name} (${g.platform}): ${g.price} → ${precioTxt(precio)}`); g.price = precioTxt(precio); precios++; }
+    }
+    continue;
+  }
+  // Nuevo en el catálogo
+  const plat = platCatalogo(pl, esAcc);
+  const lista = (!esAcc && PLATS_JUEGO[llavePlat(pl)]) || "acc";
+  const nuevo = { name: String(nombre).trim().toUpperCase(), platform: plat, price: precioTxt(precio), active: true, img: "", estreno: false };
+  const arr = datos[lista];
+  // se ubica después del producto de igual o menor precio de la misma consola
+  let pos = -1;
+  arr.forEach((g, i) => { if (g.platform === plat && precioNum(g.price) <= precio) pos = i; });
+  if (pos === -1) { const prim = arr.findIndex(g => g.platform === plat); pos = prim === -1 ? arr.length - 1 : prim - 1; }
+  arr.splice(pos + 1, 0, nuevo);
+  const llaveNatural = llave(nuevo.name) + "|" + llavePlat(nuevo.platform);
+  if (llaveNatural !== k) mapa[nuevo.name + "|" + nuevo.platform] = k;
+  (porLlave[k] = porLlave[k] || []).push(nuevo);
+  console.log(`Nuevo en el catálogo (${lista}): ${nuevo.name} (${plat}) ${nuevo.price} — pendiente de foto`);
+  nuevos++;
+}
+
+if (!precios && !nuevos) { console.log("El catálogo ya tiene los precios y productos de LISTADO"); process.exit(0); }
+for (const n of Object.keys(datos)) {
+  html = html.replace(new RegExp("^const " + n + " = \\[.*\\];[ \\t]*$", "m"), () => "const " + n + " = " + JSON.stringify(datos[n]) + ";");
+}
+html = html.replace(/^const PG_STOCK_MAP = \{.*\};[ \t]*$/m, () => "const PG_STOCK_MAP = " + JSON.stringify(mapa) + ";");
+// nueva versión: los navegadores (incluido el panel) dejan de usar la copia guardada
+html = html.replace(/var VERSION = '[^']*'/, () => "var VERSION = '2025-export-" + Date.now() + "'");
+fs.writeFileSync(ARCHIVO, html);
+console.log(`Listo: ${precios} precio(s) actualizado(s), ${nuevos} producto(s) nuevo(s)`);
