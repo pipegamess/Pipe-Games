@@ -71,6 +71,17 @@ button.ghost { font: 600 13px/1 var(--body); background: transparent; color: var
 .status.ok { color: var(--ok); }
 .outs { display: grid; gap: 20px; min-width: 0; }
 .out textarea { font-family: var(--mono); font-size: 13.5px; line-height: 1.55; min-height: 300px; resize: vertical; white-space: pre-wrap; }
+.img-op { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.img-op label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.img-op select { width: auto; }
+.img-op label.img-check, .img-op label { text-transform: none; letter-spacing: normal; font-weight: 500; }
+.img-check input { width: auto; margin: 0; }
+.img-subir { background: var(--acc); color: var(--acc-ink); border-color: var(--acc); }
+.img-lista { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.img-lista figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.img-lista img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
+.img-lista figcaption { display: flex; gap: 6px; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); min-width: 0; }
+.img-lista figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .out .bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
@@ -198,6 +209,23 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
           <span class="count" id="cIg"></span>
         </div>
       </section>
+
+      <section class="panel" id="boxImg" aria-labelledby="t-img">
+        <div class="bar"><h2 id="t-img"><span class="tag ml">Imágenes 2000 × 2000</span></h2></div>
+        <p class="note">Sube las fotos o portadas del producto y quedan cuadradas de 2000 × 2000 px, con fondo blanco y un margen pequeño alrededor, listas para Mercado Libre, Falabella, Éxito e Instagram. Todo se hace en este equipo: las fotos no se suben a ningún lado.</p>
+        <div class="img-op">
+          <label class="chip img-subir">Elegir imágenes<input type="file" id="imgArch" accept="image/*" multiple hidden></label>
+          <label>Margen
+            <select id="imgMargen"><option value="3">Pequeño (3%)</option><option value="5" selected>Normal (5%)</option><option value="8">Amplio (8%)</option><option value="0">Sin margen</option></select></label>
+          <label class="img-check"><input type="checkbox" id="imgRecortar" checked> Quitar bordes blancos de la foto original</label>
+        </div>
+        <div class="img-lista" id="imgLista"></div>
+        <div class="img-op" id="imgAcc" hidden>
+          <button class="chip" type="button" id="imgTodas">Descargar todas</button>
+          <button class="ghost" type="button" id="imgLimpiar">Quitar imágenes</button>
+          <span class="note" id="imgNota"></span>
+        </div>
+      </section>
     </div>
   </div>
 </div>
@@ -323,6 +351,75 @@ function dibujarHist() {
     box.append(b);
   });
 }
+
+/* ---------- Imágenes cuadradas 2000 × 2000 con fondo blanco ---------- */
+const LADO = 2000;
+let IMGS = []; // { nombre, url, blob }
+const leerImagen = f => new Promise((ok, mal) => { const u = URL.createObjectURL(f), im = new Image(); im.onload = () => ok({ im, u }); im.onerror = () => { URL.revokeObjectURL(u); mal(new Error("no se pudo leer " + f.name)); }; im.src = u; });
+// Caja del contenido sin los bordes blancos (o transparentes) de la foto original
+function cajaContenido(im) {
+  const esc = Math.min(1, 600 / Math.max(im.naturalWidth, im.naturalHeight));
+  const w = Math.max(1, Math.round(im.naturalWidth * esc)), h = Math.max(1, Math.round(im.naturalHeight * esc));
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0, w, h);
+  const d = x.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let i = 0; i < w; i++) {
+    const p = (y * w + i) * 4;
+    if (d[p + 3] > 16 && (d[p] < 242 || d[p + 1] < 242 || d[p + 2] < 242)) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  }
+  if (x1 < 0) return { sx: 0, sy: 0, sw: im.naturalWidth, sh: im.naturalHeight };
+  const k = 1 / esc;
+  const sx = Math.max(0, Math.floor((x0 - 1) * k)), sy = Math.max(0, Math.floor((y0 - 1) * k));
+  return { sx, sy, sw: Math.min(im.naturalWidth - sx, Math.ceil((x1 - x0 + 3) * k)), sh: Math.min(im.naturalHeight - sy, Math.ceil((y1 - y0 + 3) * k)) };
+}
+async function cuadrar(f) {
+  const { im, u } = await leerImagen(f);
+  try {
+    const caja = $("imgRecortar").checked ? cajaContenido(im) : { sx: 0, sy: 0, sw: im.naturalWidth, sh: im.naturalHeight };
+    const util = LADO * (1 - 2 * Number($("imgMargen").value) / 100);
+    const e = util / Math.max(caja.sw, caja.sh), w = Math.round(caja.sw * e), h = Math.round(caja.sh * e);
+    const c = document.createElement("canvas"); c.width = LADO; c.height = LADO;
+    const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, LADO, LADO);
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
+    x.drawImage(im, caja.sx, caja.sy, caja.sw, caja.sh, Math.round((LADO - w) / 2), Math.round((LADO - h) / 2), w, h);
+    const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.92));
+    return { blob, url: URL.createObjectURL(blob), aviso: Math.max(caja.sw, caja.sh) < 800 ? "foto pequeña: puede verse borrosa" : "" };
+  } finally { URL.revokeObjectURL(u); }
+}
+const baseNombre = () => (($("fNombre").value || $("juego").value || "producto") + " " + (consola || "")).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "producto";
+function pintarImgs() {
+  $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${x.nombre}</span><button class="ghost" type="button" data-imgbajar="${i}">Descargar</button></figcaption></figure>`).join("");
+  $("imgAcc").hidden = !IMGS.length;
+  $("imgNota").textContent = IMGS.some(x => x.aviso) ? "⚠️ Alguna foto es pequeña (menos de 800 px): se agranda, pero puede verse borrosa." : "";
+}
+async function procesar(archivos) {
+  const lista = [...archivos].filter(f => /^image\//.test(f.type));
+  if (!lista.length) return;
+  setStatus("Preparando " + lista.length + " imagen" + (lista.length > 1 ? "es" : "") + "…");
+  for (const f of lista) {
+    try { const r = await cuadrar(f); IMGS.push({ ...r, nombre: `${baseNombre()}-${IMGS.length + 1}.jpg` }); pintarImgs(); }
+    catch (e) { setStatus(String(e.message || e), "err"); }
+  }
+  setStatus("Imágenes listas: 2000 × 2000 px con fondo blanco.", "ok");
+}
+async function bajar(items) {
+  const files = items.map(x => new File([x.blob], x.nombre, { type: "image/jpeg" }));
+  // En el celular se abre "Compartir" para guardarlas en Fotos; en el computador se descargan
+  if (navigator.canShare && navigator.canShare({ files }) && /iPhone|iPad|Android/i.test(navigator.userAgent)) {
+    try { await navigator.share({ files }); return; } catch (e) { if (e && e.name === "AbortError") return; }
+  }
+  for (const x of items) { const a = document.createElement("a"); a.href = x.url; a.download = x.nombre; document.body.append(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 250)); }
+}
+$("imgArch").addEventListener("change", e => { procesar(e.target.files); e.target.value = ""; });
+$("imgLista").addEventListener("click", e => { const b = e.target.closest("[data-imgbajar]"); if (b) bajar([IMGS[+b.dataset.imgbajar]]); });
+$("imgTodas").onclick = () => bajar(IMGS);
+$("imgLimpiar").onclick = () => { IMGS.forEach(x => URL.revokeObjectURL(x.url)); IMGS = []; pintarImgs(); };
+$("boxImg").addEventListener("dragover", e => e.preventDefault());
+$("boxImg").addEventListener("drop", e => { e.preventDefault(); procesar(e.dataTransfer.files); });
+document.addEventListener("paste", e => { const f = [...(e.clipboardData?.files || [])]; if (f.length) procesar(f); });
+// Al cambiar el margen o el recorte, las ya cargadas no se rehacen: se avisa
+["imgMargen", "imgRecortar"].forEach(id => $(id).addEventListener("change", () => { if (IMGS.length) setStatus("El cambio aplica a las próximas imágenes. Toca “Quitar imágenes” y vuelve a subirlas para rehacerlas."); }));
 
 function setStatus(t, cls) { const s = $("status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
 
