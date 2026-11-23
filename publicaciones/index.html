@@ -81,6 +81,12 @@ button.ghost { font: 600 13px/1 var(--body); background: transparent; color: var
 .img-lista figure { margin: 0; display: grid; gap: 6px; min-width: 0; }
 .img-lista img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
 .img-lista figcaption { display: flex; gap: 6px; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); min-width: 0; }
+.img-lista figcaption .acc { display: flex; gap: 6px; flex-wrap: wrap; }
+.img-trad { background: var(--surface2); }
+.img-trad .linea { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.img-trad .linea small { grid-column: 2; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.img-trad .linea input[type=text] { grid-column: 2; }
+.img-trad .linea input[type=checkbox] { grid-row: span 2; width: auto; }
 .img-lista figcaption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .out .bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -220,6 +226,7 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
           <label class="img-check"><input type="checkbox" id="imgRecortar" checked> Quitar bordes blancos de la foto original</label>
         </div>
         <div class="img-lista" id="imgLista"></div>
+        <div class="panel img-trad" id="imgTrad" hidden></div>
         <div class="img-op" id="imgAcc" hidden>
           <button class="chip" type="button" id="imgTodas">Descargar todas</button>
           <button class="ghost" type="button" id="imgLimpiar">Quitar imágenes</button>
@@ -373,6 +380,13 @@ function cajaContenido(im) {
   const sx = Math.max(0, Math.floor((x0 - 1) * k)), sy = Math.max(0, Math.floor((y0 - 1) * k));
   return { sx, sy, sw: Math.min(im.naturalWidth - sx, Math.ceil((x1 - x0 + 3) * k)), sh: Math.min(im.naturalHeight - sy, Math.ceil((y1 - y0 + 3) * k)) };
 }
+// JPG de máximo 5 MB: si pasa, se baja la calidad poco a poco
+const MAX_BYTES = 5 * 1024 * 1024 - 64 * 1024;
+async function aJPG(c) {
+  let q = 0.92, b;
+  do { b = await new Promise(ok => c.toBlob(ok, "image/jpeg", q)); q -= 0.06; } while (b.size > MAX_BYTES && q > 0.4);
+  return b;
+}
 async function cuadrar(f) {
   const { im, u } = await leerImagen(f);
   try {
@@ -383,13 +397,13 @@ async function cuadrar(f) {
     const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, LADO, LADO);
     x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
     x.drawImage(im, caja.sx, caja.sy, caja.sw, caja.sh, Math.round((LADO - w) / 2), Math.round((LADO - h) / 2), w, h);
-    const blob = await new Promise(ok => c.toBlob(ok, "image/jpeg", 0.92));
+    const blob = await aJPG(c);
     return { blob, url: URL.createObjectURL(blob), aviso: Math.max(caja.sw, caja.sh) < 800 ? "foto pequeña: puede verse borrosa" : "" };
   } finally { URL.revokeObjectURL(u); }
 }
 const baseNombre = () => (($("fNombre").value || $("juego").value || "producto") + " " + (consola || "")).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "producto";
 function pintarImgs() {
-  $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${x.nombre}</span><button class="ghost" type="button" data-imgbajar="${i}">Descargar</button></figcaption></figure>`).join("");
+  $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${x.nombre}</span><span class="acc">${x.original ? `<button class="ghost" type="button" data-imgdeshacer="${i}" title="Volver a la imagen en inglés">Deshacer</button>` : `<button class="ghost" type="button" data-imgtraducir="${i}" title="Pasa al español el texto en inglés de la imagen">Traducir</button>`}<button class="ghost" type="button" data-imgbajar="${i}">Descargar</button></span></figcaption></figure>`).join("");
   $("imgAcc").hidden = !IMGS.length;
   $("imgNota").textContent = IMGS.some(x => x.aviso) ? "⚠️ Alguna foto es pequeña (menos de 800 px): se agranda, pero puede verse borrosa." : "";
 }
@@ -412,7 +426,128 @@ async function bajar(items) {
   for (const x of items) { const a = document.createElement("a"); a.href = x.url; a.download = x.nombre; document.body.append(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 250)); }
 }
 $("imgArch").addEventListener("change", e => { procesar(e.target.files); e.target.value = ""; });
-$("imgLista").addEventListener("click", e => { const b = e.target.closest("[data-imgbajar]"); if (b) bajar([IMGS[+b.dataset.imgbajar]]); });
+$("imgLista").addEventListener("click", e => {
+  const b = e.target.closest("[data-imgbajar],[data-imgtraducir],[data-imgdeshacer]"); if (!b) return;
+  if (b.dataset.imgbajar) bajar([IMGS[+b.dataset.imgbajar]]);
+  else if (b.dataset.imgtraducir) traducirImagen(+b.dataset.imgtraducir);
+  else { const x = IMGS[+b.dataset.imgdeshacer]; URL.revokeObjectURL(x.url); x.blob = x.original; x.url = URL.createObjectURL(x.blob); x.original = null; pintarImgs(); }
+});
+
+/* ---------- Traducir al español el texto en inglés de una imagen ----------
+   1) Se lee el texto con OCR en este equipo (tesseract.js), 2) la IA del Worker traduce cada línea,
+   3) se revisa la traducción, 4) se borra solo el texto original rellenando con el fondo de alrededor y se escribe
+   el español en el mismo lugar, tamaño y color. El resto de la imagen no se toca. */
+let ocrIng = null;
+const cargarScript = src => new Promise((ok, mal) => { const sc = document.createElement("script"); sc.src = src; sc.onload = ok; sc.onerror = () => mal(new Error("no se pudo cargar el lector de texto")); document.head.append(sc); });
+const blobAImagen = b => new Promise((ok, mal) => { const u = URL.createObjectURL(b), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = mal; im.src = u; });
+let TRAD = null; // { i, lineas: [{ texto, es, bbox, usar }] }
+async function traducirImagen(i) {
+  const caja = $("imgTrad"), x = IMGS[i];
+  caja.hidden = false; caja.innerHTML = `<p class="note">Leyendo el texto de la imagen ${i + 1}… (la primera vez tarda un poco más)</p>`;
+  caja.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  try {
+    if (!window.Tesseract) await cargarScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+    if (!ocrIng) ocrIng = await Tesseract.createWorker("eng");
+    const im = await blobAImagen(x.blob);
+    const cv = document.createElement("canvas"); cv.width = im.naturalWidth; cv.height = im.naturalHeight; cv.getContext("2d").drawImage(im, 0, 0);
+    // El OCR lee mal cuando hay zonas claras y oscuras en la misma imagen: se lee completa y además por franjas, y se juntan
+    const lineas = [], W = cv.width, H = cv.height;
+    const franjas = [[0, H], [0, Math.round(H * 0.4)], [Math.round(H * 0.3), Math.round(H * 0.7)], [Math.round(H * 0.6), H]];
+    const solapa = (a, b) => { const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0), h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0); return w > 0 && h > 0 && w * h > 0.5 * Math.min((a.x1 - a.x0) * (a.y1 - a.y0), (b.x1 - b.x0) * (b.y1 - b.y0)); };
+    for (let f = 0; f < franjas.length; f++) {
+      const [y0, y1] = franjas[f];
+      caja.innerHTML = `<p class="note">Leyendo el texto de la imagen ${i + 1}… (${f + 1} de ${franjas.length}; la primera vez tarda un poco más)</p>`;
+      const pc = document.createElement("canvas"); pc.width = W; pc.height = y1 - y0; pc.getContext("2d").drawImage(cv, 0, y0, W, y1 - y0, 0, 0, W, y1 - y0);
+      const { data } = await ocrIng.recognize(pc);
+      for (const l of data.lines || []) {
+        const n = { texto: String(l.text || "").replace(/\s+/g, " ").trim(), conf: l.confidence, bbox: { x0: l.bbox.x0, x1: l.bbox.x1, y0: l.bbox.y0 + y0, y1: l.bbox.y1 + y0 } };
+        if (n.conf < 55 || !/[A-Za-z]{2,}/.test(n.texto) || n.bbox.x1 - n.bbox.x0 <= 20 || n.bbox.y1 - n.bbox.y0 <= 10) continue;
+        // Una línea pegada al borde de la franja puede estar cortada: se deja para la franja que la tenga entera
+        if (f > 0 && ((l.bbox.y0 < 3 && y0 > 0) || (l.bbox.y1 > pc.height - 3 && y1 < H))) continue;
+        const k = lineas.findIndex(x => solapa(x.bbox, n.bbox));
+        if (k < 0) lineas.push(n); else if (n.conf > lineas[k].conf) lineas[k] = n;
+      }
+    }
+    lineas.sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
+    if (!lineas.length) { caja.innerHTML = `<p class="note">No encontré texto en inglés que se pueda leer bien en esta imagen.</p><button class="ghost" type="button" data-tradcerrar>Cerrar</button>`; return; }
+    caja.innerHTML = `<p class="note">Traduciendo ${lineas.length} línea${lineas.length > 1 ? "s" : ""}…</p>`;
+    const p = `Traduce del inglés al español de Colombia estas líneas de texto que aparecen en la imagen de un producto de videojuegos (portada, caja o arte promocional).
+Reglas: NO traduzcas nombres de juegos, personajes, marcas, consolas, clasificaciones de edad (ESRB, PEGI, "M Mature 17+") ni números. Conserva las MAYÚSCULAS si la línea original está en mayúsculas. Si una línea ya está en español, es un nombre propio o no tiene sentido traducirla, devuélvela igual. La traducción debe ser corta, de largo parecido al original, porque va en el mismo espacio de la imagen.
+Devuelve SOLO un objeto JSON: {"t": ["traducción línea 1", "traducción línea 2", ...]} con exactamente ${lineas.length} elementos, en el mismo orden.
+Líneas:
+${lineas.map((l, k) => (k + 1) + ". " + l.texto).join("\n")}`;
+    const r = await redactar(p);
+    const t = Array.isArray(r?.t) ? r.t : Object.values(r || {}).find(Array.isArray) || [];
+    lineas.forEach((l, k) => { l.es = String(t[k] ?? l.texto).trim(); l.usar = l.es && l.es.toLowerCase() !== l.texto.toLowerCase(); });
+    TRAD = { i, lineas };
+    pintarTrad();
+  } catch (e) {
+    caja.innerHTML = `<p class="note" style="color:var(--err)">No se pudo traducir: ${String((e && (e.message || e.code)) || e).replace(/[<>]/g, "")}</p><button class="ghost" type="button" data-tradcerrar>Cerrar</button>`;
+  }
+}
+function pintarTrad() {
+  const c = $("imgTrad");
+  c.innerHTML = `<h3 style="margin:0;font-family:var(--display)">Traducción de la imagen ${TRAD.i + 1}</h3>
+    <p class="note">Revisa o corrige cada línea. Las marcadas se reemplazan en la imagen; el resto de la imagen queda igual. Funciona mejor cuando el texto está sobre un fondo liso.</p>
+    ${TRAD.lineas.map((l, k) => `<div class="linea"><input type="checkbox" data-tradusar="${k}"${l.usar ? " checked" : ""} aria-label="Reemplazar esta línea"><input type="text" data-trades="${k}" value="${esc(l.es)}"><small>${esc(l.texto)}</small></div>`).join("")}
+    <div class="img-op"><button class="chip img-subir" type="button" data-tradaplicar>Aplicar a la imagen</button><button class="ghost" type="button" data-tradcerrar>Cancelar</button></div>`;
+}
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+$("imgTrad").addEventListener("input", e => { const k = e.target.dataset.trades; if (k != null && TRAD) { TRAD.lineas[k].es = e.target.value; } });
+$("imgTrad").addEventListener("change", e => { const k = e.target.dataset.tradusar; if (k != null && TRAD) TRAD.lineas[k].usar = e.target.checked; });
+$("imgTrad").addEventListener("click", async e => {
+  if (e.target.closest("[data-tradcerrar]")) { $("imgTrad").hidden = true; TRAD = null; return; }
+  const b = e.target.closest("[data-tradaplicar]"); if (!b || !TRAD) return;
+  b.disabled = true; b.textContent = "Aplicando…";
+  try {
+    const x = IMGS[TRAD.i], im = await blobAImagen(x.blob);
+    const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+    const cx = c.getContext("2d", { willReadFrequently: true }); cx.drawImage(im, 0, 0);
+    for (const l of TRAD.lineas) if (l.usar && l.es.trim()) reemplazarLinea(cx, l);
+    const nuevo = await aJPG(c);
+    if (!x.original) x.original = x.blob;
+    URL.revokeObjectURL(x.url); x.blob = nuevo; x.url = URL.createObjectURL(nuevo);
+    $("imgTrad").hidden = true; TRAD = null; pintarImgs(); setStatus("Texto traducido en la imagen. Si no te gusta, toca “Deshacer”.", "ok");
+  } catch (err) { b.disabled = false; b.textContent = "Aplicar a la imagen"; setStatus("No se pudo aplicar: " + (err.message || err), "err"); }
+});
+function reemplazarLinea(cx, l) {
+  const W = cx.canvas.width, H = cx.canvas.height, borde = 3;
+  const pad = Math.max(6, Math.round((l.bbox.y1 - l.bbox.y0) * 0.15)); // margen para no dejar sombras de las letras
+  const x0 = Math.max(borde, l.bbox.x0 - pad), y0 = Math.max(borde, l.bbox.y0 - pad);
+  const x1 = Math.min(W - 1 - borde, l.bbox.x1 + pad), y1 = Math.min(H - 1 - borde, l.bbox.y1 + pad);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  const rx = x0 - borde, ry = y0 - borde, rw = w + 2 * borde, rh = h + 2 * borde;
+  const reg = cx.getImageData(rx, ry, rw, rh), d = reg.data, px = (x, y) => ((y - ry) * rw + (x - rx)) * 4;
+  // Color del fondo (borde alrededor) y del texto (lo más distinto al fondo dentro de la caja)
+  const borde4 = [];
+  for (let x = rx; x < rx + rw; x++) { borde4.push(px(x, ry), px(x, ry + rh - 1)); }
+  for (let y = ry; y < ry + rh; y++) { borde4.push(px(rx, y), px(rx + rw - 1, y)); }
+  const med = arr => { const s = [...arr].sort((a, b) => a - b); return s[s.length >> 1] || 0; };
+  const fondo = [0, 1, 2].map(c => med(borde4.map(p => d[p + c])));
+  const dist = p => Math.abs(d[p] - fondo[0]) + Math.abs(d[p + 1] - fondo[1]) + Math.abs(d[p + 2] - fondo[2]);
+  const tinta = [];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const p = px(x, y); if (dist(p) > 120) tinta.push(p); }
+  const colorTexto = tinta.length > 20 ? [0, 1, 2].map(c => med(tinta.map(p => d[p + c]))) : (fondo[0] + fondo[1] + fondo[2] > 384 ? [20, 20, 20] : [245, 245, 245]);
+  // Borra el texto: cada punto toma el promedio de los bordes izquierdo/derecho y superior/inferior (sigue degradados suaves)
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const wx = (x - x0 + 1) / (w + 1), wy = (y - y0 + 1) / (h + 1), p = px(x, y);
+    const L = px(rx, y), R = px(rx + rw - 1, y), T = px(x, ry), B = px(x, ry + rh - 1);
+    for (let c = 0; c < 3; c++) d[p + c] = ((1 - wx) * d[L + c] + wx * d[R + c] + (1 - wy) * d[T + c] + wy * d[B + c]) / 2;
+  }
+  cx.putImageData(reg, rx, ry);
+  // Escribe el español en el mismo lugar y del mismo alto
+  const texto = l.texto === l.texto.toUpperCase() ? l.es.toUpperCase() : l.es;
+  const alto = l.bbox.y1 - l.bbox.y0, ancho = l.bbox.x1 - l.bbox.x0;
+  let tam = Math.max(10, Math.round(alto * 0.95));
+  const fuente = t => `700 ${t}px "Helvetica Neue", Arial, sans-serif`;
+  cx.font = fuente(tam);
+  // Si el español es mucho más largo, se baja el tamaño (hasta 70%) y lo demás se ajusta al ancho
+  while (cx.measureText(texto).width > ancho * 1.35 && tam > alto * 0.7) { tam--; cx.font = fuente(tam); }
+  // Si la línea estaba centrada en la imagen se centra; si no, empieza donde empezaba la original
+  const centrada = Math.abs((l.bbox.x0 + l.bbox.x1) / 2 - W / 2) < W * 0.06;
+  cx.fillStyle = `rgb(${colorTexto.join(",")})`; cx.textAlign = centrada ? "center" : "left"; cx.textBaseline = "middle";
+  cx.fillText(texto, centrada ? (l.bbox.x0 + l.bbox.x1) / 2 : l.bbox.x0, (l.bbox.y0 + l.bbox.y1) / 2 + tam * 0.04, ancho + 2 * pad);
+}
 $("imgTodas").onclick = () => bajar(IMGS);
 $("imgLimpiar").onclick = () => { IMGS.forEach(x => URL.revokeObjectURL(x.url)); IMGS = []; pintarImgs(); };
 $("boxImg").addEventListener("dragover", e => e.preventDefault());
