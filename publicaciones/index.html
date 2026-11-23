@@ -207,7 +207,7 @@ import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../me
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
-import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON } from "./redactor.js?v=20261123a";
+import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON } from "./redactor.js?v=20261123b";
 
 const $ = (id) => document.getElementById(id);
 let consola = "PS5";

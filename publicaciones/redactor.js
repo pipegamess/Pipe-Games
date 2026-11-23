@@ -33,7 +33,7 @@ Devuelve SOLO un objeto JSON con estas claves:
  "descripcion": "texto para Mercado Libre/Falabella",
  "instagram": "cuerpo del texto para Instagram (ver reglas)"}
 
-Reglas para "descripcion": 2 o 3 párrafos de prosa (90 a 160 palabras en total) sobre de qué trata el juego y qué ofrece (modos, jugabilidad, contenido). Sin emojis, sin HTML, sin viñetas, sin precios, sin datos de contacto, sin enlaces y sin mencionar el nombre de la tienda (Pipe Games) ni otras tiendas o canales. No repitas el encabezado (nombre, consola, estado, género, fecha): eso ya lo pone la app.
+Reglas para "descripcion": 4 párrafos de prosa separados por una línea en blanco, entre 220 y 320 palabras en total (nunca menos de 200: Falabella y Mercado Libre premian las descripciones completas). Párrafo 1: de qué trata el juego, su historia y personajes principales. Párrafo 2: el mundo, los escenarios o la ambientación. Párrafo 3: la jugabilidad, los modos de juego (historia, multijugador, en línea, cooperativo) y lo que hace especial al juego en esa consola. Párrafo 4: el contenido y la duración, a qué tipo de jugador le va a gustar y por qué vale la pena tenerlo en físico. Usa datos concretos y verdaderos del juego; si no estás seguro de un dato, no lo inventes. Sin emojis, sin HTML, sin viñetas, sin precios, sin datos de contacto, sin enlaces y sin mencionar el nombre de la tienda (Pipe Games) ni otras tiendas o canales. No repitas el encabezado (nombre, consola, estado, género, fecha): eso ya lo pone la app.
 
 Reglas para "instagram": la app ya pone la primera línea (nombre, consola, estado y precio) y el cierre con contacto y pagos; tú escribes SOLO el cuerpo, con esta estructura exacta:
 1. Una línea gancho entre signos de exclamación que termina con 2 emojis.
