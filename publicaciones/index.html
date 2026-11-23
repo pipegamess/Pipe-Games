@@ -207,7 +207,7 @@ import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../me
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
-import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion } from "./redactor.js";
+import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON } from "./redactor.js?v=20261123a";
 
 const $ = (id) => document.getElementById(id);
 let consola = "PS5";
@@ -344,8 +344,9 @@ async function redactar(texto, signal) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw { code: r.status === 401 ? "auth" : "server", message: j.error || ("HTTP " + r.status) };
   const t = String(j.texto || "");
-  const i = t.indexOf("{"), k = t.lastIndexOf("}");
-  try { return JSON.parse(t.slice(i, k + 1)); } catch (e) { throw { code: "invalid_json" }; }
+  const o = leerJSON(t);
+  if (!o) throw { code: "invalid_json" };
+  return o;
 }
 
 async function generar(ev) {

@@ -54,3 +54,40 @@ Para los fanáticos de la saga, para los amantes de la historia y para quienes d
 
 Para ambos: no uses la palabra "ninja". Si el juego salió hace más de 3 meses respecto a la fecha de hoy, no lo presentes como lanzamiento ni novedad. No inventes datos: si no conoces bien el juego, describe con lo que es seguro y deja "fecha_lanzamiento" vacía. Si las notas del vendedor aportan algo (por ejemplo un código de bonus), inclúyelo en ambos textos.`;
 }
+
+// Lee el JSON que devuelve la IA aunque venga con defectos típicos (sobre todo el modelo gratuito de Cloudflare):
+// texto antes o después, bloques ```json, saltos de línea sin escapar dentro de los textos, comas sobrantes
+// o la respuesta cortada al final. Devuelve null si no hay forma de rescatarlo.
+export function leerJSON(texto) {
+  let t = String(texto || "").replace(/```(?:json)?/gi, "").trim();
+  const i = t.indexOf("{"); if (i < 0) return null;
+  t = t.slice(i);
+  const intentar = s => { try { const o = JSON.parse(s); return o && typeof o === "object" ? o : null; } catch { return null; } };
+  const k = t.lastIndexOf("}");
+  let o = k > 0 && intentar(t.slice(0, k + 1)); if (o) return o;
+  // Recorre el texto escapando lo que no puede ir crudo dentro de una cadena y cierra lo que quedó abierto
+  let out = "", dentro = false, esc = false;
+  for (const c of t) {
+    if (dentro) {
+      if (esc) { out += c; esc = false; continue; }
+      if (c === "\\") { out += c; esc = true; continue; }
+      if (c === '"') { dentro = false; out += c; continue; }
+      if (c === "\n") { out += "\\n"; continue; }
+      if (c === "\r") continue;
+      if (c === "\t") { out += "\\t"; continue; }
+      out += c;
+    } else { if (c === '"') dentro = true; out += c; }
+  }
+  const limpio = s => s.replace(/,\s*([}\]])/g, "$1");
+  const kk = out.lastIndexOf("}");
+  o = kk > 0 && intentar(limpio(out.slice(0, kk + 1))); if (o) return o;
+  // Respuesta cortada: se cierra la cadena y el objeto
+  let cerrado = out.replace(/\\$/, "");
+  if (dentro) cerrado += '"';
+  cerrado = cerrado.replace(/,\s*$/, "").replace(/,\s*"[^"]*"\s*:?\s*$/, "");
+  o = intentar(limpio(cerrado + "}")); if (o) return o;
+  // Último recurso: sacar cada clave "x": "..." por separado
+  const res = {}, re = /"([a-z_]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g; let m;
+  while ((m = re.exec(out))) { try { res[m[1]] = JSON.parse('"' + m[2] + '"'); } catch { res[m[1]] = m[2]; } }
+  return Object.keys(res).length ? res : null;
+}

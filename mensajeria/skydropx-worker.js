@@ -255,7 +255,7 @@ const MODELO_TEXTO = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 async function iaCloudflare(env, texto, foto) {
   const correr = () => foto
     ? env.AI.run(MODELO_VISION, { messages: [{ role: "user", content: texto }], image: "data:" + foto.tipo + ";base64," + foto.datos, max_tokens: 900, temperature: 0.1 })
-    : env.AI.run(MODELO_TEXTO, { messages: [{ role: "user", content: texto }], max_tokens: 2000, temperature: 0.6 });
+    : env.AI.run(MODELO_TEXTO, { messages: [{ role: "user", content: texto }], max_tokens: 3500, temperature: 0.6 });
   let r;
   try { r = await correr(); }
   catch (e) {

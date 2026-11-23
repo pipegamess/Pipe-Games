@@ -114,7 +114,7 @@ async function cargar() { await cargarMotor(); $("estado").textContent = `${disp
 const SUG = ["Descripción de Mario Kart 8 Deluxe", "Factura de Éxito", "mario kart switch envío Pasto con Addi", "Addi 180000", "mercado libre 110000", "¿Qué garantía tienen las consolas?"];
 const botones = l => `<div class="sug">${l.map(([a, t, extra]) => `<button type="button" data-accion="${a}"${extra || ""}>${t}</button>`).join("")}</div>`;
 let ACC = null;
-const acciones = () => ACC || (ACC = import("./acciones.js").then(m => { m.usarBotones(botones); m.conectar($("chat"), poner); return m; }));
+const acciones = () => ACC || (ACC = import("./acciones.js?v=20261123a").then(m => { m.usarBotones(botones); m.conectar($("chat"), poner); return m; }));
 function poner(html, quien) { const d = document.createElement("div"); d.className = "msg " + quien; d.innerHTML = html; $("chat").append(d); $("chat").scrollTop = $("chat").scrollHeight; return d; }
 function bienvenida() {
   poner(`<h3>Hola, Felipe 👋</h3><p>Pregúntame por un juego (precio, stock, garantía y cuotas), el envío a cualquier municipio, el total con Addi o Sistecrédito o el precio para publicar en Mercado Libre, Falabella o Éxito. También redacto <b>descripciones</b> para las plataformas e Instagram y hago la <b>factura de Éxito</b> con los datos del cliente.</p>

@@ -3,7 +3,7 @@
 // - generar el certificado/factura de Éxito con los datos del cliente (lo descarga el Generador facturas Éxito)
 // - responder con IA (Claude, por el Worker) lo que las respuestas fijas no cubren
 import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js";
-import { promptPublicacion, CIERRE_BASE, CONSOLAS } from "../publicaciones/redactor.js";
+import { promptPublicacion, CIERRE_BASE, CONSOLAS, leerJSON } from "../publicaciones/redactor.js?v=20261123a";
 import { buscar, productos, leer, garantiaDe, formatoPesos as cop, escapar as esc, METODOS } from "./motor.js";
 
 const { initializeApp, getApps, getApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
@@ -54,7 +54,7 @@ export async function publicacion(q) {
   const d = { juego, version: "ESTANDAR", consola, estado: "NUEVO Y SELLADO", dispo: "inmediata", precio: p ? cop(p.v) : "", notas: "" };
   const t = await claude(promptPublicacion(d));
   const i = t.indexOf("{"), k = t.lastIndexOf("}");
-  let g; try { g = JSON.parse(t.slice(i, k + 1)); } catch { throw { code: "json" }; }
+  const g = leerJSON(t); if (!g) throw { code: "json" };
   const nombre = String(g.nombre_oficial || juego).toUpperCase();
   const cab = [nombre + " - ESTANDAR", "CONSOLA: " + consola, "ESTADO: NUEVO Y SELLADO"];
   if (g.genero) cab.push("GÉNERO: " + String(g.genero).toUpperCase());

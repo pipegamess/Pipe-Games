@@ -7,7 +7,7 @@ const BASE = new URL(".", import.meta.url).href; // carpeta asistente/
 const CLI = new URL(import.meta.url).searchParams.get("modo") === "cliente";
 // Acciones internas (publicaciones, facturas e IA): solo en el Centro de Mando; se cargan al abrir el bot
 let ACC = null;
-const acciones = () => ACC || (ACC = import("./acciones.js").then(m => { m.usarBotones(botones); m.conectar(chat, poner); return m; }));
+const acciones = () => ACC || (ACC = import("./acciones.js?v=20261123a").then(m => { m.usarBotones(botones); m.conectar(chat, poner); return m; }));
 // Robot original de Pipe Games: cabeza de consola portátil con pantalla, ojos de píxel, antena con luz y cruceta en el pecho
 const ROBOT = `
 <svg viewBox="0 0 120 130" aria-hidden="true" class="pb-robot">
