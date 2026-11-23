@@ -16,7 +16,7 @@
 :root {
   --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --line: rgba(255,255,255,0.09);
   --text: #e8e8f0; --muted: #8a8aa8; --acc: #f5c400; --acc-ink: #141000; --ok: #3ecf8e; --err: #ff7b7b;
-  --ml: #ffe600; --fa: #aad500; --ex: #ffd200; --addi: #3a7bfd; --siste: #e30613;
+  --ml: #ffe600; --fa: #aad500; --ex: #ffd200; --addi: #3a7bfd; --siste: #e30613; --bold: #ee424e;
   --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
   color-scheme: dark;
 }
@@ -147,7 +147,14 @@ const PLATAFORMAS = [
     p: { desc: 5 },
     etiquetas: { desc: "Descuento %" },
     desglose: (P, p) => [["Descuento plataforma " + p.desc + "%", P * p.desc / 100]],
-    precio: (N, p) => Math.ceil(N / (1 - p.desc / 100)) }
+    precio: (N, p) => Math.ceil(N / (1 - p.desc / 100)) },
+  // Tarjeta de crédito por link de Bold: tarifa % + valor fijo sobre lo que se cobra (como el simulador de Bold:
+  // para recibir $500.000 se cobran $519.552)
+  { id: "bold", nombre: "Tarjeta de crédito · Bold", c: "var(--bold)",
+    p: { pct: 3.59, fijo: 900 },
+    etiquetas: { pct: "Tarifa Bold %", fijo: "Valor fijo por transacción $" },
+    desglose: (P, p) => [["Tarifa Bold " + p.pct + "% + " + cop(p.fijo), P * p.pct / 100 + p.fijo]],
+    precio: (N, p) => Math.ceil((N + p.fijo) / (1 - p.pct / 100)) }
 ];
 const neto = (pl, P) => P - pl.desglose(P, pl.p).reduce((a, [, v]) => a + v, 0);
 // Ajustes guardados en este equipo
@@ -165,25 +172,25 @@ function tarjeta(pl, V) {
   else if (modo === "neto") {
     const P = pl.precio(V, pl.p), S = P, nS = neto(pl, S);
     const filas = pl.desglose(S, pl.p);
-    cuerpo = `<div class="res"><span class="k">${pl.id === "addi" || pl.id === "siste" ? "Valor de venta" : "Precio de publicación"}</span><span class="v">${cop(S)}</span></div>
+    cuerpo = `<div class="res"><span class="k">${pl.id === "bold" ? "Valor a cobrar" : pl.id === "addi" || pl.id === "siste" ? "Valor de venta" : "Precio de publicación"}</span><span class="v">${cop(S)}</span></div>
       <button class="copiar" type="button" data-copiar="${Math.round(S)}">Copiar ${cop(S)}</button>
-      <table><tr><td>Precio publicado</td><td>${cop(S)}</td></tr>${filas.map(([k, v]) => `<tr class="menos"><td>${k}</td><td>− ${cop(v)}</td></tr>`).join("")}
+      <table><tr><td>${pl.id === "bold" ? "Valor cobrado" : "Precio publicado"}</td><td>${cop(S)}</td></tr>${filas.map(([k, v]) => `<tr class="menos"><td>${k}</td><td>− ${cop(v)}</td></tr>`).join("")}
       <tr class="total"><td>Te queda</td><td>${cop(nS)}</td></tr></table>`;
   } else {
     const n = neto(pl, V), filas = pl.desglose(V, pl.p);
     cuerpo = `<div class="res"><span class="k">Te queda</span><span class="v" style="color:${n < 0 ? "var(--err)" : "var(--ok)"}">${cop(n)}</span>
       <span class="s">Descuentos: <b>${cop(V - n)}</b> (${(100 * (V - n) / V).toFixed(1)}% del precio)</span></div>
-      <table><tr><td>Precio publicado</td><td>${cop(V)}</td></tr>${filas.map(([k, v]) => `<tr class="menos"><td>${k}</td><td>− ${cop(v)}</td></tr>`).join("")}
+      <table><tr><td>${pl.id === "bold" ? "Valor cobrado" : "Precio publicado"}</td><td>${cop(V)}</td></tr>${filas.map(([k, v]) => `<tr class="menos"><td>${k}</td><td>− ${cop(v)}</td></tr>`).join("")}
       <tr class="total"><td>Te queda</td><td>${cop(n)}</td></tr></table>`;
   }
   const aj = Object.keys(pl.p).map(k => `<label>${pl.etiquetas[k]}<input data-pl="${pl.id}" data-k="${k}" inputmode="decimal" value="${pl.p[k]}"></label>`).join("");
   const tipoFa = pl.id === "fa" ? `<div class="modo mini" role="group" aria-label="Tipo de envío Falabella"><button type="button" data-fa="0" aria-pressed="${!faDirecto}">Falabella</button><button type="button" data-fa="1" aria-pressed="${faDirecto}">Falabella Directo · envío ${cop(pl.p.directo)}</button></div>` : "";
   return `<article class="card" style="--c:${pl.c}"><h2>${pl.id === "fa" && faDirecto ? "Falabella Directo" : pl.nombre}<small>${resumen(pl)}</small></h2>${tipoFa}${cuerpo}
-    <details><summary>Ajustes</summary><div class="ajustes">${aj}</div><button class="copiar" type="button" data-restaurar="${pl.id}" style="margin-top:10px">Volver a los valores del Excel</button></details></article>`;
+    <details><summary>Ajustes</summary><div class="ajustes">${aj}</div><button class="copiar" type="button" data-restaurar="${pl.id}" style="margin-top:10px">${pl.id === "bold" ? "Volver a la tarifa de Bold" : "Volver a los valores del Excel"}</button></details></article>`;
 }
 function resumen(pl) {
   const p = pl.p;
-  return { ml: `${p.com}% + rete + envío ${cop(p.envio)}`, fa: `${p.imp + p.com}% + envío ${cop(envioFa(p))}`, ex: `${(p.desc * (1 + p.iva / 100)).toFixed(1)}%`, addi: `÷ ${p.factor}`, siste: `${p.desc}%` }[pl.id];
+  return { ml: `${p.com}% + rete + envío ${cop(p.envio)}`, fa: `${p.imp + p.com}% + envío ${cop(envioFa(p))}`, ex: `${(p.desc * (1 + p.iva / 100)).toFixed(1)}%`, addi: `÷ ${p.factor}`, siste: `${p.desc}%`, bold: `${p.pct}% + ${cop(p.fijo)}` }[pl.id];
 }
 function pintar() {
   const V = num($("valor").value);
@@ -209,7 +216,7 @@ $("cards").addEventListener("click", async e => {
   if (c) { try { await navigator.clipboard.writeText(c.dataset.copiar); c.textContent = "Copiado ✓"; } catch { c.textContent = c.dataset.copiar; } }
 });
 // Valores originales del Excel (para restaurar)
-const BASE_EXCEL = { ml: { com: 16, rete: 15, reteP: 2, envio: 9600 }, fa: { imp: 2, com: 15, envio: 8800, directo: 10000 }, ex: { desc: 10, iva: 19 }, addi: { factor: 0.92265 }, siste: { desc: 5 } };
+const BASE_EXCEL = { ml: { com: 16, rete: 15, reteP: 2, envio: 9600 }, fa: { imp: 2, com: 15, envio: 8800, directo: 10000 }, ex: { desc: 10, iva: 19 }, addi: { factor: 0.92265 }, siste: { desc: 5 }, bold: { pct: 3.59, fijo: 900 } };
 
 // Acceso: solo la cuenta de administrador
 $("vLogin").addEventListener("submit", async (ev) => {
