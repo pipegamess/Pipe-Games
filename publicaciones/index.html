@@ -83,6 +83,16 @@ button.ghost { font: 600 13px/1 var(--body); background: transparent; color: var
 .img-lista figcaption { display: flex; gap: 6px; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); min-width: 0; }
 .img-lista figcaption .acc { display: flex; gap: 6px; flex-wrap: wrap; }
 .img-trad { background: var(--surface2); }
+.img-buscar { display: flex; gap: 10px; flex-wrap: wrap; }
+.img-buscar input { flex: 1 1 240px; width: auto; min-width: 0; }
+.img-res { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+.img-res:empty { display: none; }
+.img-res button { display: grid; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--text); cursor: pointer; text-align: left; font: 500 11.5px/1.25 var(--body); min-width: 0; }
+.img-res button:hover, .img-res button:focus-visible { border-color: var(--acc); }
+.img-res button[aria-busy="true"] { opacity: .5; }
+.img-res img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 6px; }
+.img-res .fuente { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.img-res .amz { color: var(--acc); font-weight: 700; }
 .img-pegar { min-height: 96px; border: 2px dashed var(--acc); border-radius: 12px; background: var(--surface2); padding: 18px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 14px; cursor: text; outline: none; caret-color: transparent; overflow: hidden; }
 .img-pegar:empty::before { content: attr(data-ph); pointer-events: none; }
 .img-pegar:focus, .img-pegar.sobre { border-style: solid; background: color-mix(in srgb, var(--acc) 10%, var(--surface2)); color: var(--text); }
@@ -228,6 +238,12 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
             <select id="imgMargen"><option value="3">Pequeño (3%)</option><option value="5" selected>Normal (5%)</option><option value="8">Amplio (8%)</option><option value="0">Sin margen</option></select></label>
           <label class="img-check"><input type="checkbox" id="imgRecortar" checked> Quitar bordes blancos de la foto original</label>
         </div>
+        <div class="img-buscar">
+          <input type="search" id="imgQ" placeholder="Ej. Call of Duty Modern Warfare 4 Nintendo Switch 2" aria-label="Buscar imágenes del juego">
+          <button class="chip img-subir" type="button" id="imgBuscar">Buscar imágenes</button>
+        </div>
+        <p class="note" id="imgBuscarNota">Busca primero en Amazon y después en toda la web. Toca una imagen para agregarla.</p>
+        <div class="img-res" id="imgRes"></div>
         <div class="img-pegar" id="imgPegar" contenteditable="true" role="textbox" aria-label="Zona para pegar imágenes" spellcheck="false"
           data-ph="📋 Pega aquí tus imágenes: copia la imagen (clic derecho → Copiar imagen) y aquí presiona Ctrl + V (en Mac ⌘ + V). También puedes arrastrarlas."></div>
         <div class="img-op"><button class="chip" type="button" id="imgPegarBtn">Pegar imagen copiada</button><span class="note" id="imgPegarNota"></span></div>
@@ -574,6 +590,50 @@ $("imgTodas").onclick = () => bajar(IMGS);
 $("imgLimpiar").onclick = () => { IMGS.forEach(x => URL.revokeObjectURL(x.url)); IMGS = []; pintarImgs(); };
 $("boxImg").addEventListener("dragover", e => e.preventDefault());
 $("boxImg").addEventListener("drop", e => { e.preventDefault(); procesar(e.dataTransfer.files); });
+/* ---------- Buscar imágenes del juego (Amazon primero, luego la web) a través del Worker ---------- */
+async function llamarWorker(cuerpo) {
+  const token = await auth.currentUser.getIdToken();
+  return fetch(SKYDROPX_URL.replace(/\/+$/, ""), { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+}
+let RES_IMG = [];
+function sugerirBusqueda() {
+  const n = ($("fNombre").value || $("juego").value || "").trim();
+  const c = consolaNombre ? consolaNombre() : "";
+  return n ? `${n} ${c}`.trim() : "";
+}
+// Al entrar al buscador se propone el juego del formulario, seleccionado para que escribir lo reemplace
+$("imgQ").addEventListener("focus", () => { if (!$("imgQ").value) { $("imgQ").value = sugerirBusqueda(); setTimeout(() => $("imgQ").select(), 0); } });
+$("imgQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("imgBuscar").click(); } });
+$("imgBuscar").onclick = async () => {
+  const q = ($("imgQ").value || sugerirBusqueda()).trim();
+  if (!q) { $("imgBuscarNota").textContent = "Escribe el nombre del juego y la consola."; return; }
+  $("imgQ").value = q;
+  const b = $("imgBuscar"); b.disabled = true; b.textContent = "Buscando…"; $("imgBuscarNota").textContent = "Buscando en Amazon y en la web…";
+  try {
+    const r = await llamarWorker({ metodo: "BUSCAR_IMAGENES", q }), j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error || "HTTP " + r.status);
+    RES_IMG = j.imagenes || [];
+    $("imgRes").innerHTML = RES_IMG.map((x, i) => `<button type="button" data-res="${i}" title="${esc(x.titulo)}"><img src="${esc(x.mini)}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="fuente">${x.amazon ? '<span class="amz">Amazon</span>' : esc(x.fuente)}${x.w ? ` · ${x.w}×${x.h}` : ""}</span></button>`).join("");
+    const amz = RES_IMG.filter(x => x.amazon).length;
+    $("imgBuscarNota").textContent = RES_IMG.length ? `${RES_IMG.length} imágenes (${amz} de Amazon, primero). Toca una para agregarla; prefiere las más grandes (1500 px o más).` : "No encontré imágenes. Prueba con el nombre en inglés o sin la edición.";
+  } catch (e) { $("imgBuscarNota").textContent = String(e.message || e); }
+  b.disabled = false; b.textContent = "Buscar imágenes";
+};
+$("imgRes").addEventListener("click", async e => {
+  const b = e.target.closest("[data-res]"); if (!b || b.getAttribute("aria-busy") === "true") return;
+  const x = RES_IMG[+b.dataset.res]; b.setAttribute("aria-busy", "true");
+  try {
+    let blob = null;
+    for (const u of [x.url, x.mini]) {
+      const r = await llamarWorker({ metodo: "TRAER_IMAGEN", url: u });
+      if (r.ok && /^image\//.test(r.headers.get("content-type") || "")) { blob = await r.blob(); break; }
+    }
+    if (!blob) throw new Error("Esa página no dejó descargar la imagen: prueba con otra.");
+    await procesar([new File([blob], "imagen", { type: blob.type })]);
+  } catch (err) { setStatus(String(err.message || err), "err"); }
+  b.removeAttribute("aria-busy");
+});
+
 // Pegar imágenes: en la franja (o en cualquier parte de la página, fuera de los campos de texto)
 async function pegarDesde(dt) {
   let files = [...(dt?.files || [])].filter(f => /^image\//.test(f.type));

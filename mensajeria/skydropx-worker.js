@@ -108,6 +108,39 @@ export default {
       try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
       catch (e) { return responder({ error: "No se pudo abrir el link: " + (e.message || e) }, 400); }
     }
+    // Buscar imágenes de un juego: primero en Amazon y después en toda la web (Google Imágenes por Serper.dev,
+    // secreto SERPER_API_KEY). Devuelve una lista corta con la URL de la imagen en su mayor tamaño.
+    if (String(pedido.metodo || "").toUpperCase() === "BUSCAR_IMAGENES") {
+      const q = String(pedido.q || "").replace(/\s+/g, " ").trim().slice(0, 120);
+      if (!q) return responder({ error: "Escribe qué buscar" }, 400);
+      if (!env.SERPER_API_KEY) return responder({ error: "Falta conectar la búsqueda de imágenes (secreto SERPER_API_KEY en el Worker)" }, 400);
+      const buscar = async consulta => {
+        const r = await fetch("https://google.serper.dev/images", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ q: consulta, gl: "us", hl: "en", num: 20 }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error("Serper " + r.status + ": " + String(j.message || "").slice(0, 120));
+        return (j.images || []).map(x => ({ url: grandeAmazon(String(x.imageUrl || "")), mini: String(x.thumbnailUrl || x.imageUrl || ""), titulo: String(x.title || "").slice(0, 120), fuente: String(x.domain || x.source || ""), w: Number(x.imageWidth) || 0, h: Number(x.imageHeight) || 0, pagina: String(x.link || "") })).filter(x => /^https:\/\//.test(x.url));
+      };
+      try {
+        const amazon = await buscar(q + " site:amazon.com").catch(() => []);
+        const web = await buscar(q + " cover").catch(e => { if (!amazon.length) throw e; return []; });
+        const vistos = new Set(), lista = [];
+        for (const x of [...amazon.map(x => ({ ...x, amazon: true })), ...web]) { const k = x.url.split("?")[0]; if (!vistos.has(k)) { vistos.add(k); lista.push(x); } }
+        return responder({ imagenes: lista.slice(0, 36) });
+      } catch (e) { return responder({ error: "No se pudo buscar: " + (e.message || e) }, 502); }
+    }
+    // Traer una imagen de otra página (el navegador no la deja leer directo): solo imágenes, máximo 15 MB
+    if (String(pedido.metodo || "").toUpperCase() === "TRAER_IMAGEN") {
+      const u = String(pedido.url || "");
+      if (!/^https:\/\/[^\s]+$/.test(u)) return responder({ error: "Enlace no válido" }, 400);
+      try {
+        const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 (compatible; PipeGames/1.0)", Accept: "image/*" }, redirect: "follow" });
+        const tipo = r.headers.get("content-type") || "";
+        if (!r.ok || !/^image\/(jpeg|png|webp|gif|avif)/i.test(tipo)) return responder({ error: "Esa dirección no entregó una imagen (" + r.status + ")" }, 502);
+        const buf = await r.arrayBuffer();
+        if (buf.byteLength > 15 * 1024 * 1024) return responder({ error: "La imagen pesa más de 15 MB" }, 413);
+        return new Response(buf, { headers: { ...cors, "Content-Type": tipo, "Cache-Control": "no-store" } });
+      } catch (e) { return responder({ error: "No se pudo traer la imagen" }, 502); }
+    }
     // Redactar textos y leer fotos de etiquetas con IA (Publicaciones, Pipe Bot y el panel de despacho).
     // Usa Claude si hay ANTHROPIC_API_KEY; si no, la IA gratuita de Cloudflare (binding "AI", cupo diario gratis).
     if (String(pedido.metodo || "").toUpperCase() === "REDACTAR") {
@@ -252,6 +285,8 @@ async function cotizarPublico(b, env, base, responder) {
 // IA gratuita de Cloudflare (Workers AI). Con foto: modelo de visión; sin foto: modelo de texto.
 const MODELO_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODELO_TEXTO = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+// Amazon guarda cada imagen en varios tamaños (…_AC_SL500_.jpg): quitando el sufijo se obtiene la original, la más grande
+function grandeAmazon(u) { return /media-amazon\.com|images-amazon\.com|ssl-images-amazon/.test(u) ? u.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png)$/i, ".$1") : u; }
 async function iaCloudflare(env, texto, foto) {
   const correr = () => foto
     ? env.AI.run(MODELO_VISION, { messages: [{ role: "user", content: texto }], image: "data:" + foto.tipo + ";base64," + foto.datos, max_tokens: 900, temperature: 0.1 })
