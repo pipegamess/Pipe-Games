@@ -9,9 +9,12 @@ const RAIZ = path.join(__dirname, "..", "..");
 const ARCHIVO = path.join(RAIZ, "index.html");
 let html = fs.readFileSync(ARCHIVO, "utf8");
 
-let llegados = [];
-try { llegados = JSON.parse(fs.readFileSync(path.join(RAIZ, "stock.json"), "utf8")).llegados || []; } catch {}
-if (!llegados.length) { console.log("Sin productos llegados de importación"); process.exit(0); }
+let llegados = [], listado = [], productos = {};
+try {
+  const st = JSON.parse(fs.readFileSync(path.join(RAIZ, "stock.json"), "utf8"));
+  llegados = st.llegados || []; listado = st.listado || []; productos = st.productos || {};
+} catch {}
+if (!llegados.length && !listado.length) { console.log("Sin productos llegados de importación ni de LISTADO"); process.exit(0); }
 
 const llave = v => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const llavePlat = v => { const x = llave(v); return ({ SW2: "SWITCH2", NS2: "SWITCH2", SW: "SWITCH", NS: "SWITCH" })[x] || x; };
@@ -48,16 +51,7 @@ function platCatalogo(pl, esAcc) {
 }
 
 let precios = 0, nuevos = 0;
-for (const [k, nombre, pl, precio, esAcc] of llegados) {
-  if (!k || !(precio > 0)) continue;
-  const enCatalogo = porLlave[k];
-  if (enCatalogo && enCatalogo.length) {
-    for (const g of enCatalogo) {
-      if (precioNum(g.price) !== Math.round(precio)) { console.log(`Precio ${g.name} (${g.platform}): ${g.price} → ${precioTxt(precio)}`); g.price = precioTxt(precio); precios++; }
-    }
-    continue;
-  }
-  // Nuevo en el catálogo
+function crear(k, nombre, pl, precio, esAcc, origen) {
   const plat = platCatalogo(pl, esAcc);
   const lista = (!esAcc && PLATS_JUEGO[llavePlat(pl)]) || "acc";
   const nuevo = { name: String(nombre).trim().toUpperCase(), platform: plat, price: precioTxt(precio), active: true, img: "", estreno: false };
@@ -70,8 +64,29 @@ for (const [k, nombre, pl, precio, esAcc] of llegados) {
   const llaveNatural = llave(nuevo.name) + "|" + llavePlat(nuevo.platform);
   if (llaveNatural !== k) mapa[nuevo.name + "|" + nuevo.platform] = k;
   (porLlave[k] = porLlave[k] || []).push(nuevo);
-  console.log(`Nuevo en el catálogo (${lista}): ${nuevo.name} (${plat}) ${nuevo.price} — pendiente de foto`);
+  console.log(`Nuevo en el catálogo (${lista}, ${origen}): ${nuevo.name} (${plat}) ${nuevo.price} — pendiente de foto`);
   nuevos++;
+}
+
+// 1) Lo que llegó de importación: precio de LISTADO (y se crea si no existe)
+for (const [k, nombre, pl, precio, esAcc] of llegados) {
+  if (!k || !(precio > 0)) continue;
+  const enCatalogo = porLlave[k];
+  if (enCatalogo && enCatalogo.length) {
+    for (const g of enCatalogo) {
+      if (precioNum(g.price) !== Math.round(precio)) { console.log(`Precio ${g.name} (${g.platform}): ${g.price} → ${precioTxt(precio)}`); g.price = precioTxt(precio); precios++; }
+    }
+    continue;
+  }
+  crear(k, nombre, pl, precio, esAcc, "importación");
+}
+
+// 2) Cualquier producto de LISTADO con precio y unidades que no esté en el catálogo (solo PS4, PS5, Switch y Switch 2)
+for (const [k, nombre, pl, precio, esAcc] of listado) {
+  if (!k || !(precio > 0) || porLlave[k]) continue;
+  if (!PLATS_JUEGO[llavePlat(pl)]) continue;          // gorras, convertidores, etc.: no se crean solos
+  if (!(productos[k] > 0)) continue;                  // sin unidades disponibles
+  crear(k, nombre, pl, precio, esAcc, "LISTADO");
 }
 
 if (!precios && !nuevos) { console.log("El catálogo ya tiene los precios y productos de LISTADO"); process.exit(0); }
