@@ -675,13 +675,15 @@ async function pegarDesde(dt) {
   if (files.length) { $("imgPegarNota").textContent = ""; procesar(files); }
   else $("imgPegarNota").textContent = "Lo que pegaste no es una imagen.";
 }
+// Si lo copiado es una imagen, se toma siempre, aunque el cursor esté en otro campo (por ejemplo, en el buscador);
+// si es texto, solo se toma en la franja (en los demás campos se pega el texto normal)
 document.addEventListener("paste", e => {
-  const enFranja = e.target.closest?.("#imgPegar");
+  const enFranja = !!e.target.closest?.("#imgPegar");
+  const archivo = [...(e.clipboardData?.items || [])].some(i => i.kind === "file" && /^image\//.test(i.type)) || [...(e.clipboardData?.files || [])].some(f => /^image\//.test(f.type));
   const enCampo = !enFranja && e.target.closest?.("input, textarea, [contenteditable]");
-  if (enCampo) return;
-  const tieneImg = [...(e.clipboardData?.items || [])].some(i => i.kind === "file") || /<img/i.test(e.clipboardData?.getData("text/html") || "");
-  if (!enFranja && !tieneImg) return;
+  if (!archivo && (enCampo || (!enFranja && !/<img/i.test(e.clipboardData?.getData("text/html") || "")))) return;
   e.preventDefault(); pegarDesde(e.clipboardData);
+  if (archivo) $("imgPegar").scrollIntoView({ behavior: "smooth", block: "center" });
 });
 // La franja no guarda texto: solo recibe lo pegado
 $("imgPegar").addEventListener("beforeinput", e => { if (e.inputType !== "insertFromPaste") e.preventDefault(); });
