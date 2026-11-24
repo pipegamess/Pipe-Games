@@ -825,10 +825,32 @@ async function generar(ev) {
   }
 }
 
+// Se copia en dos formatos: texto normal (Mercado Libre, Instagram, WhatsApp) y con formato HTML, para los editores
+// de texto enriquecido como el de Falabella o Éxito, que juntan todo en un solo bloque si reciben texto plano.
+// Cada línea va como un párrafo y cada línea en blanco como un párrafo vacío, así se conserva el orden visual.
+function aHTML(texto) {
+  const e = t => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return '<meta charset="utf-8"><div>' + String(texto).replace(/\r/g, "").split("\n").map(l => l.trim() ? `<p style="margin:0">${e(l)}</p>` : `<p style="margin:0"><br></p>`).join("") + "</div>";
+}
 async function copiar(id, btn) {
-  const t = $(id);
-  try { await navigator.clipboard.writeText(t.value); btn.textContent = "Copiado"; }
-  catch (e) { t.focus(); t.select(); btn.textContent = "Seleccionado: usa ⌘C"; }
+  const t = $(id), txt = t.value;
+  let ok = false;
+  try {
+    if (window.ClipboardItem && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": new Blob([txt], { type: "text/plain" }), "text/html": new Blob([aHTML(txt)], { type: "text/html" }) })]);
+      ok = true;
+    }
+  } catch (e) {}
+  if (!ok) {
+    // Respaldo: copiar desde un bloque con formato (lleva los dos formatos igual que el anterior)
+    try {
+      const d = document.createElement("div"); d.innerHTML = aHTML(txt); d.style.cssText = "position:fixed;left:-9999px;top:0;white-space:pre-wrap";
+      document.body.append(d); const r = document.createRange(); r.selectNodeContents(d); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      ok = document.execCommand("copy"); sel.removeAllRanges(); d.remove();
+    } catch (e) {}
+  }
+  if (!ok) { try { await navigator.clipboard.writeText(txt); ok = true; } catch (e) {} }
+  if (ok) btn.textContent = "Copiado"; else { t.focus(); t.select(); btn.textContent = "Seleccionado: usa Ctrl + C"; }
   setTimeout(() => { btn.textContent = "Copiar"; }, 1800);
 }
 
