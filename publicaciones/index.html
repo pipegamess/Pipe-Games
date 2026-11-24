@@ -554,15 +554,26 @@ async function traducirImagen(i) {
     lineas.sort((a, b) => a.bbox.y0 - b.bbox.y0 || a.bbox.x0 - b.bbox.x0);
     if (!lineas.length) { caja.innerHTML = `<p class="note">No encontré texto en inglés que se pueda leer bien en esta imagen.</p><button class="ghost" type="button" data-tradcerrar>Cerrar</button>`; return; }
     caja.innerHTML = `<p class="note">Traduciendo ${lineas.length} línea${lineas.length > 1 ? "s" : ""}…</p>`;
-    const p = `Traduce del inglés al español de Colombia estas líneas de texto que aparecen en la imagen de un producto de videojuegos (portada, caja o arte promocional).
-Reglas: NO traduzcas nombres de juegos, personajes, marcas, consolas, clasificaciones de edad (ESRB, PEGI, "M Mature 17+") ni números. Conserva las MAYÚSCULAS si la línea original está en mayúsculas. Si una línea ya está en español, es un nombre propio o no tiene sentido traducirla, devuélvela igual. La traducción debe ser corta, de largo parecido al original, porque va en el mismo espacio de la imagen.
-Devuelve SOLO un objeto JSON: {"t": ["traducción línea 1", "traducción línea 2", ...]} con exactamente ${lineas.length} elementos, en el mismo orden.
+    // Se traduce por grupos de 8 líneas numeradas (con muchas líneas la IA se salta algunas); las que falten se piden otra vez
+    const pedir = async grupo => {
+      const p = `Traduce del inglés al español de Colombia estas líneas de texto que aparecen en la imagen de un producto de videojuegos (portada, caja o arte promocional).
+Reglas: NO traduzcas nombres de juegos, personajes, marcas, consolas, clasificaciones de edad (ESRB, PEGI, "M Mature 17+", "TEEN") ni números. Conserva las MAYÚSCULAS si la línea original está en mayúsculas. Si una línea ya está en español o es un nombre propio, devuélvela igual. Las líneas pueden ser parte de una misma frase partida en varios renglones: tradúcelas de forma que cada renglón tenga sentido en su lugar y un largo parecido al original.
+Devuelve SOLO un objeto JSON cuyas claves son los números de línea y los valores su traducción, por ejemplo {"1": "...", "2": "..."}. Incluye TODAS las líneas.
 Líneas:
-${lineas.map((l, k) => (k + 1) + ". " + l.texto).join("\n")}`;
-    const r = await redactar(p);
-    const t = Array.isArray(r?.t) ? r.t : Object.values(r || {}).find(Array.isArray) || [];
-    // Las letras muy grandes suelen ser el logo o el título del juego: quedan sin marcar (se pueden marcar a mano)
-    lineas.forEach((l, k) => { l.es = String(t[k] ?? l.texto).trim(); l.logo = l.bbox.y1 - l.bbox.y0 > im.naturalHeight * 0.035; l.usar = !l.logo && l.es && l.es.toLowerCase() !== l.texto.toLowerCase(); });
+${grupo.map(k => (k + 1) + ". " + lineas[k].texto).join("\n")}`;
+      const r = await redactar(p) || {};
+      const arr = Array.isArray(r.t) ? r.t : null;
+      grupo.forEach((k, n) => { const v = arr ? arr[n] : (r[String(k + 1)] ?? r[k + 1]); if (typeof v === "string" && v.trim()) lineas[k].es = v.trim(); });
+    };
+    const todos = [...lineas.keys()];
+    for (let a = 0; a < todos.length; a += 8) {
+      caja.innerHTML = `<p class="note">Traduciendo ${Math.min(a + 8, todos.length)} de ${todos.length} líneas…</p>`;
+      try { await pedir(todos.slice(a, a + 8)); } catch (e) {}
+    }
+    const faltan = todos.filter(k => !lineas[k].es);
+    for (let a = 0; a < faltan.length; a += 4) { try { await pedir(faltan.slice(a, a + 4)); } catch (e) {} }
+    // Solo las letras enormes se toman como logo o título del juego (quedan sin marcar; se pueden marcar a mano)
+    lineas.forEach(l => { l.sinTraducir = !l.es; l.es = l.es || l.texto; l.logo = l.bbox.y1 - l.bbox.y0 > im.naturalHeight * 0.06; l.usar = !l.logo && l.es.toLowerCase() !== l.texto.toLowerCase(); });
     TRAD = { i, lineas };
     pintarTrad();
   } catch (e) {
@@ -573,7 +584,7 @@ function pintarTrad() {
   const c = $("imgTrad");
   c.innerHTML = `<h3 style="margin:0;font-family:var(--display)">Traducción de la imagen ${TRAD.i + 1}</h3>
     <p class="note">Revisa o corrige cada línea. Las marcadas se reemplazan en la imagen; el resto de la imagen queda igual. Funciona mejor cuando el texto está sobre un fondo liso.</p>
-    ${TRAD.lineas.map((l, k) => `<div class="linea"><input type="checkbox" data-tradusar="${k}"${l.usar ? " checked" : ""} aria-label="Reemplazar esta línea"><input type="text" data-trades="${k}" value="${esc(l.es)}"><small>${esc(l.texto)}${l.logo ? " · letra grande (¿logo o título?): no se cambia a menos que la marques" : ""}</small></div>`).join("")}
+    ${TRAD.lineas.map((l, k) => `<div class="linea"><input type="checkbox" data-tradusar="${k}"${l.usar ? " checked" : ""} aria-label="Reemplazar esta línea"><input type="text" data-trades="${k}" value="${esc(l.es)}"><small>${esc(l.texto)}${l.logo ? " · letra grande (¿logo o título?): no se cambia a menos que la marques" : ""}${l.sinTraducir ? " · ⚠️ la IA no la tradujo: escríbela tú y márcala" : ""}</small></div>`).join("")}
     <div class="img-op"><button class="chip img-subir" type="button" data-tradaplicar>Aplicar a la imagen</button><button class="ghost" type="button" data-tradcerrar>Cancelar</button></div>`;
 }
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
