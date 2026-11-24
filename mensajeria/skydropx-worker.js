@@ -128,6 +128,13 @@ export default {
         return responder({ imagenes: lista.slice(0, 36) });
       } catch (e) { return responder({ error: "No se pudo buscar: " + (e.message || e) }, 502); }
     }
+    // Galería de un producto de Amazon (las fotos del anuncio, en orden y en tamaño original). Recibe el enlace del
+    // producto o el nombre del juego (entonces busca el producto con Serper). Si Amazon no deja leer la página
+    // desde el Worker, se lee a través de Serper (scrape).
+    if (String(pedido.metodo || "").toUpperCase() === "AMAZON_GALERIA") {
+      try { return responder(await galeriaAmazon(env, String(pedido.url || ""), String(pedido.q || ""))); }
+      catch (e) { return responder({ error: String(e.message || e) }, 502); }
+    }
     // Traer una imagen de otra página (el navegador no la deja leer directo): solo imágenes, máximo 15 MB
     if (String(pedido.metodo || "").toUpperCase() === "TRAER_IMAGEN") {
       const u = String(pedido.url || "");
@@ -285,6 +292,58 @@ async function cotizarPublico(b, env, base, responder) {
 // IA gratuita de Cloudflare (Workers AI). Con foto: modelo de visión; sin foto: modelo de texto.
 const MODELO_VISION = "@cf/meta/llama-3.2-11b-vision-instruct";
 const MODELO_TEXTO = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+async function galeriaAmazon(env, enlace, nombre) {
+  let asin = (enlace.match(/\/(?:dp|gp\/product|product)\/([A-Z0-9]{10})(?:[/?]|$)/i) || [])[1];
+  let titulo = "";
+  if (!asin) {
+    const q = (nombre || enlace).replace(/\s+/g, " ").trim().slice(0, 120);
+    if (!q) throw new Error("Pega el enlace del producto de Amazon o escribe el juego");
+    if (!env.SERPER_API_KEY) throw new Error("Para buscar por nombre falta el secreto SERPER_API_KEY; mientras tanto pega el enlace del producto de Amazon");
+    const r = await fetch("https://google.serper.dev/search", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ q: q + " site:amazon.com", gl: "us", hl: "en", num: 10 }) });
+    const j = await r.json().catch(() => ({}));
+    const hit = (j.organic || []).find(x => /amazon\.com\/.*\/dp\/[A-Z0-9]{10}|amazon\.com\/dp\/[A-Z0-9]{10}/i.test(x.link || ""));
+    if (!hit) throw new Error("No encontré ese juego en Amazon. Pega el enlace del producto.");
+    asin = hit.link.match(/\/dp\/([A-Z0-9]{10})/i)[1]; titulo = String(hit.title || "");
+  }
+  asin = asin.toUpperCase();
+  const url = "https://www.amazon.com/dp/" + asin;
+  // Extrae las fotos del anuncio: el bloque "colorImages" trae cada foto con su versión "hiRes" (la más grande)
+  const deHtml = html => {
+    const t = (html.match(/<span id="productTitle"[^>]*>([^<]+)</) || [])[1];
+    if (t) titulo = t.trim();
+    const bloque = (html.match(/'colorImages'\s*:\s*\{\s*'initial'\s*:\s*(\[[\s\S]*?\])\s*\}/) || [])[1] || "";
+    // Cada foto es un objeto {"hiRes": url|null, "thumb": …, "large": url}: se toma hiRes y, si no hay, large
+    let fotos = bloque.split(/(?=\{\s*"hiRes")/).map(o => (o.match(/"hiRes"\s*:\s*"(https:[^"]+)"/) || o.match(/"large"\s*:\s*"(https:[^"]+)"/) || [])[1]).filter(Boolean);
+    if (!fotos.length) fotos = [...html.matchAll(/data-old-hires="(https:[^"]+)"/g)].map(m => m[1]);
+    return fotos;
+  };
+  const limpiar = lista => {
+    const vistas = new Set(), out = [];
+    for (const u of lista) {
+      const id = (u.match(/\/images\/I\/([A-Za-z0-9+%-]{8,})[._]/) || [])[1];
+      if (!id || vistas.has(id)) continue; vistas.add(id);
+      out.push({ url: grandeAmazon(u.replace(/\\u002F/g, "/")), mini: u.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png)$/i, "._AC_SX300_.$1"), titulo: titulo.slice(0, 120), fuente: "amazon.com", amazon: true });
+    }
+    return out;
+  };
+  let fotos = [], bloqueado = false;
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", "Accept-Language": "en-US,en;q=0.9", Accept: "text/html,application/xhtml+xml" } });
+    const html = await r.text();
+    bloqueado = !r.ok || /captcha|api-services-support@amazon\.com/i.test(html);
+    if (!bloqueado) fotos = limpiar(deHtml(html));
+  } catch { bloqueado = true; }
+  if (!fotos.length && env.SERPER_API_KEY) {
+    // Amazon suele bloquear lecturas automáticas: se intenta con el lector de páginas de Serper
+    const r = await fetch("https://scrape.serper.dev", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ url, includeMarkdown: true }) });
+    const j = await r.json().catch(() => ({}));
+    const texto = [j.text, j.markdown, JSON.stringify(j.metadata || {})].join("\n");
+    if (!titulo) titulo = String(j.metadata?.title || j.metadata?.["og:title"] || "").replace(/^Amazon\.com:\s*/i, "");
+    fotos = limpiar(deHtml(texto).concat([...texto.matchAll(/https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%-]{9,}(?:\._[A-Z0-9_,]+_)?\.(?:jpg|jpeg|png)/g)].map(m => m[0])));
+  }
+  if (!fotos.length) throw new Error(bloqueado ? "Amazon no dejó leer la página en este momento" + (env.SERPER_API_KEY ? "" : " (con el secreto SERPER_API_KEY se puede leer por otro camino)") + ". Intenta de nuevo o usa la franja para pegar." : "Esa página de Amazon no tiene fotos que se puedan leer.");
+  return { asin, titulo, url, imagenes: fotos.slice(0, 12) };
+}
 // Amazon guarda cada imagen en varios tamaños (…_AC_SL500_.jpg): quitando el sufijo se obtiene la original, la más grande
 function grandeAmazon(u) { return /media-amazon\.com|images-amazon\.com|ssl-images-amazon/.test(u) ? u.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png)$/i, ".$1") : u; }
 async function iaCloudflare(env, texto, foto) {
