@@ -490,9 +490,19 @@ let ocrIng = null;
 const cargarScript = src => new Promise((ok, mal) => { const sc = document.createElement("script"); sc.src = src; sc.onload = ok; sc.onerror = () => mal(new Error("no se pudo cargar el lector de texto")); document.head.append(sc); });
 const blobAImagen = b => new Promise((ok, mal) => { const u = URL.createObjectURL(b), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = mal; im.src = u; });
 let TRAD = null; // { i, lineas: [{ texto, es, bbox, usar }] }
+function grisContraste(cx, w, h) {
+  const im = cx.getImageData(0, 0, w, h), d = im.data, hist = new Uint32Array(256), n = w * h;
+  for (let p = 0; p < d.length; p += 4) { const g = (d[p] * 299 + d[p + 1] * 587 + d[p + 2] * 114) / 1000 | 0; d[p] = g; hist[g]++; }
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > n * 0.01) { lo = v; break; } }
+  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > n * 0.01) { hi = v; break; } }
+  const k = 255 / Math.max(1, hi - lo);
+  for (let p = 0; p < d.length; p += 4) { const g = Math.max(0, Math.min(255, (d[p] - lo) * k)); d[p] = d[p + 1] = d[p + 2] = g; }
+  cx.putImageData(im, 0, 0);
+}
 // Descarta lo que el OCR "inventa" sobre dibujos y logos: exige buena confianza y palabras de verdad
 function pareceTexto(n) {
-  const t = n.texto, letras = (t.match(/[A-Za-zÁÉÍÓÚáéíóúÑñ]/g) || []).length, visibles = t.replace(/\s/g, "").length;
+  const t = n.texto, letras = (t.match(/[A-Za-z0-9ÁÉÍÓÚáéíóúÑñ]/g) || []).length, visibles = t.replace(/\s/g, "").length;
   const palabras = t.split(/\s+/).filter(w => /^[A-Za-z][A-Za-z'’.,!?:;-]*$/.test(w) && w.replace(/[^A-Za-z]/g, "").length >= 3);
   return n.conf >= 70 && visibles >= 3 && letras / visibles >= 0.75 && palabras.length >= 1;
 }
@@ -508,7 +518,8 @@ async function traducirImagen(i) {
     const cv = document.createElement("canvas"); cv.width = im.naturalWidth; cv.height = im.naturalHeight; cv.getContext("2d").drawImage(im, 0, 0);
     // El OCR lee mal cuando hay zonas claras y oscuras en la misma imagen: se lee completa y además por franjas, y se juntan
     const lineas = [], W = cv.width, H = cv.height;
-    const franjas = [[0, H], [0, Math.round(H * 0.4)], [Math.round(H * 0.3), Math.round(H * 0.7)], [Math.round(H * 0.6), H]];
+    // Pasada completa + franjas de 30% del alto que se solapan (así el texto queda entero en alguna franja)
+    const franjas = [[0, H], ...[0, 0.2, 0.4, 0.55, 0.7].map(a => [Math.round(H * a), Math.round(H * Math.min(1, a + 0.3))])];
     const solapa = (a, b) => { const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0), h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0); return w > 0 && h > 0 && w * h > 0.5 * Math.min((a.x1 - a.x0) * (a.y1 - a.y0), (b.x1 - b.x0) * (b.y1 - b.y0)); };
     for (let f = 0; f < franjas.length; f++) {
       const [y0, y1] = franjas[f];
@@ -516,10 +527,23 @@ async function traducirImagen(i) {
       // Las franjas se leen al doble de tamaño para alcanzar letra pequeña (avisos, contraportadas)
       const z = f === 0 ? 1 : 2;
       const pc = document.createElement("canvas"); pc.width = W * z; pc.height = (y1 - y0) * z;
-      const pcx = pc.getContext("2d"); pcx.imageSmoothingQuality = "high"; pcx.drawImage(cv, 0, y0, W, y1 - y0, 0, 0, pc.width, pc.height);
+      const pcx = pc.getContext("2d", { willReadFrequently: true }); pcx.imageSmoothingQuality = "high"; pcx.drawImage(cv, 0, y0, W, y1 - y0, 0, 0, pc.width, pc.height);
+      // En las franjas: escala de grises con el contraste estirado (lee texto oscuro sobre naranja, claro sobre oscuro, etc.)
+      if (f > 0) grisContraste(pcx, pc.width, pc.height);
       const { data } = await ocrIng.recognize(pc);
+      // Una "línea" del OCR puede unir textos de columnas distintas: se parte donde hay un hueco grande entre palabras
+      const partes = [];
       for (const l of data.lines || []) {
-        const n = { texto: String(l.text || "").replace(/\s+/g, " ").trim(), conf: l.confidence, bbox: { x0: Math.floor(l.bbox.x0 / z), x1: Math.ceil(l.bbox.x1 / z), y0: Math.floor(l.bbox.y0 / z) + y0, y1: Math.ceil(l.bbox.y1 / z) + y0 } };
+        const ws = (l.words || []).filter(w => w.text && w.text.trim());
+        if (ws.length < 2) { partes.push(l); continue; }
+        const alto = l.bbox.y1 - l.bbox.y0; let grupo = [ws[0]];
+        const cerrar = () => { const b = { x0: Math.min(...grupo.map(w => w.bbox.x0)), x1: Math.max(...grupo.map(w => w.bbox.x1)), y0: Math.min(...grupo.map(w => w.bbox.y0)), y1: Math.max(...grupo.map(w => w.bbox.y1)) };
+          partes.push({ text: grupo.map(w => w.text).join(" "), confidence: grupo.reduce((a, w) => a + w.confidence, 0) / grupo.length, bbox: b }); };
+        for (let k = 1; k < ws.length; k++) { if (ws[k].bbox.x0 - ws[k - 1].bbox.x1 > alto * 1.6) { cerrar(); grupo = []; } grupo.push(ws[k]); }
+        cerrar();
+      }
+      for (const l of partes) {
+        const n = { texto: String(l.text || "").replace(/\s+/g, " ").trim().replace(/^[^A-Za-z0-9¡¿"'(]+|[^A-Za-z0-9.!?)"'%™®]+$/g, ""), conf: l.confidence, bbox: { x0: Math.floor(l.bbox.x0 / z), x1: Math.ceil(l.bbox.x1 / z), y0: Math.floor(l.bbox.y0 / z) + y0, y1: Math.ceil(l.bbox.y1 / z) + y0 } };
         if (!pareceTexto(n) || n.bbox.x1 - n.bbox.x0 <= 15 || n.bbox.y1 - n.bbox.y0 <= 6) continue;
         // Una línea pegada al borde de la franja puede estar cortada: se deja para la franja que la tenga entera
         if (f > 0 && ((l.bbox.y0 < 3 && y0 > 0) || (l.bbox.y1 > pc.height - 3 && y1 < H))) continue;
@@ -563,14 +587,19 @@ $("imgTrad").addEventListener("click", async e => {
     const x = IMGS[TRAD.i], im = await blobAImagen(x.blob);
     const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
     const cx = c.getContext("2d", { willReadFrequently: true }); cx.drawImage(im, 0, 0);
-    for (const l of TRAD.lineas) if (l.usar && l.es.trim()) reemplazarLinea(cx, l);
+    // Primero se borran todas las líneas y después se escribe el español, para que el borrado de una línea
+    // no se coma el texto ya escrito de la línea vecina (letra pequeña muy junta)
+    const usar = TRAD.lineas.filter(l => l.usar && l.es.trim());
+    usar.forEach(l => reemplazarLinea(cx, l, "borrar"));
+    usar.forEach(l => reemplazarLinea(cx, l, "escribir"));
     const nuevo = await aJPG(c);
     if (!x.original) x.original = x.blob;
     URL.revokeObjectURL(x.url); x.blob = nuevo; x.url = URL.createObjectURL(nuevo);
     $("imgTrad").hidden = true; TRAD = null; pintarImgs(); setStatus("Texto traducido en la imagen. Si no te gusta, toca “Deshacer”.", "ok");
   } catch (err) { b.disabled = false; b.textContent = "Aplicar a la imagen"; setStatus("No se pudo aplicar: " + (err.message || err), "err"); }
 });
-function reemplazarLinea(cx, l) {
+function reemplazarLinea(cx, l, fase) {
+  if (fase === "escribir") return escribirLinea(cx, l);
   const W = cx.canvas.width, H = cx.canvas.height, borde = 3;
   const pad = Math.min(12, Math.max(2, Math.round((l.bbox.y1 - l.bbox.y0) * 0.15))); // margen para no dejar sombras de las letras
   const x0 = Math.max(borde, l.bbox.x0 - pad), y0 = Math.max(borde, l.bbox.y0 - pad);
@@ -600,6 +629,10 @@ function reemplazarLinea(cx, l) {
     for (let c = 0; c < 3; c++) d[p + c] = ((1 - wx) * d[L + c] + wx * d[R + c] + (1 - wy) * d[T + c] + wy * d[B + c]) / 2;
   }
   cx.putImageData(reg, rx, ry);
+  l._color = colorTexto; l._pad = pad;
+}
+function escribirLinea(cx, l) {
+  const W = cx.canvas.width, colorTexto = l._color || [20, 20, 20], pad = l._pad || 4;
   // Escribe el español en el mismo lugar y del mismo alto
   const texto = l.texto === l.texto.toUpperCase() ? l.es.toUpperCase() : l.es;
   const alto = l.bbox.y1 - l.bbox.y0, ancho = l.bbox.x1 - l.bbox.x0;
