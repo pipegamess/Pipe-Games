@@ -50,6 +50,21 @@ export default {
         verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE
       });
     }
+    if (req.method === "GET" && url.pathname === "/catalogo") {
+      // Muestra lo que el agente ve del catálogo en este momento. ?q=palabra filtra por nombre.
+      const cat = await catalogo();
+      if (!cat) return Response.json({ ok: false, error: "No se pudo leer catalogo-meta.csv" }, { status: 502 });
+      const q = (url.searchParams.get("q") || "").toLowerCase().trim();
+      const sep = t => t ? t.split("\n").filter(Boolean) : [];
+      const fil = (a, sinId) => q ? a.filter(x => (sinId ? x.split(" | ").slice(1).join(" ") : x).toLowerCase().includes(q)) : a.slice(0, 15);
+      const disp = sep(cat.lista), agot = sep(cat.agotados), otros = sep(cat.otros);
+      return Response.json({
+        ok: true, fuente: CATALOGO_CSV,
+        totales: { disponibles: disp.length, agotados: agot.length, otros_inventario: otros.length },
+        busqueda: q || "(sin filtro: primeros 15)",
+        disponibles: fil(disp, true), agotados: fil(agot), otros_inventario: fil(otros)
+      }, { headers: { "Content-Type": "application/json; charset=utf-8" } });
+    }
     if (req.method === "GET" && url.pathname === "/conectar") return conectar(url, env);
     if (req.method === "GET" && url.pathname === "/diagnostico") return diagnostico(url, env);
     if (req.method === "GET" && url.pathname === "/callback") return callback(url, env);
