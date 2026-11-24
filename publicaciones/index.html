@@ -427,9 +427,18 @@ async function cuadrar(f) {
     return { blob, url: URL.createObjectURL(blob), aviso: Math.max(caja.sw, caja.sh) < 800 ? "foto pequeña: puede verse borrosa" : "" };
   } finally { URL.revokeObjectURL(u); }
 }
-const baseNombre = () => (($("fNombre").value || $("juego").value || "producto") + " " + (consola || "")).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "producto";
+// Nombre de los archivos: el del artículo que se está trabajando ahora. El nombre oficial (fNombre) solo se usa si se
+// generó para este mismo juego; si no (por ejemplo el ejemplo de Tekken 8 o un artículo anterior), se usa lo escrito
+let nombreOficialDe = "";
+const baseNombre = () => {
+  const juego = $("juego").value.trim();
+  const usarOficial = $("fNombre").value.trim() && nombreOficialDe && nombreOficialDe === juego.toLowerCase();
+  const base = usarOficial ? $("fNombre").value : juego || $("imgQ").value.replace(/https?:\/\/\S+/g, "").trim() || "producto";
+  return (base + " " + (juego || usarOficial ? consola || "" : "")).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "producto";
+};
+const nombreArchivo = i => `${baseNombre()}-${i + 1}.jpg`;
 function pintarImgs() {
-  $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${x.nombre}</span><span class="acc">${x.original ? `<button class="ghost" type="button" data-imgdeshacer="${i}" title="Volver a la imagen en inglés">Deshacer</button>` : `<button class="ghost" type="button" data-imgtraducir="${i}" title="Pasa al español el texto en inglés de la imagen">Traducir</button>`}<button class="ghost" type="button" data-imgbajar="${i}">Descargar</button></span></figcaption></figure>`).join("");
+  $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${nombreArchivo(i)}</span><span class="acc">${x.original ? `<button class="ghost" type="button" data-imgdeshacer="${i}" title="Volver a la imagen en inglés">Deshacer</button>` : `<button class="ghost" type="button" data-imgtraducir="${i}" title="Pasa al español el texto en inglés de la imagen">Traducir</button>`}<button class="ghost" type="button" data-imgbajar="${i}">Descargar</button></span></figcaption></figure>`).join("");
   $("imgAcc").hidden = !IMGS.length && !RES_IMG.length;
   $("imgNota").textContent = IMGS.some(x => x.aviso) ? "⚠️ Alguna foto es pequeña (menos de 800 px): se agranda, pero puede verse borrosa." : "";
 }
@@ -438,13 +447,14 @@ async function procesar(archivos) {
   if (!lista.length) return;
   setStatus("Preparando " + lista.length + " imagen" + (lista.length > 1 ? "es" : "") + "…");
   for (const f of lista) {
-    try { const r = await cuadrar(f); IMGS.push({ ...r, nombre: `${baseNombre()}-${IMGS.length + 1}.jpg` }); pintarImgs(); }
+    try { const r = await cuadrar(f); IMGS.push({ ...r }); pintarImgs(); }
     catch (e) { setStatus(String(e.message || e), "err"); }
   }
   setStatus("Imágenes listas: 2000 × 2000 px con fondo blanco.", "ok");
 }
 async function bajar(items) {
   items.forEach(x => { x.bajada = true; });
+  items.forEach(x => { x.nombre = nombreArchivo(IMGS.indexOf(x)); });
   const files = items.map(x => new File([x.blob], x.nombre, { type: "image/jpeg" }));
   // En el celular se abre "Compartir" para guardarlas en Fotos; en el computador se descargan
   if (navigator.canShare && navigator.canShare({ files }) && /iPhone|iPad|Android/i.test(navigator.userAgent)) {
@@ -793,6 +803,7 @@ async function generar(ev) {
       hashtags: Array.isArray(r.hashtags) ? r.hashtags.map(String) : []
     };
     $("fNombre").value = String(r.nombre_oficial || $("juego").value).toUpperCase();
+    nombreOficialDe = $("juego").value.trim().toLowerCase(); pintarImgs();
     $("fGenero").value = String(r.genero || "");
     $("fFecha").value = String(r.fecha_lanzamiento || "");
     $("ejMk").hidden = true; $("ejIg").hidden = true;
