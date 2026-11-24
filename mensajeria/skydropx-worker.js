@@ -56,6 +56,13 @@ export default {
     // Link corto para el cliente: /addi/ir?c=<reserva>.<código> → página de Addi
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
     // Sistecrédito: link corto del cliente (crea la transacción al abrirlo) y aviso de cambios de estado
+    // Diagnóstico público de la galería de Amazon (solo lectura directa, sin gastar consultas de Serper): /amazon-diag?asin=B0XXXXXXXX
+    if (req.method === "GET" && url.pathname === "/amazon-diag") {
+      const asin = String(url.searchParams.get("asin") || "").toUpperCase();
+      if (!/^[A-Z0-9]{10}$/.test(asin)) return responder({ error: "asin no válido" }, 400);
+      try { const r = await galeriaAmazon({}, "https://www.amazon.com/dp/" + asin, ""); return responder({ ok: true, via: r.via, diag: r.diag, fotos: r.imagenes.length, titulo: r.titulo }); }
+      catch (e) { return responder({ ok: false, error: String(e.message || e) }); }
+    }
     if (req.method === "GET" && url.pathname === "/sc/ir") return irSiste(req, env, url, ctx);
     if ((req.method === "POST" || req.method === "GET") && url.pathname === "/sc/aviso") return avisoSiste(req, env, url);
     // Prueba del cotizador desde el navegador: /cotizar?c=Girardot&d=Cundinamarca (muestra el detalle de Skydropx)
@@ -348,9 +355,11 @@ async function galeriaAmazon(env, enlace, nombre) {
   const deHtml = html => {
     const t = (html.match(/<span id="productTitle"[^>]*>([^<]+)</) || [])[1];
     if (t) titulo = t.trim();
-    const bloque = (html.match(/'colorImages'\s*:\s*\{\s*'initial'\s*:\s*(\[[\s\S]*?\])\s*\}/) || [])[1] || "";
+    // Amazon lo escribe con comillas simples o dobles según la página: 'colorImages': { 'initial': [...] } o "colorImages":{"initial":[...]}
+    const bloque = (html.match(/["']colorImages["']\s*:\s*\{\s*["']initial["']\s*:\s*(\[[\s\S]*?\])\s*\}/) || [])[1] || "";
     // Cada foto es un objeto {"hiRes": url|null, "thumb": …, "large": url}: se toma hiRes y, si no hay, large
     let fotos = bloque.split(/(?=\{\s*"hiRes")/).map(o => (o.match(/"hiRes"\s*:\s*"(https:[^"]+)"/) || o.match(/"large"\s*:\s*"(https:[^"]+)"/) || [])[1]).filter(Boolean);
+    if (!fotos.length) fotos = [...html.matchAll(/"mainUrl"\s*:\s*"(https:[^"]+)"/g)].map(m => m[1]); // página móvil (imageGalleryData)
     if (!fotos.length) fotos = [...html.matchAll(/data-old-hires="(https:[^"]+)"/g)].map(m => m[1]);
     return fotos;
   };
@@ -364,27 +373,51 @@ async function galeriaAmazon(env, enlace, nombre) {
     return out;
   };
   let fotos = [], bloqueado = false, via = "amazon";
-  try {
-    const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", "Accept-Language": "en-US,en;q=0.9", Accept: "text/html,application/xhtml+xml" } });
-    const html = await r.text();
-    bloqueado = !r.ok || /captcha|api-services-support@amazon\.com/i.test(html);
-    if (!bloqueado) fotos = limpiar(deHtml(html));
-  } catch { bloqueado = true; }
-  if (!fotos.length && env.SERPER_API_KEY) {
-    // Amazon suele bloquear lecturas automáticas: se intenta con el lector de páginas de Serper
-    const r = await fetch("https://scrape.serper.dev", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ url, includeMarkdown: true }) });
-    const j = await r.json().catch(() => ({}));
-    const texto = [j.text, j.markdown, JSON.stringify(j.metadata || {})].join("\n");
-    if (!titulo) titulo = String(j.metadata?.title || j.metadata?.["og:title"] || "").replace(/^Amazon\.com:\s*/i, "");
-    via = "lector";
-    // Solo fotos de la galería del producto: el bloque colorImages o las miniaturas de la galería (…_AC_US40_ / _SR38,50_).
-    // Las demás imágenes de la página son de otros productos (patrocinados, "también compraron"…) y se descartan.
-    let lista = deHtml(texto);
-    if (!lista.length) lista = [...texto.matchAll(/https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%-]{9,}\._(?:AC_)?(?:US40|SR38,50|SS40|US100)_\.(?:jpg|jpeg|png)/g)].map(m => m[0]);
-    fotos = limpiar(lista);
+  const diag = [];
+  const navegador = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", "Accept-Language": "en-US,en;q=0.9", Accept: "text/html,application/xhtml+xml" };
+  const movil = { ...navegador, "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1" };
+  // 1) Página de escritorio y 2) página móvil de Amazon, directo desde el Worker
+  for (const [nombre, u, h] of [["escritorio", url + "?th=1&psc=1", navegador], ["movil", "https://www.amazon.com/gp/aw/d/" + asin, movil]]) {
+    if (fotos.length) break;
+    try {
+      const r = await fetch(u, { headers: h, redirect: "follow" });
+      const html = await r.text();
+      const capt = /captcha|api-services-support@amazon\.com|Robot Check/i.test(html);
+      if (!capt && r.ok) { fotos = limpiar(deHtml(html)); via = nombre; }
+      diag.push(nombre + ": " + r.status + (capt ? " captcha" : "") + " · " + fotos.length + " fotos");
+      if (capt || !r.ok) bloqueado = true;
+    } catch (e) { diag.push(nombre + ": error " + String(e.message || e).slice(0, 60)); bloqueado = true; }
   }
-  if (!fotos.length) throw new Error(bloqueado ? "Amazon no dejó leer la página en este momento" + (env.SERPER_API_KEY ? "" : " (con el secreto SERPER_API_KEY se puede leer por otro camino)") + ". Intenta de nuevo o usa la franja para pegar." : "Esa página de Amazon no tiene fotos que se puedan leer.");
-  return { asin, titulo, url, via, imagenes: fotos.slice(0, 12) };
+  if (!fotos.length && env.SERPER_API_KEY) {
+    // 3) Amazon suele bloquear lecturas automáticas: se intenta con el lector de páginas de Serper
+    try {
+      const r = await fetch("https://scrape.serper.dev", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ url, includeMarkdown: true }) });
+      const j = await r.json().catch(() => ({}));
+      const texto = [j.text, j.markdown, JSON.stringify(j.metadata || {})].join("\n");
+      if (!titulo) titulo = String(j.metadata?.title || j.metadata?.["og:title"] || "").replace(/^Amazon\.com:\s*/i, "");
+      // Solo fotos de la galería del producto: el bloque colorImages o las miniaturas de la galería (…_AC_US40_ / _SR38,50_).
+      // Las demás imágenes de la página son de otros productos (patrocinados, "también compraron"…) y se descartan.
+      let lista = deHtml(texto);
+      if (!lista.length) lista = [...texto.matchAll(/https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%-]{9,}\._(?:AC_)?(?:US40|SR38,50|SS40|US100)_\.(?:jpg|jpeg|png)/g)].map(m => m[0]);
+      fotos = limpiar(lista); if (fotos.length) via = "lector";
+      diag.push("lector: " + r.status + " · " + fotos.length + " fotos");
+    } catch (e) { diag.push("lector: error"); }
+  }
+  if (!fotos.length && env.SERPER_API_KEY) {
+    // 4) Último recurso: Google Imágenes con el código del producto (ASIN); solo se aceptan fotos alojadas en Amazon
+    try {
+      const r = await fetch("https://google.serper.dev/images", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ q: asin, gl: "us", hl: "en", num: 20 }) });
+      const j = await r.json().catch(() => ({}));
+      const propias = (j.images || []).filter(x => /amazon\./i.test(x.link || x.domain || "") && new RegExp(asin, "i").test(x.link || "") && /media-amazon\.com\/images\/I\//.test(x.imageUrl || ""));
+      fotos = limpiar(propias.map(x => x.imageUrl)); if (fotos.length) via = "google";
+      diag.push("google: " + r.status + " · " + fotos.length + " fotos");
+    } catch (e) { diag.push("google: error"); }
+  }
+  if (!fotos.length) {
+    const e = new Error((bloqueado ? "Amazon no dejó leer la página en este momento" + (env.SERPER_API_KEY ? "" : " (con el secreto SERPER_API_KEY se puede leer por otro camino)") + "." : "Esa página de Amazon no tiene fotos que se puedan leer.") + " Usa la franja para pegar. [" + diag.join(" | ") + "]");
+    throw e;
+  }
+  return { asin, titulo, url, via, diag, imagenes: fotos.slice(0, 12) };
 }
 // Amazon guarda cada imagen en varios tamaños (…_AC_SL500_.jpg): quitando el sufijo se obtiene la original, la más grande
 function grandeAmazon(u) { return /media-amazon\.com|images-amazon\.com|ssl-images-amazon/.test(u) ? u.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png)$/i, ".$1") : u; }
