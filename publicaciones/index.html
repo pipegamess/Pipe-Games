@@ -74,6 +74,7 @@ button.ghost { font: 600 13px/1 var(--body); background: transparent; color: var
 .img-op { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .img-op label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
 .img-op select { width: auto; }
+.img-quitar { color: #ff7b7b; border-color: rgba(255,123,123,0.45); }
 .img-op label.img-check, .img-op label { text-transform: none; letter-spacing: normal; font-weight: 500; }
 .img-check input { width: auto; margin: 0; }
 .img-subir { background: var(--acc); color: var(--acc-ink); border-color: var(--acc); }
@@ -448,7 +449,7 @@ function marcarResultados() {
 }
 function pintarImgs() {
   marcarResultados();
-  $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${nombreArchivo(i)}</span><span class="acc">${x.original ? `<button class="ghost" type="button" data-imgdeshacer="${i}" title="Volver a la imagen en inglés">Deshacer</button>` : `<button class="ghost" type="button" data-imgtraducir="${i}" title="Pasa al español el texto en inglés de la imagen">Traducir</button>`}<button class="ghost" type="button" data-imgbajar="${i}">Descargar</button></span></figcaption></figure>`).join("");
+  $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${nombreArchivo(i)}</span><span class="acc">${x.original ? `<button class="ghost" type="button" data-imgdeshacer="${i}" title="Volver a la imagen en inglés">Deshacer</button>` : `<button class="ghost" type="button" data-imgtraducir="${i}" title="Pasa al español el texto en inglés de la imagen">Traducir</button>`}<button class="ghost" type="button" data-imgbajar="${i}">Descargar</button><button class="ghost img-quitar" type="button" data-imgquitar="${i}" title="Quitar esta imagen de la lista" aria-label="Quitar la imagen ${i + 1}">✕ Quitar</button></span></figcaption></figure>`).join("");
   $("imgAcc").hidden = !IMGS.length && !RES_IMG.length;
   $("imgNota").textContent = IMGS.some(x => x.aviso) ? "⚠️ Alguna foto es pequeña (menos de 800 px): se agranda, pero puede verse borrosa." : "";
 }
@@ -475,9 +476,21 @@ async function bajar(items) {
   }
   for (const x of items) { const a = document.createElement("a"); a.href = x.url; a.download = x.nombre; document.body.append(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 250)); }
 }
+// Quita una imagen de la lista (por si se agregó por error o quedó repetida); las demás se renumeran
+function quitarImagen(k) {
+  const x = IMGS[k]; if (!x) return;
+  URL.revokeObjectURL(x.url);
+  IMGS.splice(k, 1);
+  // si estaba abierta la traducción de esa imagen se cierra; si era de otra, se corrige su número
+  if (!$("imgTrad").hidden && (!TRAD || TRAD.i === k)) { $("imgTrad").hidden = true; TRAD = null; }
+  else if (TRAD && TRAD.i > k) TRAD.i--;
+  pintarImgs();
+  setStatus("Imagen quitada. Quedan " + IMGS.length + ".", "ok");
+}
 $("imgArch").addEventListener("change", e => { procesar(e.target.files); e.target.value = ""; });
 $("imgLista").addEventListener("click", e => {
-  const b = e.target.closest("[data-imgbajar],[data-imgtraducir],[data-imgdeshacer]"); if (!b) return;
+  const b = e.target.closest("[data-imgbajar],[data-imgtraducir],[data-imgdeshacer],[data-imgquitar]"); if (!b) return;
+  if (b.dataset.imgquitar) { quitarImagen(+b.dataset.imgquitar); return; }
   if (b.dataset.imgbajar) bajar([IMGS[+b.dataset.imgbajar]]);
   else if (b.dataset.imgtraducir) traducirImagen(+b.dataset.imgtraducir);
   else { const x = IMGS[+b.dataset.imgdeshacer]; URL.revokeObjectURL(x.url); x.blob = x.original; x.url = URL.createObjectURL(x.blob); x.original = null; pintarImgs(); }
