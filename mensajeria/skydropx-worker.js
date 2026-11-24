@@ -301,8 +301,21 @@ async function galeriaAmazon(env, enlace, nombre) {
     if (!env.SERPER_API_KEY) throw new Error("Para buscar por nombre falta el secreto SERPER_API_KEY; mientras tanto pega el enlace del producto de Amazon");
     const r = await fetch("https://google.serper.dev/search", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ q: q + " site:amazon.com", gl: "us", hl: "en", num: 10 }) });
     const j = await r.json().catch(() => ({}));
-    const hit = (j.organic || []).find(x => /amazon\.com\/.*\/dp\/[A-Z0-9]{10}|amazon\.com\/dp\/[A-Z0-9]{10}/i.test(x.link || ""));
-    if (!hit) throw new Error("No encontré ese juego en Amazon. Pega el enlace del producto.");
+    // Se escoge el resultado cuyo título (y enlace) se parece más a lo escrito, no simplemente el primero:
+    // Google a veces pone primero otro juego de la misma consola
+    const plano = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ");
+    const comunes = new Set("the and for with edition edicion nintendo switch playstation ps4 ps5 xbox series standard estandar juego game video videojuego version de del la el".split(" "));
+    const claves = [...new Set(plano(q).split(" ").filter(w => w.length >= 2 && !comunes.has(w)))];
+    const consola = /switch\s*2/i.test(q) ? /switch\s*2|switch-2/i : /switch/i.test(q) ? /switch/i : /ps5|playstation\s*5/i.test(q) ? /ps5|playstation[\s-]*5/i : /ps4|playstation\s*4/i.test(q) ? /ps4|playstation[\s-]*4/i : null;
+    const candidatos = (j.organic || []).filter(x => /amazon\.com\/(?:.*\/)?dp\/[A-Z0-9]{10}/i.test(x.link || "")).map(x => {
+      const t = plano(x.title + " " + decodeURIComponent(String(x.link).split("/dp/")[0]));
+      const hechas = claves.filter(w => new RegExp("\\b" + w + "\\b").test(t)).length;
+      return { x, hechas, puntos: hechas / Math.max(1, claves.length) + (consola && consola.test(x.title + " " + x.link) ? 0.25 : 0) };
+    }).sort((a, b) => b.puntos - a.puntos);
+    // Si se escribió la consola, el producto tiene que ser de esa consola
+    const mejor = candidatos.find(c => !consola || consola.test(c.x.title + " " + c.x.link));
+    if (!mejor || mejor.hechas < Math.min(claves.length, Math.max(1, Math.ceil(claves.length * 0.6)))) throw new Error("No encontré ese juego exacto en Amazon. Pega el enlace del producto de Amazon.");
+    const hit = mejor.x;
     asin = hit.link.match(/\/dp\/([A-Z0-9]{10})/i)[1]; titulo = String(hit.title || "");
   }
   asin = asin.toUpperCase();
