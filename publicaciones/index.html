@@ -141,9 +141,17 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
 
   <div class="grid">
     <form class="panel" id="form" autocomplete="off">
-      <h2>Datos del juego</h2>
-      <label>Juego
-        <input id="juego" required placeholder="Ej. Tekken 8" value="Tekken 8">
+      <h2>Datos del artículo</h2>
+      <label>Juego o artículo
+        <input id="juego" required placeholder="Ej. Tekken 8 · Micro SD Express 512GB · o pega el enlace de Amazon" value="Tekken 8">
+      </label>
+      <label>Tipo
+        <select id="tipo">
+          <option value="auto">Automático (según el nombre)</option>
+          <option value="juego">Videojuego</option>
+          <option value="accesorio">Accesorio (memoria, control, estuche…)</option>
+          <option value="consola">Consola</option>
+        </select>
       </label>
       <div class="row2">
         <label>Versión
@@ -272,7 +280,7 @@ import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../me
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
-import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON } from "./redactor.js?v=20261123c";
+import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON, tipoDe } from "./redactor.js?v=20261124a";
 
 const $ = (id) => document.getElementById(id);
 let consola = "PS5";
@@ -284,6 +292,10 @@ let estadoGen = {
 
 function fmtPrecio(n) { return n > 0 ? "$" + Math.round(n).toLocaleString("es-CO").replace(/,/g, ".") : ""; }
 function precioNum() { return Number(String($("precio").value).replace(/[^\d]/g, "")) || 0; }
+// Tipo de artículo: el escogido, o el que se deduce del nombre
+function tipoActual() { const v = $("tipo").value; return v === "auto" ? tipoDe($("juego").value + " " + TITULO_AMZ) : v; }
+function rotularTipo() { const lab = $("fGenero").closest("label"); if (lab && lab.firstChild) lab.firstChild.textContent = tipoActual() === "juego" ? "Género" : "Tipo"; }
+let TITULO_AMZ = "", ENLACE_AMZ = "";
 function consolaNombre() { return (CONSOLAS.find(c => c.k === consola) || {}).nombre || consola; }
 
 function leerCierre() {
@@ -295,14 +307,15 @@ function guardarCierre(v) { try { localStorage.setItem("pg_cierre2", v); } catch
 function armarMk() {
   const nombre = ($("fNombre").value || $("juego").value).trim().toUpperCase();
   const version = ($("version").value || "ESTANDAR").trim().toUpperCase();
+  const t = tipoActual(), esJuego = t === "juego";
   const lineas = [
-    nombre + " - " + version,
-    "CONSOLA: " + consolaNombre(),
+    nombre + (esJuego || version !== "ESTANDAR" ? " - " + version : ""),
+    (t === "accesorio" ? "COMPATIBLE CON: " : "CONSOLA: ") + consolaNombre(),
     "ESTADO: " + $("estado").value
   ];
   const genero = $("fGenero").value.trim();
   const fecha = $("fFecha").value.trim();
-  if (genero) lineas.push("GÉNERO: " + genero.toUpperCase());
+  if (genero) lineas.push((esJuego ? "GÉNERO: " : "TIPO: ") + genero.toUpperCase());
   if (fecha) lineas.push("FECHA DE LANZAMIENTO: " + fecha.toUpperCase());
   return lineas.join("\n") + (estadoGen.descripcion ? "\n\n" + estadoGen.descripcion.trim() : "");
 }
@@ -737,7 +750,7 @@ let ultimaAuto = "";
 async function imagenesAutomaticas() {
   if (!$("imgAuto").checked || !auth.currentUser) return;
   const ver = $("version").value && $("version").value !== "ESTANDAR" ? " " + $("version").value : "";
-  const q = `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
+  const q = ENLACE_AMZ || `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
   if (q.toLowerCase() === ultimaAuto) return;
   const anterior = ultimaAuto; ultimaAuto = q.toLowerCase();
   // Imágenes del artículo anterior: si ya se descargaron todas, se quitan; si no, se dejan y se avisa
@@ -839,20 +852,43 @@ function setStatus(t, cls) { const s = $("status"); s.textContent = t; s.classNa
 
 
 function prompt(contexto = "") {
-  return promptPublicacion({ juego: $("juego").value.trim(), version: $("version").value.trim(), consola: consolaNombre(), estado: $("estado").value,
+  return promptPublicacion({ juego: $("juego").value.trim(), tipo: tipoActual(), tituloAmazon: TITULO_AMZ, version: $("version").value.trim(), consola: consolaNombre(), estado: $("estado").value,
     dispo: $("dispo").value, precio: fmtPrecio(precioNum()), notas: $("notas").value.trim(), contexto });
+}
+// Si en el nombre se pegó un enlace de Amazon, se lee el anuncio para saber qué producto es (y de ahí salen las fotos)
+async function leerEnlace() {
+  const v = $("juego").value.trim();
+  if (!/^https?:\/\//i.test(v) && !/amazon\./i.test(v)) return;
+  ENLACE_AMZ = v; TITULO_AMZ = "";
+  setStatus("Leyendo el anuncio de Amazon…");
+  try {
+    const r = await Promise.race([llamarWorker({ metodo: "AMAZON_GALERIA", url: v }), new Promise((_, mal) => setTimeout(() => mal(new Error("tiempo")), 15000))]);
+    const j = await r.json().catch(() => ({}));
+    TITULO_AMZ = String(j.titulo || "").replace(/\s+/g, " ").trim();
+  } catch (e) {}
+  if (!TITULO_AMZ) {
+    // Sin título: se usa el nombre que trae el propio enlace (amazon.com/Nombre-Del-Producto/dp/…)
+    const m = v.match(/amazon\.[a-z.]+\/(?:-\/[a-z]{2}\/)?([^/?]+)\/dp\//i);
+    TITULO_AMZ = m ? decodeURIComponent(m[1]).replace(/-/g, " ") : "";
+  }
+  if (!TITULO_AMZ) throw { code: "enlace" };
+  // El nombre del formulario queda con el título del anuncio (sin el enlace) para buscar y redactar
+  const t = TITULO_AMZ.split(/\s\|\s/)[0];
+  $("juego").value = t.length > 90 ? t.slice(0, 90).replace(/[\s,]+\S*$/, "") : t;
 }
 // Antes de redactar se busca en internet la edición exacta (DLC, contenido adicional, Game-Key Card…); máximo 10 s
 async function investigar() {
   const ver = $("version").value && $("version").value !== "ESTANDAR" ? " " + $("version").value : "";
-  const q = `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
+  const esJuego = tipoActual() === "juego";
+  const base = esJuego ? $("juego").value.trim() : (TITULO_AMZ || $("juego").value.trim()).slice(0, 100);
+  const q = `${base}${ver} ${esJuego ? consolaNombre() : (/switch|ps5|ps4|playstation|nintendo/i.test(base) ? "" : consolaNombre()) + " especificaciones"}`.replace(/\s+/g, " ").trim();
   try {
     const r = await Promise.race([llamarWorker({ metodo: "INVESTIGAR", q }), new Promise((_, mal) => setTimeout(() => mal(new Error("tiempo")), 10000))]);
     const j = await r.json().catch(() => ({}));
     return String(j.contexto || "");
   } catch (e) { return ""; }
 }
-let ctl = null;
+let ctl = null, ULTIMO_NOMBRE = "";
 
 // Claude redacta a través del Worker de Pipe Games (la clave de la API vive allá, no en esta página)
 async function redactar(texto, signal) {
@@ -872,7 +908,11 @@ async function redactar(texto, signal) {
 
 async function generar(ev) {
   ev.preventDefault();
-  if (!$("juego").value.trim()) { setStatus("Escribe el nombre del juego.", "err"); return; }
+  if (!$("juego").value.trim()) { setStatus("Escribe el nombre del juego o del artículo, o pega el enlace de Amazon.", "err"); return; }
+  const esLink = /^https?:\/\//i.test($("juego").value.trim()) || /amazon\./i.test($("juego").value.trim());
+  if (!esLink && $("juego").value.trim() !== ULTIMO_NOMBRE) { TITULO_AMZ = ""; ENLACE_AMZ = ""; }
+  try { await leerEnlace(); } catch (e) { setStatus("No pude leer ese enlace de Amazon. Escribe el nombre del artículo.", "err"); return; }
+  ULTIMO_NOMBRE = $("juego").value.trim(); rotularTipo();
   // Las imágenes se buscan al mismo tiempo que se redacta (si ya hay imágenes de este artículo, no se repite)
   imagenesAutomaticas().catch(e => { $("imgFotosEstado").textContent = "📷 No se pudieron buscar las fotos: " + (e.message || e); });
   const btn = $("generar"); btn.disabled = true; btn.textContent = "Redactando…";
@@ -895,7 +935,7 @@ async function generar(ev) {
     $("fFecha").value = String(r.fecha_lanzamiento || "");
     $("ejMk").hidden = true; $("ejIg").hidden = true;
     pintar();
-    setStatus(r.fecha_lanzamiento ? "Listo. Revisa los textos antes de publicar." : "Listo. No se encontró la fecha de lanzamiento con seguridad: complétala si la sabes.", "ok");
+    setStatus(r.fecha_lanzamiento || tipoActual() !== "juego" ? "Listo. Revisa los textos antes de publicar." : "Listo. No se encontró la fecha de lanzamiento con seguridad: complétala si la sabes.", "ok");
     guardarHist({ juego: $("juego").value, version: $("version").value, precio: $("precio").value, estado: $("estado").value,
       dispo: $("dispo").value, notas: $("notas").value, consola, fNombre: $("fNombre").value, fGenero: $("fGenero").value,
       fFecha: $("fFecha").value, gen: estadoGen });
@@ -950,10 +990,12 @@ pintar();
 dibujarHist();
 
 $("form").addEventListener("submit", generar);
+$("tipo").addEventListener("change", () => { rotularTipo(); pintar(); });
+$("juego").addEventListener("change", () => { rotularTipo(); });
 $("limpiar").onclick = () => {
   if (ctl) { try { ctl.abort(); } catch (e) {} }
   ["juego", "precio", "notas", "fNombre", "fGenero", "fFecha", "salidaMk", "salidaIg"].forEach(id => { $(id).value = ""; });
-  $("version").value = "ESTANDAR"; $("estado").selectedIndex = 0; $("dispo").selectedIndex = 0;
+  $("version").value = "ESTANDAR"; $("estado").selectedIndex = 0; $("dispo").selectedIndex = 0; $("tipo").value = "auto"; TITULO_AMZ = ""; ENLACE_AMZ = ""; ULTIMO_NOMBRE = "";
   consola = "PS5"; dibujarConsolas();
   estadoGen = { descripcion: "", instagram: "", hashtags: [] };
   $("ejMk").hidden = true; $("ejIg").hidden = true;
