@@ -182,7 +182,7 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
       </label>
       <div style="display:grid;grid-template-columns:1fr auto;gap:10px">
         <button class="primary" id="generar" type="submit">Generar publicaciones</button>
-        <button class="ghost" type="button" id="limpiar" style="padding:0 16px">Limpiar datos</button>
+        <button class="ghost" type="button" id="nuevoArt" style="padding:0 16px" title="Borra la publicación y las imágenes para empezar otro artículo">Nuevo artículo</button><button class="ghost" type="button" id="limpiar" hidden>Limpiar datos</button>
       </div>
       <div class="status" id="status" role="status"></div>
 
@@ -243,6 +243,7 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
           <button class="chip img-subir" type="button" id="imgAmazon">Fotos del anuncio de Amazon</button>
           <button class="chip" type="button" id="imgBuscar">Buscar en la web</button>
         </div>
+        <label class="img-check" style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)"><input type="checkbox" id="imgAuto" checked style="width:auto;margin:0"> Al tocar “Generar publicaciones”, buscar también las fotos en Amazon y agregar las 7 primeras</label>
         <p class="note" id="imgBuscarNota">“Fotos del anuncio de Amazon” trae las fotos del producto en el mismo orden de Amazon (primero la carátula y después las del juego). “Buscar en la web” busca portadas en Amazon y en otras páginas.</p>
         <div class="img-op" id="imgResAcc" hidden><button class="chip" type="button" id="imgSiete">Agregar las 7 primeras</button><button class="ghost" type="button" id="imgTodasRes">Agregar todas</button></div>
         <div class="img-res" id="imgRes"></div>
@@ -608,6 +609,7 @@ function confirmarDoble(b, accion) {
   delete b.dataset.ok; accion();
 }
 $("imgLimpiar").onclick = e => confirmarDoble(e.currentTarget, () => { limpiarImagenes(); setStatus("Imágenes limpias.", "ok"); });
+$("nuevoArt").onclick = e => confirmarDoble(e.currentTarget, () => { limpiarImagenes(); $("limpiar").click(); window.scrollTo({ top: 0, behavior: "smooth" }); setStatus("Listo para un nuevo artículo: escribe el juego y la consola.", "ok"); });
 $("todoLimpiar").onclick = e => confirmarDoble(e.currentTarget, () => { limpiarImagenes(); $("limpiar").click(); window.scrollTo({ top: 0, behavior: "smooth" }); setStatus("Todo limpio: lista para una nueva publicación.", "ok"); });
 $("boxImg").addEventListener("dragover", e => e.preventDefault());
 $("boxImg").addEventListener("drop", e => { e.preventDefault(); procesar(e.dataTransfer.files); });
@@ -626,9 +628,10 @@ function sugerirBusqueda() {
 $("imgQ").addEventListener("focus", () => { if (!$("imgQ").value) { $("imgQ").value = sugerirBusqueda(); setTimeout(() => $("imgQ").select(), 0); } });
 $("imgQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("imgBuscar").click(); } });
 // Fotos del anuncio de Amazon (enlace pegado o búsqueda por nombre)
-$("imgAmazon").onclick = async () => {
+$("imgAmazon").onclick = () => traerGaleria();
+async function traerGaleria() {
   const v = ($("imgQ").value || sugerirBusqueda()).trim();
-  if (!v) { $("imgBuscarNota").textContent = "Pega el enlace del producto de Amazon o escribe el juego y la consola."; return; }
+  if (!v) { $("imgBuscarNota").textContent = "Pega el enlace del producto de Amazon o escribe el juego y la consola."; return false; }
   const esEnlace = /amazon\./i.test(v) || /^https?:/i.test(v);
   const b = $("imgAmazon"); b.disabled = true; b.textContent = "Trayendo fotos…"; $("imgBuscarNota").textContent = esEnlace ? "Leyendo el anuncio de Amazon…" : "Buscando el producto en Amazon…";
   try {
@@ -638,9 +641,23 @@ $("imgAmazon").onclick = async () => {
     $("imgRes").innerHTML = RES_IMG.map((x, i) => `<button type="button" data-res="${i}" title="${esc(x.titulo)}"><img src="${esc(x.mini)}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="fuente"><span class="amz">Amazon</span> · foto ${i + 1}</span></button>`).join("");
     $("imgResAcc").hidden = !RES_IMG.length; pintarImgs();
     $("imgBuscarNota").innerHTML = `<b>${esc(j.titulo || "Producto de Amazon")}</b> (${esc(j.asin || "")}) · ${RES_IMG.length} fotos${j.via === "lector" ? " · leídas por el lector de páginas" : ""}. <a href="${esc(j.url)}" target="_blank" rel="noopener">Ver en Amazon</a>. ${esEnlace ? "" : "Si no es el juego correcto, pega el enlace del producto. "}Toca las que quieras, o “Agregar las 7 primeras” (normalmente 4 de la carátula y 3 del juego).`;
+    b.disabled = false; b.textContent = "Fotos del anuncio de Amazon";
+    return RES_IMG.length > 0;
   } catch (e) { $("imgBuscarNota").textContent = String(e.message || e); }
   b.disabled = false; b.textContent = "Fotos del anuncio de Amazon";
-};
+  return false;
+}
+// Proceso completo al generar: busca las fotos del anuncio de Amazon con el juego y la consola y agrega las 7 primeras;
+// si no encuentra el producto, deja a la vista las portadas de la web para escoger
+try { if (localStorage.getItem("pg_img_auto") === "0") $("imgAuto").checked = false; } catch (e) {}
+$("imgAuto").addEventListener("change", () => { try { localStorage.setItem("pg_img_auto", $("imgAuto").checked ? "1" : "0"); } catch (e) {} });
+async function imagenesAutomaticas() {
+  if (!$("imgAuto").checked || !auth.currentUser) return;
+  const ver = $("version").value && $("version").value !== "ESTANDAR" ? " " + $("version").value : "";
+  $("imgQ").value = `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
+  if (await traerGaleria()) await agregarRes([...RES_IMG.keys()].slice(0, 7));
+  else await $("imgBuscar").onclick();
+}
 async function agregarRes(lista) {
   for (const i of lista) { const b = document.querySelector(`[data-res="${i}"]`); if (b) await agregarUna(b, RES_IMG[i]); }
 }
@@ -749,6 +766,8 @@ async function redactar(texto, signal) {
 async function generar(ev) {
   ev.preventDefault();
   if (!$("juego").value.trim()) { setStatus("Escribe el nombre del juego.", "err"); return; }
+  // Las imágenes se buscan al mismo tiempo que se redacta (si ya hay imágenes de este artículo, no se repite)
+  if (!IMGS.length && !RES_IMG.length) imagenesAutomaticas().catch(() => {});
   const btn = $("generar"); btn.disabled = true; btn.textContent = "Redactando…";
   setStatus("Claude está escribiendo las dos publicaciones. Tarda unos segundos.");
   ctl = new AbortController();
