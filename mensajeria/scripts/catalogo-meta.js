@@ -143,6 +143,13 @@ function paginaStock(filas) {
 ${cuerpo}</body></html>
 `;
   const dir = path.join(RAIZ, "stock"), destino = path.join(dir, "index.html");
+  // Versión CSV para subirla como archivo al agente de WhatsApp (pipegames.com.co/stock/stock.csv)
+  const filasCsv = [...filas].sort((a, b) => ((orden.indexOf(plat(a)) + 1) || 99) - ((orden.indexOf(plat(b)) + 1) || 99) || (a.availability === "in stock" ? 0 : 1) - (b.availability === "in stock" ? 0 : 1) || a.title.localeCompare(b.title, "es"))
+    .map(f => [f.title.replace(/ - [^-]+$/, ""), plat(f), Number(f.price.replace(/\D/g, "")), f.availability === "in stock" ? "DISPONIBLE" : "AGOTADO - NO OFRECER"].map(csv).join(","));
+  const salidaCsv = "\ufeffProducto,Consola,Precio COP,Estado\n" + filasCsv.join("\n") + "\n";
+  fs.mkdirSync(dir, { recursive: true });
+  const dCsv = path.join(dir, "stock.csv");
+  if (!fs.existsSync(dCsv) || fs.readFileSync(dCsv, "utf8") !== salidaCsv) fs.writeFileSync(dCsv, salidaCsv);
   const antes = fs.existsSync(destino) ? fs.readFileSync(destino, "utf8") : "";
   const sinFecha = t => t.replace(/Actualizado: [^(]*\(/, "Actualizado: (");
   if (sinFecha(antes) === sinFecha(contenido)) return; // solo se reescribe si cambió algo además de la fecha
