@@ -201,7 +201,21 @@ function pintar() {
   $("cards").innerHTML = PLATAFORMAS.map(pl => tarjeta(pl, V)).join("");
   abiertos.forEach(id => { const d = document.querySelector(`[data-restaurar="${id}"]`)?.closest("details"); if (d) d.open = true; });
 }
-$("valor").addEventListener("input", e => { const n = num(e.target.value); e.target.value = n ? "$ " + n.toLocaleString("es-CO") : ""; pintar(); });
+// Formatea con puntos de miles sin mover el cursor: se cuentan los dígitos que hay antes del cursor
+// y después de poner los puntos se deja el cursor detrás del mismo dígito (así se puede corregir solo "195" de $195.990)
+$("valor").addEventListener("input", e => {
+  const el = e.target, pos = el.selectionStart ?? el.value.length;
+  const digitosAntes = el.value.slice(0, pos).replace(/\D/g, "").replace(/^0+(?=\d)/, "").length;
+  const n = num(el.value);
+  el.value = n ? "$ " + n.toLocaleString("es-CO") : "";
+  if (document.activeElement === el && el.value) {
+    let p = 0, vistos = 0;
+    while (p < el.value.length && vistos < digitosAntes) { if (/\d/.test(el.value[p])) vistos++; p++; }
+    if (digitosAntes === 0) p = Math.max(0, el.value.search(/\d/));
+    try { el.setSelectionRange(p, p); } catch {}
+  }
+  pintar();
+});
 document.querySelectorAll("[data-modo]").forEach(b => b.onclick = () => { modo = b.dataset.modo; try { localStorage.setItem("pg_calc_modo", modo); } catch {} pintar(); $("valor").focus(); });
 $("cards").addEventListener("change", e => {
   const i = e.target.closest("[data-pl]"); if (!i) return;
