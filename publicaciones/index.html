@@ -187,6 +187,7 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
         <button class="ghost" type="button" id="nuevoArt" style="padding:0 16px" title="Borra la publicación y las imágenes para empezar otro artículo">Nuevo artículo</button><button class="ghost" type="button" id="limpiar" hidden>Limpiar datos</button>
       </div>
       <div class="status" id="status" role="status"></div>
+        <p class="note" id="imgFotosEstado" aria-live="polite"></p>
 
       <details>
         <summary>Cierre de Instagram (contacto, pagos y envíos)</summary>
@@ -663,6 +664,7 @@ $("imgTodas").onclick = () => bajar(IMGS);
 function limpiarImagenes() {
   IMGS.forEach(x => { URL.revokeObjectURL(x.url); }); IMGS = []; RES_IMG = []; TRAD = null;
   $("imgQ").value = ""; $("imgRes").innerHTML = ""; $("imgResAcc").hidden = true; $("imgTrad").hidden = true; $("imgTrad").innerHTML = "";
+  ultimaAuto = ""; $("imgFotosEstado").textContent = "";
   $("imgPegarNota").textContent = ""; $("imgBuscarNota").textContent = "Pega el enlace del producto de Amazon o escribe el juego, y toca “Fotos del anuncio de Amazon”.";
   pintarImgs();
 }
@@ -717,12 +719,26 @@ async function traerGaleria() {
 // si no encuentra el producto, deja a la vista las portadas de la web para escoger
 try { if (localStorage.getItem("pg_img_auto") === "0") $("imgAuto").checked = false; } catch (e) {}
 $("imgAuto").addEventListener("change", () => { try { localStorage.setItem("pg_img_auto", $("imgAuto").checked ? "1" : "0"); } catch (e) {} });
+// Se busca cada vez que cambia el juego o la consola (no se repite si es el mismo artículo)
+let ultimaAuto = "";
 async function imagenesAutomaticas() {
   if (!$("imgAuto").checked || !auth.currentUser) return;
   const ver = $("version").value && $("version").value !== "ESTANDAR" ? " " + $("version").value : "";
-  $("imgQ").value = `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
-  if (await traerGaleria()) await agregarRes([...RES_IMG.keys()].slice(0, 7));
-  else await $("imgBuscar").onclick();
+  const q = `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
+  if (q.toLowerCase() === ultimaAuto) return;
+  const anterior = ultimaAuto; ultimaAuto = q.toLowerCase();
+  // Imágenes del artículo anterior: si ya se descargaron todas, se quitan; si no, se dejan y se avisa
+  let aviso = "";
+  if (anterior && IMGS.length) {
+    if (IMGS.every(x => x.bajada)) { IMGS.forEach(x => URL.revokeObjectURL(x.url)); IMGS = []; pintarImgs(); }
+    else aviso = ` Ojo: quedan ${IMGS.length} imágenes del artículo anterior sin descargar (usa “Nuevo artículo” para empezar limpio).`;
+  }
+  RES_IMG = []; $("imgRes").innerHTML = ""; $("imgResAcc").hidden = true;
+  $("imgQ").value = q;
+  $("imgFotosEstado").textContent = "📷 Buscando las fotos en Amazon…";
+  let n = 0;
+  if (await traerGaleria()) { const antes = IMGS.length; await agregarRes([...RES_IMG.keys()].slice(0, 7)); n = IMGS.length - antes; $("imgFotosEstado").textContent = `📷 ${n} fotos de Amazon listas abajo, en “Imágenes 2000 × 2000”.` + aviso; }
+  else { await $("imgBuscar").onclick(); $("imgFotosEstado").textContent = RES_IMG.length ? "📷 No encontré el producto exacto en Amazon: abajo tienes portadas de la web para escoger." : "📷 No encontré fotos: pega el enlace de Amazon abajo."; }
 }
 async function agregarRes(lista) {
   for (const i of lista) { const b = document.querySelector(`[data-res="${i}"]`); if (b) await agregarUna(b, RES_IMG[i], true); }
@@ -845,7 +861,7 @@ async function generar(ev) {
   ev.preventDefault();
   if (!$("juego").value.trim()) { setStatus("Escribe el nombre del juego.", "err"); return; }
   // Las imágenes se buscan al mismo tiempo que se redacta (si ya hay imágenes de este artículo, no se repite)
-  if (!IMGS.length && !RES_IMG.length) imagenesAutomaticas().catch(() => {});
+  imagenesAutomaticas().catch(e => { $("imgFotosEstado").textContent = "📷 No se pudieron buscar las fotos: " + (e.message || e); });
   const btn = $("generar"); btn.disabled = true; btn.textContent = "Redactando…";
   setStatus("Claude está escribiendo las dos publicaciones. Tarda unos segundos.");
   ctl = new AbortController();
