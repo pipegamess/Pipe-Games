@@ -718,6 +718,17 @@
     padding:0.5rem 1.5rem; align-items:center; justify-content:space-between;
   }
   .admin-bar.visible { display:flex; }
+  .aviso-sin-foto { background:#ff4d4f; color:#fff; border:0; border-radius:8px; padding:6px 12px; font-weight:700; font-size:0.8rem; cursor:pointer; }
+  .aviso-sin-foto.ok { background:#2e7d4f; }
+  body.admin-on .sin-foto { box-shadow: inset 3px 0 0 #ff4d4f; background: rgba(255,77,79,0.08); }
+  .lista-sin-foto { position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .lsf-caja { background:#12121a; color:#e8e8f0; border:1px solid rgba(255,255,255,0.12); border-radius:14px; width:min(560px,100%); max-height:80vh; display:flex; flex-direction:column; }
+  .lsf-tit { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; font-weight:700; border-bottom:1px solid rgba(255,255,255,0.1); }
+  .lsf-x { background:none; border:0; color:#e8e8f0; font-size:1.1rem; cursor:pointer; }
+  .lsf-nota { margin:10px 16px 4px; font-size:0.8rem; color:#9a9ab5; }
+  .lsf-items { overflow:auto; padding:6px 10px 14px; display:grid; gap:6px; }
+  .lsf-item { text-align:left; background:#1a1a26; color:#e8e8f0; border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:9px 10px; cursor:pointer; font-size:0.85rem; }
+  .lsf-item span { display:inline-block; min-width:78px; color:#f5c400; font-weight:600; margin-right:6px; }
   .admin-label { font-size:0.75rem; color:var(--acc); letter-spacing:2px; font-family:'Rajdhani',sans-serif; font-weight:700; }
   .btn-export-html {
     padding:0.35rem 0.8rem; border-radius:6px; border:none;
@@ -6209,6 +6220,79 @@ function aplicarStockExcel() {
     .catch(function () { /* si no hay stock.json se deja el catálogo como está */ });
 }
 window.addEventListener('load', aplicarStockExcel);
+
+// ── Aviso en modo Admin: productos sin foto ─────────────────────────
+(function () {
+  var TABS = { ps4: 'PS4', ps5: 'PS5', switch: 'Switch', acc: 'Accesorios' };
+  function sinFoto() {
+    var out = [];
+    Object.keys(TABS).forEach(function (t) {
+      (datasets[t] || []).forEach(function (g, i) {
+        if (g && String(g.name || '').trim() && !String(g.img || '').trim()) out.push({ tab: t, idx: i, g: g });
+      });
+    });
+    return out;
+  }
+  function boton() {
+    var b = document.getElementById('avisoSinFoto');
+    if (!b) {
+      b = document.createElement('button');
+      b.id = 'avisoSinFoto';
+      b.type = 'button';
+      b.className = 'aviso-sin-foto';
+      b.onclick = abrirLista;
+      document.getElementById('adminBar').appendChild(b);
+    }
+    return b;
+  }
+  function actualizar() {
+    if (typeof isAdmin === 'undefined' || !isAdmin) return;
+    var lista = sinFoto(), b = boton();
+    b.textContent = lista.length ? '📷 ' + lista.length + ' sin foto' : '📷 Todos tienen foto';
+    b.classList.toggle('ok', !lista.length);
+    // marcar en la lista los productos sin foto
+    document.querySelectorAll('.img-search-btn').forEach(function (btn) {
+      var m = String(btn.getAttribute('onclick') || '').match(/openMlModal\('(\w+)',\s*(\d+)\)/);
+      if (!m) return;
+      var g = (datasets[m[1]] || [])[+m[2]], item = btn.closest('.game-item, .game-card, [class*="card"]') || btn.parentElement;
+      if (item) item.classList.toggle('sin-foto', !!g && !String(g.img || '').trim());
+    });
+  }
+  function abrirLista() {
+    var lista = sinFoto();
+    var cap = document.getElementById('listaSinFoto');
+    if (cap) cap.remove();
+    if (!lista.length) return;
+    cap = document.createElement('div');
+    cap.id = 'listaSinFoto';
+    cap.className = 'lista-sin-foto';
+    var h = '<div class="lsf-caja"><div class="lsf-tit">📷 Productos sin foto (' + lista.length + ')<button type="button" class="lsf-x" aria-label="Cerrar">✕</button></div>' +
+      '<p class="lsf-nota">Toca un producto para ir a él y usa 🖼 para ponerle portada.</p><div class="lsf-items">';
+    lista.forEach(function (x, k) {
+      h += '<button type="button" class="lsf-item" data-k="' + k + '"><span>' + TABS[x.tab] + '</span>' +
+        String(x.g.name).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }) +
+        ' · ' + x.g.platform + (x.g.active ? '' : ' (inactivo)') + '</button>';
+    });
+    cap.innerHTML = h + '</div></div>';
+    document.body.appendChild(cap);
+    cap.addEventListener('click', function (e) {
+      if (e.target === cap || e.target.classList.contains('lsf-x')) { cap.remove(); return; }
+      var it = e.target.closest('.lsf-item');
+      if (!it) return;
+      var x = lista[+it.dataset.k];
+      cap.remove();
+      var tabBtn = document.querySelector('.tab[data-tab="' + x.tab + '"]');
+      if (tabBtn) tabBtn.click();
+      var s = document.getElementById('search');
+      s.value = x.g.name;
+      renderActive(x.g.name);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+  var renderOriginal = render;
+  render = function () { var r = renderOriginal.apply(this, arguments); try { actualizar(); } catch (e) {} return r; };
+  window.addEventListener('load', function () { setTimeout(actualizar, 1500); });
+})();
 /* ── Link de pedido enviado por Pipe Games (?pedido=...&pago=addi): abre el pedido listo para llenar datos ── */
 function pcAbrirPedidoLink() {
   const q = new URLSearchParams(location.search), raw = q.get('pedido');
