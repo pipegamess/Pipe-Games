@@ -1057,6 +1057,8 @@
   .gal-row button { background:transparent; border:1px solid var(--border); border-radius:6px; color:var(--muted); cursor:pointer; padding:0.35rem 0.5rem; font-size:0.8rem; }
   .gal-row button.del { color:#ff6b6b; }
   .gal-add { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.gal-drop { border: 2px dashed var(--ps5, #f5c400); border-radius: 10px; padding: 14px; text-align: center; font-size: 0.82rem; color: var(--muted); margin: 0.5rem 0; cursor: copy; line-height: 1.45; }
+.gal-drop.sobre, .gal-drop:focus { border-style: solid; color: var(--text); outline: none; background: rgba(245,196,0,0.08); }
   .gal-add input[type=url] { flex:1; min-width:150px; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:0.45rem 0.6rem; color:var(--text); font-size:0.8rem; }
   .gal-add button, .gal-add label { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:0.45rem 0.7rem; font-size:0.8rem; cursor:pointer; font-family:'Rajdhani',sans-serif; font-weight:700; }
   .gal-save { width:100%; margin-top:0.6rem; padding:0.6rem; border-radius:6px; border:none; background:var(--acc); color:#000; cursor:pointer; font-family:'Rajdhani',sans-serif; font-weight:700; font-size:0.95rem; }
@@ -4261,6 +4263,7 @@
     <div class="gal-admin">
       <h4>🎨 GALERÍA DE COLORES / FOTOS</h4>
       <p>Agrega varias fotos (una por color). El cliente las verá en carrusel y podrá elegir el color al pedir. La primera foto será la portada.</p>
+      <div id="galDrop" class="gal-drop" tabindex="0" title="Arrastra o pega aquí las fotos">⬇️ <b>Arrastra aquí las fotos</b> (desde tu carpeta o desde otra página) o haz clic aquí y presiona <b>Ctrl + V</b> para pegarlas. La primera queda como portada.</div>
       <div id="galList"></div>
       <div class="gal-add">
         <label>📷 Subir fotos<input type="file" id="galFile" accept="image/*" multiple style="display:none" onchange="galAddFiles(this)"></label>
@@ -4959,6 +4962,30 @@ function galCompress(file) {
     reader.readAsDataURL(file);
   });
 }
+// Arrastrar o pegar fotos en la ventana de imagen del artículo (modo Admin): van a la galería; la primera es la portada
+async function galRecibir(dt) {
+  const files = Array.from((dt && dt.files) || []).filter(f => /^image\//.test(f.type));
+  if (files.length) { (await Promise.all(files.map(galCompress))).forEach(src => galDraft.push({ src, label: "" })); galRender(); galAvisoGuardar(); return; }
+  // Imagen arrastrada desde otra pestaña: llega como enlace
+  const html = (dt && dt.getData && dt.getData("text/html")) || "";
+  const url = ((html.match(/<img[^>]+src="([^"]+)"/i) || [])[1] || (dt && dt.getData && (dt.getData("text/uri-list") || dt.getData("text/plain"))) || "").trim().split("\n")[0];
+  if (/^https?:\/\/\S+$/i.test(url)) { galDraft.push({ src: url.replace(/&amp;/g, "&"), label: "" }); galRender(); galAvisoGuardar(); }
+}
+function galAvisoGuardar() { const d = document.getElementById("galDrop"); if (d) d.innerHTML = "✅ Foto agregada. Puedes agregar más o tocar <b>✓ Guardar galería</b> para guardarla."; }
+(function galDropInit() {
+  const ov = document.getElementById("mlModalOverlay"), z = document.getElementById("galDrop");
+  if (!ov || !z) return;
+  ["dragenter", "dragover"].forEach(ev => ov.addEventListener(ev, e => { e.preventDefault(); z.classList.add("sobre"); }));
+  ov.addEventListener("dragleave", e => { if (e.target === ov) z.classList.remove("sobre"); });
+  ov.addEventListener("drop", e => { e.preventDefault(); z.classList.remove("sobre"); galRecibir(e.dataTransfer); });
+  document.addEventListener("paste", e => {
+    if (!ov.classList.contains("open")) return;
+    if (e.target.closest && e.target.closest("input, textarea") && !Array.from((e.clipboardData && e.clipboardData.files) || []).length) return;
+    const tiene = Array.from((e.clipboardData && e.clipboardData.files) || []).length || /<img/i.test((e.clipboardData && e.clipboardData.getData("text/html")) || "");
+    if (!tiene) return;
+    e.preventDefault(); galRecibir(e.clipboardData);
+  });
+})();
 function galAddFiles(input) {
   const files = Array.from(input.files || []);
   Promise.all(files.map(galCompress)).then(srcs => {
