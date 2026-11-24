@@ -83,6 +83,9 @@ button.ghost { font: 600 13px/1 var(--body); background: transparent; color: var
 .img-lista figcaption { display: flex; gap: 6px; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); min-width: 0; }
 .img-lista figcaption .acc { display: flex; gap: 6px; flex-wrap: wrap; }
 .img-trad { background: var(--surface2); }
+.img-pegar { min-height: 96px; border: 2px dashed var(--acc); border-radius: 12px; background: var(--surface2); padding: 18px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 14px; cursor: text; outline: none; caret-color: transparent; overflow: hidden; }
+.img-pegar:empty::before { content: attr(data-ph); pointer-events: none; }
+.img-pegar:focus, .img-pegar.sobre { border-style: solid; background: color-mix(in srgb, var(--acc) 10%, var(--surface2)); color: var(--text); }
 .img-trad .linea { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
 .img-trad .linea small { grid-column: 2; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .img-trad .linea input[type=text] { grid-column: 2; }
@@ -225,6 +228,9 @@ details textarea { min-height: 150px; font-size: 13.5px; margin-top: 10px; }
             <select id="imgMargen"><option value="3">Pequeño (3%)</option><option value="5" selected>Normal (5%)</option><option value="8">Amplio (8%)</option><option value="0">Sin margen</option></select></label>
           <label class="img-check"><input type="checkbox" id="imgRecortar" checked> Quitar bordes blancos de la foto original</label>
         </div>
+        <div class="img-pegar" id="imgPegar" contenteditable="true" role="textbox" aria-label="Zona para pegar imágenes" spellcheck="false"
+          data-ph="📋 Pega aquí tus imágenes: copia la imagen (clic derecho → Copiar imagen) y aquí presiona Ctrl + V (en Mac ⌘ + V). También puedes arrastrarlas."></div>
+        <div class="img-op"><button class="chip" type="button" id="imgPegarBtn">Pegar imagen copiada</button><span class="note" id="imgPegarNota"></span></div>
         <div class="img-lista" id="imgLista"></div>
         <div class="panel img-trad" id="imgTrad" hidden></div>
         <div class="img-op" id="imgAcc" hidden>
@@ -568,7 +574,44 @@ $("imgTodas").onclick = () => bajar(IMGS);
 $("imgLimpiar").onclick = () => { IMGS.forEach(x => URL.revokeObjectURL(x.url)); IMGS = []; pintarImgs(); };
 $("boxImg").addEventListener("dragover", e => e.preventDefault());
 $("boxImg").addEventListener("drop", e => { e.preventDefault(); procesar(e.dataTransfer.files); });
-document.addEventListener("paste", e => { const f = [...(e.clipboardData?.files || [])]; if (f.length) procesar(f); });
+// Pegar imágenes: en la franja (o en cualquier parte de la página, fuera de los campos de texto)
+async function pegarDesde(dt) {
+  let files = [...(dt?.files || [])].filter(f => /^image\//.test(f.type));
+  if (!files.length) files = [...(dt?.items || [])].filter(i => i.kind === "file" && /^image\//.test(i.type)).map(i => i.getAsFile()).filter(Boolean);
+  if (!files.length) {
+    // Imagen copiada de una página web: a veces llega solo como enlace; se intenta descargar
+    const html = dt?.getData?.("text/html") || "", txt = dt?.getData?.("text/plain") || "";
+    const src = (html.match(/<img[^>]+src="([^"]+)"/i) || [])[1] || (/^https?:\/\/\S+\.(jpe?g|png|webp|gif)(\?\S*)?$/i.test(txt.trim()) ? txt.trim() : "");
+    if (src) {
+      try { const b = await (await fetch(src.replace(/&amp;/g, "&"))).blob(); if (/^image\//.test(b.type)) files = [new File([b], "imagen-pegada", { type: b.type })]; } catch {}
+      if (!files.length) { $("imgPegarNota").textContent = "Esa página no deja copiar la imagen como enlace. Usa clic derecho → “Copiar imagen” (no “Copiar dirección”) o guárdala y súbela."; return; }
+    }
+  }
+  if (files.length) { $("imgPegarNota").textContent = ""; procesar(files); }
+  else $("imgPegarNota").textContent = "Lo que pegaste no es una imagen.";
+}
+document.addEventListener("paste", e => {
+  const enFranja = e.target.closest?.("#imgPegar");
+  const enCampo = !enFranja && e.target.closest?.("input, textarea, [contenteditable]");
+  if (enCampo) return;
+  const tieneImg = [...(e.clipboardData?.items || [])].some(i => i.kind === "file") || /<img/i.test(e.clipboardData?.getData("text/html") || "");
+  if (!enFranja && !tieneImg) return;
+  e.preventDefault(); pegarDesde(e.clipboardData);
+});
+// La franja no guarda texto: solo recibe lo pegado
+$("imgPegar").addEventListener("beforeinput", e => { if (e.inputType !== "insertFromPaste") e.preventDefault(); });
+$("imgPegar").addEventListener("input", () => { $("imgPegar").textContent = ""; });
+$("imgPegar").addEventListener("dragover", e => { e.preventDefault(); $("imgPegar").classList.add("sobre"); });
+$("imgPegar").addEventListener("dragleave", () => $("imgPegar").classList.remove("sobre"));
+$("imgPegar").addEventListener("drop", e => { e.preventDefault(); e.stopPropagation(); $("imgPegar").classList.remove("sobre"); pegarDesde(e.dataTransfer); });
+// Botón para pegar sin teclado (celular o tablet): lee el portapapeles si el navegador lo permite
+$("imgPegarBtn").onclick = async () => {
+  try {
+    const items = await navigator.clipboard.read(), files = [];
+    for (const it of items) { const t = it.types.find(x => /^image\//.test(x)); if (t) { const b = await it.getType(t); files.push(new File([b], "imagen-pegada", { type: b.type })); } }
+    if (files.length) { $("imgPegarNota").textContent = ""; procesar(files); } else $("imgPegarNota").textContent = "No hay ninguna imagen copiada.";
+  } catch { $("imgPegar").focus(); $("imgPegarNota").textContent = "Tu navegador no deja leer el portapapeles con el botón: toca la franja punteada y elige “Pegar” (o Ctrl + V)."; }
+};
 // Al cambiar el margen o el recorte, las ya cargadas no se rehacen: se avisa
 ["imgMargen", "imgRecortar"].forEach(id => $(id).addEventListener("change", () => { if (IMGS.length) setStatus("El cambio aplica a las próximas imágenes. Toca “Quitar imágenes” y vuelve a subirlas para rehacerlas."); }));
 
