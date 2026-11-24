@@ -40,7 +40,7 @@ jobs:
       - name: Guardar si cambió
         id: guardar
         run: |
-          git add index.html mensajeria/tarifas-envio.js mensajeria/productos-catalogo.js catalogo-meta.csv catalogo-meta
+          git add index.html mensajeria/tarifas-envio.js mensajeria/productos-catalogo.js catalogo-meta.csv catalogo-meta stock/index.html
           if git diff --cached --quiet; then echo "Sin cambios"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898799+github-actions[bot]@users.noreply.github.com"

@@ -107,7 +107,47 @@ async function foto(src) {
   const destino = path.join(RAIZ, "catalogo-meta.csv");
   const antes = fs.existsSync(destino) ? fs.readFileSync(destino, "utf8") : "";
   if (antes !== salida) fs.writeFileSync(destino, salida);
+  paginaStock(filas);
   // Borra fotos que ya no usa ningún producto
   if (fs.existsSync(DIR_IMG)) for (const f of fs.readdirSync(DIR_IMG)) if (f.endsWith(".jpg") && !usadas.has(f)) fs.unlinkSync(path.join(DIR_IMG, f));
   console.log(`catalogo-meta.csv: ${filas.length} productos (${filas.filter(f => f.availability === "in stock").length} disponibles)${antes === salida ? " · sin cambios" : ""}`);
 })();
+
+// Página de texto simple (pipegames.com.co/stock/) para que el agente de IA de WhatsApp (Meta Business Agent)
+// la lea como "sitio web": cada producto con consola, precio y si está disponible o agotado.
+function paginaStock(filas) {
+  const esc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const precio = f => "$" + Number(f.price.replace(/\D/g, "")).toLocaleString("es-CO");
+  const plat = f => f.product_type.split(" > ").pop();
+  const orden = ["PS5", "PS4", "SWITCH 2", "SWITCH"];
+  const grupos = {};
+  for (const f of filas) (grupos[plat(f)] ||= []).push(f);
+  const claves = Object.keys(grupos).sort((a, b) => ((orden.indexOf(a) + 1) || 99) - ((orden.indexOf(b) + 1) || 99) || a.localeCompare(b));
+  const lista = (arr) => arr.length ? "<ul>\n" + arr.map(f => `<li>${esc(f.title)}: ${precio(f)}</li>`).join("\n") + "\n</ul>" : "<p>Ninguno.</p>";
+  let cuerpo = "";
+  for (const k of claves) {
+    const g = grupos[k].sort((a, b) => a.title.localeCompare(b.title, "es"));
+    const si = g.filter(f => f.availability === "in stock"), no = g.filter(f => f.availability !== "in stock");
+    cuerpo += `<h2>${esc(k)}</h2>\n<h3>${esc(k)}: disponibles (${si.length})</h3>\n${lista(si)}\n<h3>${esc(k)}: agotados, NO disponibles (${no.length})</h3>\n${lista(no)}\n`;
+  }
+  const total = filas.filter(f => f.availability === "in stock").length;
+  const contenido = `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pipe Games - Stock y precios actualizados</title>
+<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px;line-height:1.45}h2{margin-top:2em;border-bottom:2px solid #ccc}li{margin:2px 0}</style>
+</head><body>
+<h1>Pipe Games - Stock y precios actualizados</h1>
+<p>Lista oficial de disponibilidad de Pipe Games, tienda virtual de videojuegos en Bogotá, Colombia. Se actualiza automáticamente con el inventario. Actualizado: __FECHA__ (hora Colombia).</p>
+<p>Reglas: los precios están en pesos colombianos (COP). Los juegos son físicos, nuevos y sellados, salvo que el nombre diga otra cosa (por ejemplo Open Box). Un producto que aparece como "agotado" NO está disponible y no se debe ofrecer; si no aparece en esta lista, tampoco está disponible. Antes de cerrar una compra, la disponibilidad la confirma Felipe. Catálogo con fotos y pedidos: https://pipegames.com.co</p>
+<p>Total disponibles: ${total} de ${filas.length} productos.</p>
+${cuerpo}</body></html>
+`;
+  const dir = path.join(RAIZ, "stock"), destino = path.join(dir, "index.html");
+  const antes = fs.existsSync(destino) ? fs.readFileSync(destino, "utf8") : "";
+  const sinFecha = t => t.replace(/Actualizado: [^(]*\(/, "Actualizado: (");
+  if (sinFecha(antes) === sinFecha(contenido)) return; // solo se reescribe si cambió algo además de la fecha
+  const fecha = new Date().toLocaleString("es-CO", { timeZone: "America/Bogota", dateStyle: "long", timeStyle: "short" });
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(destino, contenido.replace("__FECHA__", fecha));
+  console.log(`stock/index.html: ${total} disponibles`);
+}
