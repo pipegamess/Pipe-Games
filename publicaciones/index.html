@@ -92,6 +92,8 @@ button.ghost { font: 600 13px/1 var(--body); background: transparent; color: var
 .img-res button[aria-busy="true"] { opacity: .5; }
 .img-res img { width: 100%; aspect-ratio: 1; object-fit: contain; background: #fff; border-radius: 6px; }
 .img-res .fuente { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.img-res button.sel { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok) inset; position: relative; }
+.img-res button.sel::after { content: "✓"; position: absolute; top: 4px; right: 6px; background: var(--ok); color: #04170d; font-weight: 800; border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; font-size: 13px; }
 .img-res .amz { color: var(--acc); font-weight: 700; }
 .img-pegar { min-height: 96px; border: 2px dashed var(--acc); border-radius: 12px; background: var(--surface2); padding: 18px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 14px; cursor: text; outline: none; caret-color: transparent; overflow: hidden; }
 .img-pegar:empty::before { content: attr(data-ph); pointer-events: none; }
@@ -437,17 +439,27 @@ const baseNombre = () => {
   return (base + " " + (juego || usarOficial ? consola || "" : "")).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "producto";
 };
 const nombreArchivo = i => `${baseNombre()}-${i + 1}.jpg`;
+function marcarResultados() {
+  document.querySelectorAll("#imgRes [data-res]").forEach(b => {
+    const x = RES_IMG[+b.dataset.res], sel = !!x && IMGS.some(y => y.origen === x.url);
+    b.classList.toggle("sel", sel); b.setAttribute("aria-pressed", String(sel));
+  });
+}
 function pintarImgs() {
+  marcarResultados();
   $("imgLista").innerHTML = IMGS.map((x, i) => `<figure><img src="${x.url}" alt="Imagen ${i + 1} lista"><figcaption><span title="${x.aviso || ""}">${x.aviso ? "⚠️ " : ""}${nombreArchivo(i)}</span><span class="acc">${x.original ? `<button class="ghost" type="button" data-imgdeshacer="${i}" title="Volver a la imagen en inglés">Deshacer</button>` : `<button class="ghost" type="button" data-imgtraducir="${i}" title="Pasa al español el texto en inglés de la imagen">Traducir</button>`}<button class="ghost" type="button" data-imgbajar="${i}">Descargar</button></span></figcaption></figure>`).join("");
   $("imgAcc").hidden = !IMGS.length && !RES_IMG.length;
   $("imgNota").textContent = IMGS.some(x => x.aviso) ? "⚠️ Alguna foto es pequeña (menos de 800 px): se agranda, pero puede verse borrosa." : "";
 }
-async function procesar(archivos) {
+// origen: de dónde salió la imagen (la foto de Amazon/web, o el archivo). Una misma imagen no se agrega dos veces.
+async function procesar(archivos, origen) {
   const lista = [...archivos].filter(f => /^image\//.test(f.type));
   if (!lista.length) return;
   setStatus("Preparando " + lista.length + " imagen" + (lista.length > 1 ? "es" : "") + "…");
   for (const f of lista) {
-    try { const r = await cuadrar(f); IMGS.push({ ...r }); pintarImgs(); }
+    const o = origen || `archivo:${f.name}:${f.size}:${f.lastModified || ""}`;
+    if (IMGS.some(x => x.origen === o)) { setStatus("Esa imagen ya está en la lista.", "ok"); continue; }
+    try { const r = await cuadrar(f); IMGS.push({ ...r, origen: o }); pintarImgs(); }
     catch (e) { setStatus(String(e.message || e), "err"); }
   }
   setStatus("Imágenes listas: 2000 × 2000 px con fondo blanco.", "ok");
@@ -650,7 +662,7 @@ async function traerGaleria() {
     RES_IMG = j.imagenes || [];
     $("imgRes").innerHTML = RES_IMG.map((x, i) => `<button type="button" data-res="${i}" title="${esc(x.titulo)}"><img src="${esc(x.mini)}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="fuente"><span class="amz">Amazon</span> · foto ${i + 1}</span></button>`).join("");
     $("imgResAcc").hidden = !RES_IMG.length; pintarImgs();
-    $("imgBuscarNota").innerHTML = `<b>${esc(j.titulo || "Producto de Amazon")}</b> (${esc(j.asin || "")}) · ${RES_IMG.length} fotos${j.via === "lector" ? " · leídas por el lector de páginas" : ""}. <a href="${esc(j.url)}" target="_blank" rel="noopener">Ver en Amazon</a>. ${esEnlace ? "" : "Si no es el juego correcto, pega el enlace del producto. "}Toca las que quieras, o “Agregar las 7 primeras” (normalmente 4 de la carátula y 3 del juego).`;
+    $("imgBuscarNota").innerHTML = `<b>${esc(j.titulo || "Producto de Amazon")}</b> (${esc(j.asin || "")}) · ${RES_IMG.length} fotos${j.via === "lector" ? " · leídas por el lector de páginas" : ""}. <a href="${esc(j.url)}" target="_blank" rel="noopener">Ver en Amazon</a>. ${esEnlace ? "" : "Si no es el juego correcto, pega el enlace del producto. "}Toca una foto para agregarla o quitarla (✓ = está en la lista para exportar), o “Agregar las 7 primeras” (normalmente 4 de la carátula y 3 del juego).`;
     b.disabled = false; b.textContent = "Fotos del anuncio de Amazon";
     return RES_IMG.length > 0;
   } catch (e) { $("imgBuscarNota").textContent = String(e.message || e); }
@@ -669,7 +681,7 @@ async function imagenesAutomaticas() {
   else await $("imgBuscar").onclick();
 }
 async function agregarRes(lista) {
-  for (const i of lista) { const b = document.querySelector(`[data-res="${i}"]`); if (b) await agregarUna(b, RES_IMG[i]); }
+  for (const i of lista) { const b = document.querySelector(`[data-res="${i}"]`); if (b) await agregarUna(b, RES_IMG[i], true); }
 }
 $("imgSiete").onclick = () => agregarRes([...RES_IMG.keys()].slice(0, 7));
 $("imgTodasRes").onclick = () => agregarRes([...RES_IMG.keys()]);
@@ -689,8 +701,11 @@ $("imgBuscar").onclick = async () => {
   b.disabled = false; b.textContent = "Buscar imágenes";
 };
 $("imgRes").addEventListener("click", e => { const b = e.target.closest("[data-res]"); if (b) agregarUna(b, RES_IMG[+b.dataset.res]); });
-async function agregarUna(b, x) {
+// Tocar una foto de los resultados la agrega; tocarla otra vez la quita (queda marcada con ✓ mientras está en la lista)
+async function agregarUna(b, x, soloAgregar) {
   if (!x || b.getAttribute("aria-busy") === "true") return;
+  const k = IMGS.findIndex(y => y.origen === x.url);
+  if (k >= 0) { if (!soloAgregar) { URL.revokeObjectURL(IMGS[k].url); IMGS.splice(k, 1); pintarImgs(); } return; }
   b.setAttribute("aria-busy", "true");
   try {
     let blob = null;
@@ -699,8 +714,7 @@ async function agregarUna(b, x) {
       if (r.ok && /^image\//.test(r.headers.get("content-type") || "")) { blob = await r.blob(); break; }
     }
     if (!blob) throw new Error("Esa página no dejó descargar la imagen: prueba con otra.");
-    await procesar([new File([blob], "imagen", { type: blob.type })]);
-    b.style.borderColor = "var(--ok)";
+    await procesar([new File([blob], "imagen", { type: blob.type })], x.url);
   } catch (err) { setStatus(String(err.message || err), "err"); }
   b.removeAttribute("aria-busy");
 }
