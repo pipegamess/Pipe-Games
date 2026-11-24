@@ -3,7 +3,7 @@
 // - generar el certificado/factura de Éxito con los datos del cliente (lo descarga el Generador facturas Éxito)
 // - responder con IA (Claude, por el Worker) lo que las respuestas fijas no cubren
 import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js";
-import { promptPublicacion, CIERRE_BASE, CONSOLAS, leerJSON } from "../publicaciones/redactor.js?v=20261123b";
+import { promptPublicacion, CIERRE_BASE, CONSOLAS, leerJSON } from "../publicaciones/redactor.js?v=20261123c";
 import { buscar, productos, leer, garantiaDe, formatoPesos as cop, escapar as esc, METODOS } from "./motor.js";
 
 const { initializeApp, getApps, getApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);

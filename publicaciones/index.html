@@ -268,7 +268,7 @@ import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../me
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
-import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON } from "./redactor.js?v=20261123b";
+import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON } from "./redactor.js?v=20261123c";
 
 const $ = (id) => document.getElementById(id);
 let consola = "PS5";
@@ -741,9 +741,19 @@ $("imgPegarBtn").onclick = async () => {
 function setStatus(t, cls) { const s = $("status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
 
 
-function prompt() {
+function prompt(contexto = "") {
   return promptPublicacion({ juego: $("juego").value.trim(), version: $("version").value.trim(), consola: consolaNombre(), estado: $("estado").value,
-    dispo: $("dispo").value, precio: fmtPrecio(precioNum()), notas: $("notas").value.trim() });
+    dispo: $("dispo").value, precio: fmtPrecio(precioNum()), notas: $("notas").value.trim(), contexto });
+}
+// Antes de redactar se busca en internet la edición exacta (DLC, contenido adicional, Game-Key Card…); máximo 10 s
+async function investigar() {
+  const ver = $("version").value && $("version").value !== "ESTANDAR" ? " " + $("version").value : "";
+  const q = `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
+  try {
+    const r = await Promise.race([llamarWorker({ metodo: "INVESTIGAR", q }), new Promise((_, mal) => setTimeout(() => mal(new Error("tiempo")), 10000))]);
+    const j = await r.json().catch(() => ({}));
+    return String(j.contexto || "");
+  } catch (e) { return ""; }
 }
 let ctl = null;
 
@@ -772,7 +782,10 @@ async function generar(ev) {
   setStatus("Claude está escribiendo las dos publicaciones. Tarda unos segundos.");
   ctl = new AbortController();
   try {
-    const r = await redactar(prompt(), ctl.signal);
+    setStatus("Buscando en internet la información de esta edición (contenido, DLC, mejoras)…");
+    const contexto = await investigar();
+    setStatus(contexto ? "Encontré información de la edición. Claude está escribiendo las publicaciones…" : "Claude está escribiendo las publicaciones…");
+    const r = await redactar(prompt(contexto), ctl.signal);
     if (!r || typeof r !== "object" || !r.descripcion || !r.instagram) throw { code: "invalid_json" };
     estadoGen = {
       descripcion: String(r.descripcion),

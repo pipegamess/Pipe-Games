@@ -108,6 +108,30 @@ export default {
       try { return responder({ url: await expandirMaps(String(pedido.url || "")) }); }
       catch (e) { return responder({ error: "No se pudo abrir el link: " + (e.message || e) }, 400); }
     }
+    // Investigar un producto antes de redactar: resultados de Google (Serper) en español y en inglés, para que la IA
+    // conozca la edición exacta (DLC, contenido adicional, Game-Key Card, mejoras de la consola…)
+    if (String(pedido.metodo || "").toUpperCase() === "INVESTIGAR") {
+      const q = String(pedido.q || "").replace(/\s+/g, " ").trim().slice(0, 140);
+      if (!q || !env.SERPER_API_KEY) return responder({ contexto: "" });
+      const buscar = async (consulta, hl, gl) => {
+        const r = await fetch("https://google.serper.dev/search", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ q: consulta, hl, gl, num: 10 }) });
+        return r.ok ? r.json() : {};
+      };
+      try {
+        const [es, en] = await Promise.all([buscar(q, "es", "co"), buscar(q + " edition includes DLC content", "en", "us")]);
+        const lineas = [], vistos = new Set();
+        for (const j of [es, en]) {
+          const kg = j.knowledgeGraph; if (kg?.description) lineas.push("- " + (kg.title ? kg.title + ": " : "") + kg.description);
+          if (j.answerBox?.snippet || j.answerBox?.answer) lineas.push("- " + (j.answerBox.snippet || j.answerBox.answer));
+          for (const o of (j.organic || []).slice(0, 8)) {
+            const k = (o.snippet || "").slice(0, 60); if (!o.snippet || vistos.has(k)) continue; vistos.add(k);
+            let dom = ""; try { dom = new URL(o.link).hostname.replace(/^www\./, ""); } catch {}
+            lineas.push("- " + (o.title || "") + " (" + dom + "): " + o.snippet);
+          }
+        }
+        return responder({ contexto: lineas.join("\n").slice(0, 5000) });
+      } catch (e) { return responder({ contexto: "" }); }
+    }
     // Buscar imágenes de un juego: primero en Amazon y después en toda la web (Google Imágenes por Serper.dev,
     // secreto SERPER_API_KEY). Devuelve una lista corta con la URL de la imagen en su mayor tamaño.
     if (String(pedido.metodo || "").toUpperCase() === "BUSCAR_IMAGENES") {

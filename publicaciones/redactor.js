@@ -23,7 +23,15 @@ Producto:
 - Estado: ${d.estado || "NUEVO Y SELLADO"}
 - Disponibilidad: ${DISPO[d.dispo] || DISPO.inmediata}
 - Precio: ${d.precio || "sin precio"}
-- Notas del vendedor: ${d.notas || "ninguna"}
+- Notas del vendedor: ${d.notas || "ninguna"}${d.contexto ? `
+
+Información encontrada en internet sobre este producto (tiendas, reseñas y páginas oficiales; úsala para los datos concretos, ignora lo que no corresponda a este juego, esta edición o esta consola):
+${d.contexto}
+
+Con esa información:
+- Si la edición incluye DLC, expansiones, pases de temporada, contenido descargable, mejoras para la consola u otro contenido adicional, dedícale un párrafo completo de la descripción con los nombres exactos de ese contenido, y menciónalo también en Instagram (por ejemplo en la línea 📦 o en un párrafo).
+- Si es una "Game-Key Card" (tarjeta llave de juego: la caja trae una tarjeta que habilita la descarga, el juego no viene completo en el cartucho), dilo con claridad en la descripción: se necesita conexión a internet y espacio en la consola para descargarlo la primera vez.
+- Usa los nombres oficiales de modos, regiones, personajes y mejoras que aparezcan ahí; no inventes nada que no esté en la información ni sea conocido del juego.` : ""}
 - Fecha de hoy: ${hoy}
 
 Devuelve SOLO un objeto JSON con estas claves:
