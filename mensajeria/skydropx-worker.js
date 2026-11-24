@@ -326,7 +326,7 @@ async function galeriaAmazon(env, enlace, nombre) {
     }
     return out;
   };
-  let fotos = [], bloqueado = false;
+  let fotos = [], bloqueado = false, via = "amazon";
   try {
     const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", "Accept-Language": "en-US,en;q=0.9", Accept: "text/html,application/xhtml+xml" } });
     const html = await r.text();
@@ -339,10 +339,15 @@ async function galeriaAmazon(env, enlace, nombre) {
     const j = await r.json().catch(() => ({}));
     const texto = [j.text, j.markdown, JSON.stringify(j.metadata || {})].join("\n");
     if (!titulo) titulo = String(j.metadata?.title || j.metadata?.["og:title"] || "").replace(/^Amazon\.com:\s*/i, "");
-    fotos = limpiar(deHtml(texto).concat([...texto.matchAll(/https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%-]{9,}(?:\._[A-Z0-9_,]+_)?\.(?:jpg|jpeg|png)/g)].map(m => m[0])));
+    via = "lector";
+    // Solo fotos de la galería del producto: el bloque colorImages o las miniaturas de la galería (…_AC_US40_ / _SR38,50_).
+    // Las demás imágenes de la página son de otros productos (patrocinados, "también compraron"…) y se descartan.
+    let lista = deHtml(texto);
+    if (!lista.length) lista = [...texto.matchAll(/https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%-]{9,}\._(?:AC_)?(?:US40|SR38,50|SS40|US100)_\.(?:jpg|jpeg|png)/g)].map(m => m[0]);
+    fotos = limpiar(lista);
   }
   if (!fotos.length) throw new Error(bloqueado ? "Amazon no dejó leer la página en este momento" + (env.SERPER_API_KEY ? "" : " (con el secreto SERPER_API_KEY se puede leer por otro camino)") + ". Intenta de nuevo o usa la franja para pegar." : "Esa página de Amazon no tiene fotos que se puedan leer.");
-  return { asin, titulo, url, imagenes: fotos.slice(0, 12) };
+  return { asin, titulo, url, via, imagenes: fotos.slice(0, 12) };
 }
 // Amazon guarda cada imagen en varios tamaños (…_AC_SL500_.jpg): quitando el sufijo se obtiene la original, la más grande
 function grandeAmazon(u) { return /media-amazon\.com|images-amazon\.com|ssl-images-amazon/.test(u) ? u.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png)$/i, ".$1") : u; }

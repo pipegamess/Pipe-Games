@@ -618,7 +618,7 @@ $("imgAmazon").onclick = async () => {
     RES_IMG = j.imagenes || [];
     $("imgRes").innerHTML = RES_IMG.map((x, i) => `<button type="button" data-res="${i}" title="${esc(x.titulo)}"><img src="${esc(x.mini)}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="fuente"><span class="amz">Amazon</span> · foto ${i + 1}</span></button>`).join("");
     $("imgResAcc").hidden = !RES_IMG.length;
-    $("imgBuscarNota").textContent = `${j.titulo || "Producto de Amazon"} · ${RES_IMG.length} fotos. Toca las que quieras, o “Agregar las 7 primeras” (normalmente 4 de la carátula y 3 del juego).`;
+    $("imgBuscarNota").innerHTML = `<b>${esc(j.titulo || "Producto de Amazon")}</b> (${esc(j.asin || "")}) · ${RES_IMG.length} fotos${j.via === "lector" ? " · leídas por el lector de páginas" : ""}. <a href="${esc(j.url)}" target="_blank" rel="noopener">Ver en Amazon</a>. ${esEnlace ? "" : "Si no es el juego correcto, pega el enlace del producto. "}Toca las que quieras, o “Agregar las 7 primeras” (normalmente 4 de la carátula y 3 del juego).`;
   } catch (e) { $("imgBuscarNota").textContent = String(e.message || e); }
   b.disabled = false; b.textContent = "Fotos del anuncio de Amazon";
 };
