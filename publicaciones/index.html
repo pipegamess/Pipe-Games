@@ -441,13 +441,20 @@ let ocrIng = null;
 const cargarScript = src => new Promise((ok, mal) => { const sc = document.createElement("script"); sc.src = src; sc.onload = ok; sc.onerror = () => mal(new Error("no se pudo cargar el lector de texto")); document.head.append(sc); });
 const blobAImagen = b => new Promise((ok, mal) => { const u = URL.createObjectURL(b), im = new Image(); im.onload = () => { URL.revokeObjectURL(u); ok(im); }; im.onerror = mal; im.src = u; });
 let TRAD = null; // { i, lineas: [{ texto, es, bbox, usar }] }
+// Descarta lo que el OCR "inventa" sobre dibujos y logos: exige buena confianza y palabras de verdad
+function pareceTexto(n) {
+  const t = n.texto, letras = (t.match(/[A-Za-zÁÉÍÓÚáéíóúÑñ]/g) || []).length, visibles = t.replace(/\s/g, "").length;
+  const palabras = t.split(/\s+/).filter(w => /^[A-Za-z][A-Za-z'’.,!?:;-]*$/.test(w) && w.replace(/[^A-Za-z]/g, "").length >= 3);
+  return n.conf >= 70 && visibles >= 3 && letras / visibles >= 0.75 && palabras.length >= 1;
+}
 async function traducirImagen(i) {
   const caja = $("imgTrad"), x = IMGS[i];
   caja.hidden = false; caja.innerHTML = `<p class="note">Leyendo el texto de la imagen ${i + 1}… (la primera vez tarda un poco más)</p>`;
   caja.scrollIntoView({ behavior: "smooth", block: "nearest" });
   try {
     if (!window.Tesseract) await cargarScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-    if (!ocrIng) ocrIng = await Tesseract.createWorker("eng");
+    // Segmentación automática (PSM 3): la de fábrica (bloque único) une en una sola línea textos separados de una portada
+    if (!ocrIng) { ocrIng = await Tesseract.createWorker("eng"); await ocrIng.setParameters({ tessedit_pageseg_mode: "3" }); }
     const im = await blobAImagen(x.blob);
     const cv = document.createElement("canvas"); cv.width = im.naturalWidth; cv.height = im.naturalHeight; cv.getContext("2d").drawImage(im, 0, 0);
     // El OCR lee mal cuando hay zonas claras y oscuras en la misma imagen: se lee completa y además por franjas, y se juntan
@@ -457,11 +464,14 @@ async function traducirImagen(i) {
     for (let f = 0; f < franjas.length; f++) {
       const [y0, y1] = franjas[f];
       caja.innerHTML = `<p class="note">Leyendo el texto de la imagen ${i + 1}… (${f + 1} de ${franjas.length}; la primera vez tarda un poco más)</p>`;
-      const pc = document.createElement("canvas"); pc.width = W; pc.height = y1 - y0; pc.getContext("2d").drawImage(cv, 0, y0, W, y1 - y0, 0, 0, W, y1 - y0);
+      // Las franjas se leen al doble de tamaño para alcanzar letra pequeña (avisos, contraportadas)
+      const z = f === 0 ? 1 : 2;
+      const pc = document.createElement("canvas"); pc.width = W * z; pc.height = (y1 - y0) * z;
+      const pcx = pc.getContext("2d"); pcx.imageSmoothingQuality = "high"; pcx.drawImage(cv, 0, y0, W, y1 - y0, 0, 0, pc.width, pc.height);
       const { data } = await ocrIng.recognize(pc);
       for (const l of data.lines || []) {
-        const n = { texto: String(l.text || "").replace(/\s+/g, " ").trim(), conf: l.confidence, bbox: { x0: l.bbox.x0, x1: l.bbox.x1, y0: l.bbox.y0 + y0, y1: l.bbox.y1 + y0 } };
-        if (n.conf < 55 || !/[A-Za-z]{2,}/.test(n.texto) || n.bbox.x1 - n.bbox.x0 <= 20 || n.bbox.y1 - n.bbox.y0 <= 10) continue;
+        const n = { texto: String(l.text || "").replace(/\s+/g, " ").trim(), conf: l.confidence, bbox: { x0: Math.floor(l.bbox.x0 / z), x1: Math.ceil(l.bbox.x1 / z), y0: Math.floor(l.bbox.y0 / z) + y0, y1: Math.ceil(l.bbox.y1 / z) + y0 } };
+        if (!pareceTexto(n) || n.bbox.x1 - n.bbox.x0 <= 15 || n.bbox.y1 - n.bbox.y0 <= 6) continue;
         // Una línea pegada al borde de la franja puede estar cortada: se deja para la franja que la tenga entera
         if (f > 0 && ((l.bbox.y0 < 3 && y0 > 0) || (l.bbox.y1 > pc.height - 3 && y1 < H))) continue;
         const k = lineas.findIndex(x => solapa(x.bbox, n.bbox));
@@ -478,7 +488,8 @@ Líneas:
 ${lineas.map((l, k) => (k + 1) + ". " + l.texto).join("\n")}`;
     const r = await redactar(p);
     const t = Array.isArray(r?.t) ? r.t : Object.values(r || {}).find(Array.isArray) || [];
-    lineas.forEach((l, k) => { l.es = String(t[k] ?? l.texto).trim(); l.usar = l.es && l.es.toLowerCase() !== l.texto.toLowerCase(); });
+    // Las letras muy grandes suelen ser el logo o el título del juego: quedan sin marcar (se pueden marcar a mano)
+    lineas.forEach((l, k) => { l.es = String(t[k] ?? l.texto).trim(); l.logo = l.bbox.y1 - l.bbox.y0 > im.naturalHeight * 0.035; l.usar = !l.logo && l.es && l.es.toLowerCase() !== l.texto.toLowerCase(); });
     TRAD = { i, lineas };
     pintarTrad();
   } catch (e) {
@@ -489,7 +500,7 @@ function pintarTrad() {
   const c = $("imgTrad");
   c.innerHTML = `<h3 style="margin:0;font-family:var(--display)">Traducción de la imagen ${TRAD.i + 1}</h3>
     <p class="note">Revisa o corrige cada línea. Las marcadas se reemplazan en la imagen; el resto de la imagen queda igual. Funciona mejor cuando el texto está sobre un fondo liso.</p>
-    ${TRAD.lineas.map((l, k) => `<div class="linea"><input type="checkbox" data-tradusar="${k}"${l.usar ? " checked" : ""} aria-label="Reemplazar esta línea"><input type="text" data-trades="${k}" value="${esc(l.es)}"><small>${esc(l.texto)}</small></div>`).join("")}
+    ${TRAD.lineas.map((l, k) => `<div class="linea"><input type="checkbox" data-tradusar="${k}"${l.usar ? " checked" : ""} aria-label="Reemplazar esta línea"><input type="text" data-trades="${k}" value="${esc(l.es)}"><small>${esc(l.texto)}${l.logo ? " · letra grande (¿logo o título?): no se cambia a menos que la marques" : ""}</small></div>`).join("")}
     <div class="img-op"><button class="chip img-subir" type="button" data-tradaplicar>Aplicar a la imagen</button><button class="ghost" type="button" data-tradcerrar>Cancelar</button></div>`;
 }
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -512,7 +523,7 @@ $("imgTrad").addEventListener("click", async e => {
 });
 function reemplazarLinea(cx, l) {
   const W = cx.canvas.width, H = cx.canvas.height, borde = 3;
-  const pad = Math.max(6, Math.round((l.bbox.y1 - l.bbox.y0) * 0.15)); // margen para no dejar sombras de las letras
+  const pad = Math.min(12, Math.max(2, Math.round((l.bbox.y1 - l.bbox.y0) * 0.15))); // margen para no dejar sombras de las letras
   const x0 = Math.max(borde, l.bbox.x0 - pad), y0 = Math.max(borde, l.bbox.y0 - pad);
   const x1 = Math.min(W - 1 - borde, l.bbox.x1 + pad), y1 = Math.min(H - 1 - borde, l.bbox.y1 + pad);
   const w = x1 - x0 + 1, h = y1 - y0 + 1;
@@ -528,8 +539,13 @@ function reemplazarLinea(cx, l) {
   const tinta = [];
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const p = px(x, y); if (dist(p) > 120) tinta.push(p); }
   const colorTexto = tinta.length > 20 ? [0, 1, 2].map(c => med(tinta.map(p => d[p + c]))) : (fondo[0] + fondo[1] + fondo[2] > 384 ? [20, 20, 20] : [245, 245, 245]);
-  // Borra el texto: cada punto toma el promedio de los bordes izquierdo/derecho y superior/inferior (sigue degradados suaves)
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+  // Borra el texto. Si alrededor casi todo es de un mismo color (recuadro, franja), se rellena con ese color;
+  // si no, cada punto toma el promedio de los bordes izquierdo/derecho y superior/inferior (sigue degradados suaves)
+  const parecidos = borde4.filter(p => dist(p) < 45);
+  if (parecidos.length >= borde4.length * 0.6) {
+    const solido = [0, 1, 2].map(c => med(parecidos.map(p => d[p + c])));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const p = px(x, y); d[p] = solido[0]; d[p + 1] = solido[1]; d[p + 2] = solido[2]; }
+  } else for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     const wx = (x - x0 + 1) / (w + 1), wy = (y - y0 + 1) / (h + 1), p = px(x, y);
     const L = px(rx, y), R = px(rx + rw - 1, y), T = px(x, ry), B = px(x, ry + rh - 1);
     for (let c = 0; c < 3; c++) d[p + c] = ((1 - wx) * d[L + c] + wx * d[R + c] + (1 - wy) * d[T + c] + wy * d[B + c]) / 2;
