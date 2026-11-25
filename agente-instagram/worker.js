@@ -126,8 +126,10 @@ async function procesar(datos, env) {
       if (!cliente) continue;
       const texto = (m.text || "").trim();
       if (!texto) {
+        // Reacciones, mensajes borrados y avisos sin contenido: no son mensajes del cliente
+        if (m.is_deleted || m.is_unsupported || !(m.attachments && m.attachments.length)) continue;
         // Fotos, audios, historias: se guardan como contexto y los atiende Felipe
-        await guardarTurno(env, cliente, "user", "[El cliente envió " + ((m.attachments && m.attachments[0] && m.attachments[0].type) || "un adjunto") + "]");
+        await guardarTurno(env, cliente, "user", "[ADJUNTO: el cliente envió " + tipoAdjunto(m.attachments[0].type) + "]");
         continue;
       }
       await guardarTurno(env, cliente, "user", texto);
@@ -196,7 +198,7 @@ async function revisarChats(env) {
   const ahora = Date.now();
   let inicio = Number(await env.AGENTE.get("revision_inicio"));
   if (!inicio) { inicio = ahora; await env.AGENTE.put("revision_inicio", String(ahora)); return; } // no contesta chats viejos
-  const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from}&limit=15`,
+  const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from,attachments,shares}&limit=15`,
     { headers: { Authorization: "Bearer " + token } });
   const j = await r.json().catch(() => ({}));
   if (!j.data) { console.log("revisar chats", r.status, JSON.stringify(j).slice(0, 300)); return; }
@@ -228,16 +230,34 @@ async function revisarChats(env) {
         }
         continue;
       }
-      await guardarTurno(env, cliente, "user", texto || "[El cliente envió una foto, audio o adjunto]");
-      pendiente = !!texto;
+      if (!texto) {
+        // sin texto: solo cuenta si de verdad trae un adjunto (las reacciones llegan vacías)
+        const adj = (m.attachments && m.attachments.data && m.attachments.data[0]) || (m.shares && m.shares.data && m.shares.data[0]);
+        if (!adj) continue;
+        await guardarTurno(env, cliente, "user", "[ADJUNTO: el cliente envió " + tipoAdjunto(adj.mime_type || adj.type || (m.shares ? "share" : "")) + "]");
+        continue;
+      }
+      await guardarTurno(env, cliente, "user", texto);
+      pendiente = true;
     }
     if (pendiente) await responderCliente(env, cliente);
   }
 }
 
+function tipoAdjunto(t) {
+  t = String(t || "").toLowerCase();
+  if (/image|photo|imagen/.test(t)) return "una foto";
+  if (/audio/.test(t)) return "un audio";
+  if (/video|reel|ig_reel/.test(t)) return "un video";
+  if (/story/.test(t)) return "una historia";
+  if (/share|post/.test(t)) return "una publicación compartida";
+  return "un archivo adjunto";
+}
+
 /* ---------- historial por chat (24 h, igual que la ventana de Instagram) ---------- */
 async function leerHistorial(env, cliente) {
-  try { return JSON.parse(await env.AGENTE.get("hist:" + cliente) || "[]"); } catch { return []; }
+  // se quitan los avisos viejos de "adjunto" que eran reacciones o mensajes vacíos
+  try { return JSON.parse(await env.AGENTE.get("hist:" + cliente) || "[]").filter(t => !/^\[El cliente envió (una foto, audio o adjunto|un adjunto)\]$/.test(String(t.content))); } catch { return []; }
 }
 async function guardarTurno(env, cliente, rol, texto) {
   const h = await leerHistorial(env, cliente);
@@ -381,6 +401,7 @@ Escribe al final de tu mensaje la marca [HUMANO] (el cliente no la ve; avisa a F
 - Está molesto o insiste en hablar con una persona.
 En esos casos responde solo una frase corta: ${h.dentro ? `"¡Listo! Ya le avisé a Felipe y te atenderá personalmente en breve. 🙌"` : `"¡Listo! Ya le avisé a Felipe. Como estamos fuera del horario de atención (lunes a sábado de 9:30 a. m. a 7:00 p. m.), te responderá personalmente ${h.siguiente}. 🙌"`}
 - Si el texto empieza con "[Felipe respondió]", es un mensaje que escribió Felipe: tenlo en cuenta y no lo contradigas.
+- Solo los mensajes que empiezan con "[ADJUNTO:" son fotos, audios, videos o publicaciones que el cliente envió: no puedes verlos ni escucharlos; dile con amabilidad que Felipe los revisará o pídele que te escriba lo que necesita. Cualquier otro mensaje es texto escrito por el cliente, aunque sea muy corto (un "?", "hola", "ok", un emoji): NUNCA digas que no puedes ver fotos o audios si el último mensaje del cliente es texto. Si es un "?" o algo poco claro, pregúntale amablemente en qué le puedes ayudar o retoma lo último que estaban hablando.
 
 LISTA DISPONIBLE (ID | nombre - consola | precio). Todo lo de esta lista está en stock ahora y es lo ÚNICO que puedes ofrecer:
 ${lista || "(no se pudo cargar la lista: no confirmes disponibilidad ni precios; pide al cliente escribir PIPE para que Felipe le confirme)"}
