@@ -47,7 +47,8 @@ export default {
         token: !!(fb || env.IG_TOKEN || (env.AGENTE && await env.AGENTE.get("token"))),
         cuenta: (env.AGENTE && await env.AGENTE.get("fb_cuenta_nombre")) || null,
         secreto: !!(env.META_APP_SECRET || env.IG_APP_SECRET), app: !!(env.META_APP_ID && env.META_CONFIG_ID),
-        verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE
+        verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE,
+        listaEspera: { clave: !!env.CLAVE_AGENTE, enlaceSkydropx: !!env.SKYDROPX, ultima: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultima_espera") || "null") : null }
       });
     }
     if (req.method === "GET" && url.pathname === "/catalogo") {
@@ -151,13 +152,15 @@ async function responderCliente(env, cliente) {
   // [ESPERA: TÍTULO | CONSOLA] → el cliente aceptó quedar en la lista de espera
   const esperas = [...respuesta.matchAll(/\[ESPERA:([^\]]*)\]/g)].map(m => { const [titulo, consola, nombre, celular] = m[1].split("|").map(x => x.trim()); return { titulo, consola, nombre, celular }; }).filter(e => e.titulo);
   respuesta = respuesta.replace(/\[ESPERA:[^\]]*\]/g, "").replace(/[ \t]+\n/g, "\n").trim();
-  for (const e of esperas) await anotarEspera(env, cliente, e).catch(err => console.log("espera", err.message));
+
   if (respuesta) {
     await env.AGENTE.put("ultimo_bot:" + cliente, respuesta.slice(0, 4000), { expirationTtl: 86400 });
     await enviar(env, cliente, respuesta);
     await guardarTurno(env, cliente, "assistant", respuesta);
   }
   if (pasarAFelipe) await env.AGENTE.put("pausa:" + cliente, "humano", { expirationTtl: 12 * 3600 });
+  // la lista de espera se guarda después de responder, para que el cliente no espere
+  for (const e of esperas) await anotarEspera(env, cliente, e).catch(err => console.log("espera", err.message));
 }
 
 /* ---------- lista de espera (se guarda en el panel de Pipe Games a través del Worker de Skydropx) ---------- */
@@ -173,11 +176,16 @@ async function anotarEspera(env, cliente, e) {
       usuario = j.username || ""; nombre = j.name || "";
     }
   } catch {}
-  const r = await fetch(env.ESPERA_URL || ESPERA_URL, {
+  // Entre dos Workers de la misma cuenta, Cloudflare no deja llamar la dirección workers.dev (error 1042):
+  // se usa el enlace de servicio SKYDROPX (Settings → Bindings) si existe.
+  const llamar = env.SKYDROPX ? (u, o) => env.SKYDROPX.fetch(new Request(u, o)) : fetch;
+  const r = await llamar(env.ESPERA_URL || ESPERA_URL, {
     method: "POST", headers: { "Content-Type": "application/json", "X-Clave": env.CLAVE_AGENTE },
     body: JSON.stringify({ igId: cliente, usuario, nombre: e.nombre || nombre, celular: e.celular || "", titulo: e.titulo, consola: e.consola })
   });
-  console.log("espera", r.status, (await r.text()).slice(0, 200));
+  const txt = (await r.text()).slice(0, 300);
+  console.log("espera", r.status, txt);
+  await env.AGENTE.put("ultima_espera", JSON.stringify({ t: new Date().toISOString(), estado: r.status, respuesta: txt.slice(0, 200), juego: e.titulo }), { expirationTtl: 7 * 86400 });
 }
 
 /* ---------- revisión de chats cada minuto (por si Meta no envía los avisos) ---------- */
