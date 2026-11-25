@@ -437,7 +437,7 @@ header.barra{display:flex;align-items:center;justify-content:space-between;gap:1
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script type="module">
 import { firebaseConfig, ADMIN_UID, URL_APK, FIREBASE_VERSION, TOMTOM_KEY, SKYDROPX_URL } from "./config.js?v=20261119g";
-import * as C from "./comun.js?v=20261119g";
+import * as C from "./comun.js?v=20261125a";
 import * as T from "./tarifas-envio.js?v=20261119g";
 import { PRODUCTOS } from "./productos-catalogo.js?v=20261119g";
 const V = FIREBASE_VERSION;
@@ -678,12 +678,15 @@ async function procesarSolicitudes(lista) {
         for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
         const ciudad = C.CIUDADES[d.ciudad] ? d.ciudad : "bogota";
         const p = { lat: d.lat, lng: d.lng }, loc = C.localidadEn(ciudad, p);
+        // Si el cliente escribió otra localidad en el barrio o complemento (ej. "Villemar Fontibón") y el punto cayó en otra, se marca para revisar
+        const locEscrita = ciudad === "bogota" ? C.localidadMencionada([d.barrio, d.complemento].join(" ")) : "";
+        const dudosa = !!locEscrita && locEscrita !== loc;
         const tipo = pd.tipoEnvio || "Directo", valor = tipo === "Contra entrega" ? pd.valor || 0 : 0;
         const g = {
           numero, remitente: rec.remitente,
           origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
           cliente: d.nombre, telefono: d.telefono, correo: d.correo || "",
-          destino: { direccion: d.direccion, complemento: d.complemento || "", barrio: d.barrio || "", referencia: [limpiaComp(d.complemento), d.barrio ? "Barrio " + d.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[ciudad].nombre, lat: d.lat, lng: d.lng, aprox: !!d.sinUbicacion, verificar: !!d.sinUbicacion },
+          destino: { direccion: d.direccion, complemento: d.complemento || "", barrio: d.barrio || "", referencia: [limpiaComp(d.complemento), d.barrio ? "Barrio " + d.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[ciudad].nombre, lat: d.lat, lng: d.lng, aprox: !!d.sinUbicacion || dudosa, verificar: !!d.sinUbicacion || dudosa, ...(dudosa ? { localidadEscrita: locEscrita } : {}) },
           contenido: pd.contenido || "", nota: "",
           valor, cobro: valor ? "contraentrega" : "pagado", tipoEnvio: tipo, tipoEnvioOtro: "", marketplace: null,
           zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
@@ -1501,11 +1504,12 @@ async function procesarSaldos(lista) {
           numero = C.numeroGuia(prefijo, k);
           for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
           const loc = C.localidadEn(rsp.ciudadLocal, { lat: rsp.lat, lng: rsp.lng });
+          const locEscrita = rsp.ciudadLocal === "bogota" ? C.localidadMencionada([rsp.barrio, rsp.complemento].join(" ")) : "", dudosa = !!locEscrita && locEscrita !== loc;
           g = {
             numero, remitente: rec.remitente,
             origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
             cliente: titulo(sd.nombre), telefono: rsp.telefono || "",
-            destino: { direccion: rsp.direccion, complemento: rsp.complemento || "", barrio: rsp.barrio || "", referencia: [limpiaComp(rsp.complemento), rsp.barrio ? "Barrio " + rsp.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[rsp.ciudadLocal].nombre, lat: rsp.lat, lng: rsp.lng, aprox: !!rsp.sinUbicacion, verificar: !!rsp.sinUbicacion },
+            destino: { direccion: rsp.direccion, complemento: rsp.complemento || "", barrio: rsp.barrio || "", referencia: [limpiaComp(rsp.complemento), rsp.barrio ? "Barrio " + rsp.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[rsp.ciudadLocal].nombre, lat: rsp.lat, lng: rsp.lng, aprox: !!rsp.sinUbicacion || dudosa, verificar: !!rsp.sinUbicacion || dudosa },
             contenido: sd.items ? sd.items.map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") : sd.producto + ((sd.unidades || 1) > 1 ? " x" + sd.unidades : ""), nota: "",
             valor: 0, cobro: "pagado", tipoEnvio: "Directo", tipoEnvioOtro: "", marketplace: null,
             zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
@@ -1578,11 +1582,12 @@ async function crearGuiaPagada(id) {
       numero = C.numeroGuia(prefijo, k);
       for (let i = 0; i < 20 && (await tx.get(doc(db, "guias", numero))).exists(); i++) { k++; numero = C.numeroGuia(prefijo, k); }
       const loc = C.localidadEn(c.ciudadLocal, { lat, lng });
+      const locEscrita = c.ciudadLocal === "bogota" ? C.localidadMencionada([c.barrio, c.complemento].join(" ")) : "", dudosa = !!locEscrita && locEscrita !== loc;
       const g = {
         numero, remitente: rec.remitente,
         origen: { direccion: rec.direccion, localidad: rec.localidad || C.localidadCercana(rec), lat: rec.lat, lng: rec.lng },
         cliente: titulo(c.nombre || r.nombre), telefono: c.telefono || "",
-        destino: { direccion: c.direccion, complemento: c.complemento || "", barrio: c.barrio || "", referencia: [limpiaComp(c.complemento), c.barrio ? "Barrio " + c.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[c.ciudadLocal].nombre, lat, lng, aprox: !exacta, verificar: !exacta },
+        destino: { direccion: c.direccion, complemento: c.complemento || "", barrio: c.barrio || "", referencia: [limpiaComp(c.complemento), c.barrio ? "Barrio " + c.barrio : ""].filter(Boolean).join(" · "), localidad: loc, ciudad: C.CIUDADES[c.ciudadLocal].nombre, lat, lng, aprox: !exacta || dudosa, verificar: !exacta || dudosa },
         contenido: (r.items || []).map(i => i.n + (i.q > 1 ? " x" + i.q : "")).join(", ") || r.detalle || r.producto, nota: "",
         valor: 0, cobro: "pagado", tipoEnvio: "Directo", tipoEnvioOtro: "", marketplace: null,
         zonas: [...new Set([rec.localidad || C.localidadCercana(rec), loc].filter(Boolean))],
@@ -2924,7 +2929,7 @@ function pintarDetalle() {
       return (f && f !== "sin" ? `<div class="panel"><h3>${extra.length ? "Fotos" : "Foto"} ${nom}</h3><div class="fotos-entrega">${[f, ...extra].map((x, i) => `<img class="foto-entrega" alt="Foto ${i + 1} ${nom}" src="${x}">`).join("")}</div></div>` : `<div class="vacio">${f === "sin" ? (g.fotosBorradas ? "Las fotos de esta guía se borraron (más de 90 días)." : "Sin foto " + nom + ".") : "Cargando foto…"}</div>`)
         + (comp ? `<div class="panel"><h3>Comprobante de Nequi</h3><img class="foto-entrega" alt="Comprobante de pago por Nequi" src="${comp}"></div>` : ""); })()}
     ${bloqueEntrega(g)}
-    ${g.destino?.verificar || S.editUbic ? `<div class="panel aviso-ubic"><b>${g.destino?.verificar ? "Ubicación cercana, comprobar manualmente." : "Editar ubicación de la entrega"}</b><span class="nota">${g.destino?.verificar ? "El sistema no encontró la dirección exacta y puso un punto cercano. " : ""}Arrastra el marcador al sitio correcto o toca el mapa. También puedes pegar un link de Google Maps o las coordenadas.</span>
+    ${g.destino?.verificar || S.editUbic ? `<div class="panel aviso-ubic"><b>${g.destino?.verificar ? (g.destino?.localidadEscrita ? `El cliente escribió ${esc(g.destino.localidadEscrita)} pero el punto quedó en ${esc(g.destino.localidad || "otra localidad")}: comprueba la ubicación.` : "Ubicación cercana, comprobar manualmente.") : "Editar ubicación de la entrega"}</b><span class="nota">${g.destino?.verificar ? "El sistema no encontró la dirección exacta y puso un punto cercano. " : ""}Arrastra el marcador al sitio correcto o toca el mapa. También puedes pegar un link de Google Maps o las coordenadas.</span>
       <div class="fila" style="grid-template-columns:minmax(0,1fr) auto;align-items:end"><label>Busca el lugar o la dirección<input id="corrLink" type="search" placeholder="Ej. Zue Ámbar Soacha · Calle 26 # 68-10" autocomplete="off"></label><button class="btn sec chico" data-acc="usarLink">Buscar</button></div>
       <span class="nota" style="margin-top:-4px">Mientras escribes aparecen los lugares encontrados; toca el correcto. También acepta coordenadas o un link de Google Maps.</span>
       <div class="error" id="corrErr"></div>
@@ -3021,10 +3026,17 @@ $("#hojaDetalle").addEventListener("click", async e => {
   }
   if (a === "guardarUbic" || a === "ubicOk") {
     // Sin mover el punto se guarda el mismo; dirección, complemento y barrio se guardan siempre
-    const p = a === "guardarUbic" ? (S.corr || g.destino) : g.destino;
+    let p = a === "guardarUbic" ? (S.corr || g.destino) : g.destino;
     if (!p || p.lat == null) { toast("Ubica el punto en el mapa"); return; }
     b.disabled = true;
     try {
+      // Si se corrigió la dirección escrita y no se movió el punto, se vuelve a ubicar la dirección nueva en el mapa
+      const dirNueva = ($("#corrDir")?.value ?? "").trim();
+      if (a === "guardarUbic" && !S.corr && dirNueva && dirNueva !== (g.destino?.direccion || "")) {
+        const ck = Object.keys(C.CIUDADES).find(k => C.CIUDADES[k].nombre === g.destino?.ciudad) || "bogota";
+        const r = await tomtom(dirNueva, "geocode", ck).catch(() => []);
+        if (r[0]) p = { lat: r[0].lat, lng: r[0].lng };
+      }
       // Localidad del punto nuevo, barrio corregido (en el campo y en la referencia) y zonas del mensajero
       const loc = locDeCorr(g, p), barrio = ($("#corrBarrio")?.value ?? g.destino?.barrio ?? "").trim().replace(/^barrio\s+/i, "");
       const direccion = ($("#corrDir")?.value ?? g.destino?.direccion ?? "").trim() || g.destino?.direccion || "";
@@ -3033,7 +3045,9 @@ $("#hojaDetalle").addEventListener("click", async e => {
       const partes = String(g.destino?.referencia || "").split(" · ").filter(x => x && !(viejo && x.toLowerCase() === ("barrio " + viejo).toLowerCase()) && !/^barrio\s/i.test(x) && !(compViejo && x.trim().toLowerCase() === compViejo));
       const referencia = [complemento, ...partes.filter(x => x.trim().toLowerCase() !== complemento.toLowerCase()), barrio ? "Barrio " + barrio : ""].filter(Boolean).join(" · ");
       const zonas = [...new Set([...(g.zonas || []).filter(z => z !== g.destino?.localidad || z === g.origen?.localidad), loc].filter(Boolean))];
-      await guardarGuia(n, { destino: { ...g.destino, direccion, complemento, lat: p.lat, lng: p.lng, localidad: loc, barrio, referencia, aprox: false, verificar: false }, zonas });
+      const locEscrita = g.destino?.ciudad && g.destino.ciudad !== "Bogotá" ? "" : C.localidadMencionada([barrio, complemento].join(" "));
+      if (locEscrita && locEscrita !== loc) toast(`Ojo: el barrio dice ${locEscrita} pero el punto está en ${loc}. Mueve el punto si no es correcto.`);
+      await guardarGuia(n, { destino: { ...g.destino, direccion, complemento, lat: p.lat, lng: p.lng, localidad: loc, barrio, referencia, aprox: false, verificar: false, localidadEscrita: null }, zonas });
       S.corr = null; S.editUbic = false; S.corrBarrio = null; S.corrBarrioManual = false; S.corrDir = null; S.corrComp = null; toast(a === "guardarUbic" ? "Dirección y ubicación guardadas" : "Ubicación comprobada");
     } catch (err) { toast(C.mensajeError(err)); b.disabled = false; }
     return;

@@ -29,6 +29,15 @@ const enChia = p => p.lat > 4.835 && p.lng < -73.99;
 // Aproximación del límite urbano de Soacha (sur-occidente de Bosa y Ciudad Bolívar)
 const enSoacha = p => p.lat < 4.602 && p.lng < -74.183;
 
+// Localidad de Bogotá escrita por el cliente en el barrio o el complemento ("Villemar Fontibón" → Fontibón)
+export function localidadMencionada(texto) {
+  const t = " " + String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ") + " ";
+  for (const [n] of LOCALIDADES) {
+    const k = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (t.includes(" " + k + " ")) return n;
+  }
+  return "";
+}
 export function localidadCercana(p) {
   if (!p || p.lat == null) return "";
   if (enSoacha(p)) return "Soacha";
@@ -126,7 +135,9 @@ export function normalizarDireccion(dir) {
   ];
   for (const [re, v] of vias) t = t.replace(re, v);
   t = t.replace(/\s*(#|No\.?|N°|Nº|numero|número)\s*/gi, " # ").replace(/\s+/g, " ").trim();
-  const m = t.match(/(Avenida Carrera|Avenida Calle|Carrera|Calle|Diagonal|Transversal)\s+(\d+\s*[A-Z]?(?:\s*Bis)?(?:\s*[A-Z])?(?:\s*Sur|\s*Este)?)\s*#?\s*(\d+\s*[A-Z]?(?:\s*Bis)?)\s*-\s*(\d+)(\s*Sur|\s*Este)?/i);
+  let m = t.match(/(Avenida Carrera|Avenida Calle|Carrera|Calle|Diagonal|Transversal)\s+(\d+\s*[A-Z]?(?:\s*Bis)?(?:\s*[A-Z])?(?:\s*Sur|\s*Este)?)\s*#?\s*(\d+\s*[A-Z]?(?:\s*Bis)?)\s*-\s*(\d+)(\s*Sur|\s*Este)?/i);
+  // Sin guion: "Calle 20a 96 71" o "Calle 20A # 96 71" → Calle 20a # 96-71
+  if (!m) m = t.match(/(Avenida Carrera|Avenida Calle|Carrera|Calle|Diagonal|Transversal)\s+(\d+\s*[A-Z]?(?:\s*Bis)?(?:\s*[A-Z])?(?:\s*Sur|\s*Este)?)\s*#?\s*(\d+\s*[A-Z]?(?:\s*Bis)?)\s+(\d{1,3})(?!\d)(\s*Sur|\s*Este)?/i);
   if (!m) return { texto: t, via: null };
   const via = `${m[1]} ${m[2].replace(/\s+/g, " ").trim()}`;
   const placa = `${m[3].replace(/\s+/g, "")}-${m[4]}`;
