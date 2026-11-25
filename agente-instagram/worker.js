@@ -48,8 +48,14 @@ export default {
         cuenta: (env.AGENTE && await env.AGENTE.get("fb_cuenta_nombre")) || null,
         secreto: !!(env.META_APP_SECRET || env.IG_APP_SECRET), app: !!(env.META_APP_ID && env.META_CONFIG_ID),
         verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE,
-        audios: !!env.AI, listaEspera: { clave: !!env.CLAVE_AGENTE, enlaceSkydropx: !!env.SKYDROPX, ultima: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultima_espera") || "null") : null }
+        audios: !!env.AI, alertas: !!env.NTFY_TEMA, listaEspera: { clave: !!env.CLAVE_AGENTE, enlaceSkydropx: !!env.SKYDROPX, ultima: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultima_espera") || "null") : null }
       });
+    }
+    if (req.method === "GET" && url.pathname === "/costos") {
+      // Resumen de gastos del mes. Pide ?clave= (la misma CLAVE_AGENTE). &probar=1 envía una notificación de prueba.
+      if (!env.CLAVE_AGENTE || url.searchParams.get("clave") !== env.CLAVE_AGENTE) return new Response("Agrega ?clave= con tu CLAVE_AGENTE", { status: 401 });
+      if (url.searchParams.get("probar")) await notificar(env, "Prueba de alertas", "Si ves esto, las alertas de costos de Pipe Bot funcionan. 👍", "default");
+      return Response.json(await resumenCostos(env), { headers: { "Content-Type": "application/json; charset=utf-8" } });
     }
     if (req.method === "GET" && url.pathname === "/catalogo") {
       // Muestra lo que el agente ve del catálogo en este momento. ?q=palabra filtra por nombre.
@@ -243,6 +249,82 @@ async function revisarChats(env) {
   }
 }
 
+/* ---------- control de costos y alertas ----------
+   Cuenta lo que gasta Pipe Bot: Claude (tokens de cada respuesta y de cada foto) y Workers AI (minutos de audio).
+   Avisa al celular con ntfy (app gratuita) al llegar al 50 %, 80 % y 100 % del presupuesto del mes,
+   y cuando los audios del día se acercan a la cuota gratis de Workers AI (10.000 neuronas ≈ 210 min/día).
+   Variables opcionales del Worker: PRESUPUESTO_USD (por defecto 20), PRECIO_ENTRADA_M y PRECIO_SALIDA_M (USD por millón de tokens). */
+const MIN_AUDIO_GRATIS_DIA = 200;
+const hoyBog = () => new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+function costoClaude(env, u) {
+  const pe = Number(env.PRECIO_ENTRADA_M) || 2, ps = Number(env.PRECIO_SALIDA_M) || 10;
+  return ((u.entrada || 0) + (u.cacheEscritura || 0) * 1.25 + (u.cacheLectura || 0) * 0.05) / 1e6 * pe + (u.salida || 0) / 1e6 * ps;
+}
+// Un solo registro por día (para gastar pocas escrituras del KV); el mes se suma leyendo los días
+async function usoMes(env, mes, hastaDia) {
+  const m = {};
+  for (let i = 1; i <= hastaDia; i++) {
+    const d = JSON.parse(await env.AGENTE.get("uso:dia:" + mes + "-" + String(i).padStart(2, "0")) || "{}");
+    for (const [k, v] of Object.entries(d)) m[k] = (m[k] || 0) + v;
+  }
+  return m;
+}
+async function registrarUso(env, { claude, respuesta, foto, audioSeg }) {
+  if (!env.AGENTE) return;
+  try {
+    const dia = hoyBog(), mes = dia.slice(0, 7), kDia = "uso:dia:" + dia;
+    const d = JSON.parse(await env.AGENTE.get(kDia) || "{}");
+    const sumar = (k, v) => { if (v) d[k] = (d[k] || 0) + v; };
+    if (claude) { sumar("entrada", claude.input_tokens); sumar("salida", claude.output_tokens); sumar("cacheEscritura", claude.cache_creation_input_tokens); sumar("cacheLectura", claude.cache_read_input_tokens); }
+    sumar("respuestas", respuesta); sumar("fotos", foto);
+    if (audioSeg) { sumar("audioSeg", audioSeg); sumar("audios", 1); }
+    await env.AGENTE.put(kDia, JSON.stringify(d), { expirationTtl: 400 * 86400 });
+    // alertas (una sola vez por nivel)
+    const m = await usoMes(env, mes, Number(dia.slice(8, 10)));
+    const presupuesto = Number(env.PRESUPUESTO_USD) || 20, gasto = costoClaude(env, m);
+    for (const nivel of [100, 80, 50]) {
+      if (gasto >= presupuesto * nivel / 100) {
+        const k = "alerta:" + mes + ":" + nivel;
+        if (!(await env.AGENTE.get(k))) {
+          await env.AGENTE.put(k, "1", { expirationTtl: 40 * 86400 });
+          await notificar(env, `Pipe Bot: ${nivel}% del presupuesto de Claude`,
+            `Este mes va en US$${gasto.toFixed(2)} de US$${presupuesto} (${m.respuestas || 0} respuestas, ${m.fotos || 0} fotos). Revisa la consola de Claude.`, nivel >= 100 ? "urgent" : nivel >= 80 ? "high" : "default");
+        }
+        break;
+      }
+    }
+    const min = (d.audioSeg || 0) / 60;
+    if (min >= MIN_AUDIO_GRATIS_DIA * 0.8 && !(await env.AGENTE.get("alerta:audio:" + dia))) {
+      await env.AGENTE.put("alerta:audio:" + dia, "1", { expirationTtl: 3 * 86400 });
+      await notificar(env, "Pipe Bot: audios cerca del límite gratis de hoy", `Hoy van ${Math.round(min)} minutos de audio de unos ${MIN_AUDIO_GRATIS_DIA} gratis al día en Cloudflare. Si se pasa, los audios no se transcriben hasta mañana (7 p. m. hora Colombia).`, "high");
+    }
+  } catch (e) { console.log("uso", String(e.message || e).slice(0, 200)); }
+}
+async function notificar(env, titulo, texto, prioridad = "default") {
+  if (!env.NTFY_TEMA) { console.log("alerta (sin NTFY_TEMA):", titulo, texto); return; }
+  const prio = { min: 1, low: 2, default: 3, high: 4, urgent: 5 }[prioridad] || 3;
+  const r = await fetch("https://ntfy.sh/", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topic: env.NTFY_TEMA, title: titulo, message: texto, priority: prio, tags: ["moneybag"] })
+  }).catch(e => ({ status: 0, e }));
+  console.log("ntfy", r.status);
+}
+async function resumenCostos(env) {
+  const dia = hoyBog(), mes = dia.slice(0, 7);
+  const m = await usoMes(env, mes, Number(dia.slice(8, 10))), d = JSON.parse(await env.AGENTE.get("uso:dia:" + dia) || "{}");
+  const presupuesto = Number(env.PRESUPUESTO_USD) || 20, gasto = costoClaude(env, m);
+  const diaMes = Number(dia.slice(8, 10)), diasMes = new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0).getDate();
+  return {
+    mes, claude: { gastoUSD: +gasto.toFixed(3), presupuestoUSD: presupuesto, porcentaje: Math.round(gasto / presupuesto * 100),
+      proyeccionMesUSD: +(gasto / Math.max(1, diaMes) * diasMes).toFixed(2), respuestas: m.respuestas || 0, fotos: m.fotos || 0,
+      tokensEntrada: m.entrada || 0, tokensSalida: m.salida || 0 },
+    audios: { mesMinutos: +((m.audioSeg || 0) / 60).toFixed(1), audiosMes: m.audios || 0, hoyMinutos: +((d.audioSeg || 0) / 60).toFixed(1), gratisDiaMinutos: MIN_AUDIO_GRATIS_DIA },
+    hoy: { respuestas: d.respuestas || 0, fotos: d.fotos || 0 },
+    alertas: env.NTFY_TEMA ? "activas (ntfy)" : "sin configurar: falta NTFY_TEMA",
+    nota: "Estimado con los precios de Sonnet 5.5 (US$2 entrada / US$10 salida por millón de tokens). El valor exacto está en la consola de Claude."
+  };
+}
+
 /* ---------- fotos, audios e historias ----------
    Claude ve las fotos (se le pide una descripción corta del juego que aparece) y Workers AI (Whisper)
    transcribe los audios. Para los audios el Worker necesita el enlace de Workers AI con el nombre AI. */
@@ -285,6 +367,7 @@ async function describirImagen(env, archivo, para) {
     })
   });
   const j = await r.json().catch(() => ({}));
+  await registrarUso(env, { claude: j.usage, foto: 1 });
   if (!r.ok) { console.log("visión", r.status, JSON.stringify(j).slice(0, 200)); return ""; }
   return (j.content || []).filter(c => c.type === "text").map(c => c.text).join(" ").trim();
 }
@@ -292,10 +375,12 @@ async function transcribirAudio(env, archivo) {
   if (!env.AI || !archivo) return "";
   try {
     const r = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: aBase64(archivo.buf), language: "es" });
+    await registrarUso(env, { audioSeg: (r && r.transcription_info && r.transcription_info.duration) || archivo.buf.byteLength / 8000 });
     if (r && r.text) return String(r.text).trim();
   } catch (e) { console.log("whisper turbo", String(e.message || e).slice(0, 200)); }
   try {
     const r = await env.AI.run("@cf/openai/whisper", { audio: [...new Uint8Array(archivo.buf)] });
+    await registrarUso(env, { audioSeg: archivo.buf.byteLength / 8000 });
     if (r && r.text) return String(r.text).trim();
   } catch (e) { console.log("whisper", String(e.message || e).slice(0, 200)); }
   return "";
@@ -510,6 +595,7 @@ async function preguntarClaude(env, historial) {
     })
   });
   const j = await r.json().catch(() => ({}));
+  await registrarUso(env, { claude: j.usage, respuesta: 1 });
   if (!r.ok) { console.log("Claude", r.status, JSON.stringify(j).slice(0, 300)); return ""; }
   const texto = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("").trim();
   return texto.replace(/\[PEDIDO:([A-Z0-9-]+)\]/g, (t, id) => cat.enlaces[id] || "pipegames.com.co");
