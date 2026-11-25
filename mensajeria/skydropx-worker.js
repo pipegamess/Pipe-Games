@@ -57,6 +57,13 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
     // Lista de espera desde el agente de Instagram (Pipe Bot): se valida con la clave compartida CLAVE_AGENTE
     if (req.method === "POST" && url.pathname === "/espera/instagram") return esperaInstagram(req, env, responder);
+    // Prueba de alertas: /alertas?clave=CLAVE_AGENTE envía una notificación y corre la revisión del panel en ese momento
+    if (req.method === "GET" && url.pathname === "/alertas") {
+      if (!env.CLAVE_AGENTE || url.searchParams.get("clave") !== env.CLAVE_AGENTE) return responder({ ok: false, error: "Agrega ?clave= con tu CLAVE_AGENTE" }, 401);
+      await notificar(env, "Prueba de alertas del panel", "Si ves esto, las notificaciones del panel de despacho funcionan. 👍", 3, ["bell"]);
+      try { return responder({ ok: true, ntfy: !!env.NTFY_TEMA, revision: await revisarPanel(env) }); }
+      catch (e) { return responder({ ok: false, ntfy: !!env.NTFY_TEMA, error: String(e.message || e) }, 500); }
+    }
     // Sistecrédito: link corto del cliente (crea la transacción al abrirlo) y aviso de cambios de estado
     // Diagnóstico público de la galería de Amazon (solo lectura directa, sin gastar consultas de Serper): /amazon-diag?asin=B0XXXXXXXX
     if (req.method === "GET" && url.pathname === "/amazon-diag") {
@@ -953,19 +960,25 @@ async function consultaFS(env, tk, coleccion, campo, op, valor) {
 }
 const pesos = n => "$" + Math.round(Number(n) || 0).toLocaleString("es-CO");
 async function revisarPanel(env) {
-  if (!env.NTFY_TEMA || !env.FIREBASE_SA || !env.FIREBASE_PROJECT || !env.ADMIN_UID) return;
+  if (!env.NTFY_TEMA || !env.FIREBASE_SA || !env.FIREBASE_PROJECT || !env.ADMIN_UID) return { error: "faltan variables", ntfy: !!env.NTFY_TEMA, cuentaServicio: !!env.FIREBASE_SA };
   const tk = await tokenServicio(env);
+  const diag = {};
   const base = "https://firestore.googleapis.com/v1/projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/";
   const rEst = await fetch(base + "sistema/notificaciones", { headers: { Authorization: "Bearer " + tk } });
   const est = rEst.ok ? Object.fromEntries(Object.entries((await rEst.json()).fields || {}).map(([k, v]) => [k, deFS(v)])) : {};
   const ahora = Date.now(), desde = Number(est.t) || 0, vistos = new Set(est.saldos || []);
+  diag.revisadoDesde = desde ? new Date(desde).toISOString() : "primera vez (solo marca el inicio)";
   const avisos = [];
   if (desde) {
     // 1) Solicitudes de envío que llenó el cliente (formulario)
-    for (const x of await consultaFS(env, tk, "solicitudes", "creado", "GREATER_THAN", { integerValue: String(desde) }))
+    const sols = await consultaFS(env, tk, "solicitudes", "creado", "GREATER_THAN", { integerValue: String(desde) });
+    diag.solicitudesNuevas = sols.length;
+    for (const x of sols)
       avisos.push(["📦 Nueva solicitud de envío", `${x.nombre || "Cliente"} · ${x.municipio || x.ciudad || ""}${x.pedido ? " · " + String(x.pedido).slice(0, 120) : ""}`, 4]);
     // 2) Entregas, novedades y guías creadas por el cliente
-    for (const g of await consultaFS(env, tk, "guias", "actualizado", "GREATER_THAN", { integerValue: String(desde) }))
+    const gs = await consultaFS(env, tk, "guias", "actualizado", "GREATER_THAN", { integerValue: String(desde) });
+    diag.guiasConCambios = gs.length;
+    for (const g of gs)
       for (const e of g.eventos || []) {
         if (!(e.t > desde) || e.por === "despacho") continue;
         if (e.estado === "entregada") avisos.push(["✅ Guía entregada", `${g.numero || g.id} · ${g.cliente || ""}`, 3]);
@@ -995,6 +1008,8 @@ async function revisarPanel(env) {
   else for (const [t, m, p] of avisos) await notificar(env, t, m, p, ["bell"]);
   // Se guarda hasta dónde se revisó
   const ids = saldos.map(x => x.id).slice(-300);
-  await fetch(base + "sistema/notificaciones", { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
+  const rG = await fetch(base + "sistema/notificaciones", { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
     body: JSON.stringify({ fields: { t: { integerValue: String(ahora) }, saldos: { arrayValue: { values: ids.map(v => ({ stringValue: v })) } } } }) });
+  if (!rG.ok) throw new Error("no se pudo guardar la revisión " + rG.status + ": " + (await rG.text()).slice(0, 150));
+  return { ...diag, saldosConfirmados: saldos.length, avisosEnviados: avisos.length, avisos: avisos.map(x => x[0] + " · " + x[1]) };
 }
