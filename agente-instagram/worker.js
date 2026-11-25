@@ -48,7 +48,7 @@ export default {
         cuenta: (env.AGENTE && await env.AGENTE.get("fb_cuenta_nombre")) || null,
         secreto: !!(env.META_APP_SECRET || env.IG_APP_SECRET), app: !!(env.META_APP_ID && env.META_CONFIG_ID),
         verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE,
-        listaEspera: { clave: !!env.CLAVE_AGENTE, enlaceSkydropx: !!env.SKYDROPX, ultima: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultima_espera") || "null") : null }
+        audios: !!env.AI, listaEspera: { clave: !!env.CLAVE_AGENTE, enlaceSkydropx: !!env.SKYDROPX, ultima: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultima_espera") || "null") : null }
       });
     }
     if (req.method === "GET" && url.pathname === "/catalogo") {
@@ -124,15 +124,15 @@ async function procesar(datos, env) {
 
       const cliente = String(ev.sender && ev.sender.id || "");
       if (!cliente) continue;
-      const texto = (m.text || "").trim();
-      if (!texto) {
-        // Reacciones, mensajes borrados y avisos sin contenido: no son mensajes del cliente
-        if (m.is_deleted || m.is_unsupported || !(m.attachments && m.attachments.length)) continue;
-        // Fotos, audios, historias: se guardan como contexto y los atiende Felipe
-        await guardarTurno(env, cliente, "user", "[ADJUNTO: el cliente envió " + tipoAdjunto(m.attachments[0].type) + "]");
-        continue;
-      }
-      await guardarTurno(env, cliente, "user", texto);
+      if (m.is_deleted || m.is_unsupported) continue;
+      // Texto + fotos, audios y respuestas a historias (se interpretan para que Pipe Bot entienda qué pregunta)
+      const contenido = await armarMensaje(env, {
+        texto: (m.text || "").trim(),
+        historia: m.reply_to && m.reply_to.story && m.reply_to.story.url,
+        adjuntos: (m.attachments || []).map(a => ({ tipo: a.type, url: a.payload && a.payload.url }))
+      });
+      if (!contenido) continue;   // reacciones y avisos sin contenido: no son mensajes del cliente
+      await guardarTurno(env, cliente, "user", contenido);
       await responderCliente(env, cliente);
     }
   }
@@ -198,7 +198,7 @@ async function revisarChats(env) {
   const ahora = Date.now();
   let inicio = Number(await env.AGENTE.get("revision_inicio"));
   if (!inicio) { inicio = ahora; await env.AGENTE.put("revision_inicio", String(ahora)); return; } // no contesta chats viejos
-  const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from,attachments,shares}&limit=15`,
+  const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from,attachments,shares,story}&limit=15`,
     { headers: { Authorization: "Bearer " + token } });
   const j = await r.json().catch(() => ({}));
   if (!j.data) { console.log("revisar chats", r.status, JSON.stringify(j).slice(0, 300)); return; }
@@ -230,18 +230,97 @@ async function revisarChats(env) {
         }
         continue;
       }
-      if (!texto) {
-        // sin texto: solo cuenta si de verdad trae un adjunto (las reacciones llegan vacías)
-        const adj = (m.attachments && m.attachments.data && m.attachments.data[0]) || (m.shares && m.shares.data && m.shares.data[0]);
-        if (!adj) continue;
-        await guardarTurno(env, cliente, "user", "[ADJUNTO: el cliente envió " + tipoAdjunto(adj.mime_type || adj.type || (m.shares ? "share" : "")) + "]");
-        continue;
-      }
-      await guardarTurno(env, cliente, "user", texto);
+      const adjuntos = ((m.attachments && m.attachments.data) || []).map(a => ({
+        tipo: a.mime_type || (a.image_data ? "image" : a.video_data ? "video" : ""),
+        url: (a.image_data && a.image_data.url) || (a.video_data && a.video_data.url) || a.file_url
+      })).concat(((m.shares && m.shares.data) || []).map(() => ({ tipo: "share" })));
+      const contenido = await armarMensaje(env, { texto, historia: m.story && m.story.reply_to && m.story.reply_to.link, adjuntos });
+      if (!contenido) continue;   // las reacciones llegan vacías
+      await guardarTurno(env, cliente, "user", contenido);
       pendiente = true;
     }
     if (pendiente) await responderCliente(env, cliente);
   }
+}
+
+/* ---------- fotos, audios e historias ----------
+   Claude ve las fotos (se le pide una descripción corta del juego que aparece) y Workers AI (Whisper)
+   transcribe los audios. Para los audios el Worker necesita el enlace de Workers AI con el nombre AI. */
+async function armarMensaje(env, { texto, historia, adjuntos }) {
+  const partes = [];
+  if (historia) partes.push(await leerHistoria(env, historia));
+  for (const a of (adjuntos || []).slice(0, 3)) partes.push(await leerAdjunto(env, a));
+  if (texto) partes.push(texto);
+  return partes.filter(Boolean).join("\n");
+}
+async function bajarArchivo(url, max = 8e6) {
+  if (!url) return null;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    if (!buf.byteLength || buf.byteLength > max) return null;
+    return { buf, tipo: (r.headers.get("content-type") || "").split(";")[0].toLowerCase() };
+  } catch { return null; }
+}
+function aBase64(buf) {
+  const b = new Uint8Array(buf); let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+const FORMATOS_IMG = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+async function describirImagen(env, archivo, para) {
+  if (!env.ANTHROPIC_API_KEY || !archivo) return "";
+  const tipo = FORMATOS_IMG.includes(archivo.tipo) ? archivo.tipo : "image/jpeg";
+  if (archivo.buf.byteLength > 4.5e6) return "";
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 250,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: tipo, data: aBase64(archivo.buf) } },
+        { type: "text", text: `Esta imagen la ${para} en el chat de una tienda de videojuegos. En una o dos frases en español di qué producto aparece: título exacto del videojuego (o consola/accesorio), consola (PS4, PS5, Nintendo Switch o Switch 2) si se distingue, edición, y cualquier precio o texto relevante visible. Si no aparece ningún videojuego ni producto, di brevemente qué muestra. Responde solo la descripción.` }
+      ] }]
+    })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { console.log("visión", r.status, JSON.stringify(j).slice(0, 200)); return ""; }
+  return (j.content || []).filter(c => c.type === "text").map(c => c.text).join(" ").trim();
+}
+async function transcribirAudio(env, archivo) {
+  if (!env.AI || !archivo) return "";
+  try {
+    const r = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: aBase64(archivo.buf), language: "es" });
+    if (r && r.text) return String(r.text).trim();
+  } catch (e) { console.log("whisper turbo", String(e.message || e).slice(0, 200)); }
+  try {
+    const r = await env.AI.run("@cf/openai/whisper", { audio: [...new Uint8Array(archivo.buf)] });
+    if (r && r.text) return String(r.text).trim();
+  } catch (e) { console.log("whisper", String(e.message || e).slice(0, 200)); }
+  return "";
+}
+async function leerHistoria(env, url) {
+  const f = await bajarArchivo(url);
+  if (f && f.tipo.startsWith("image/")) {
+    const d = await describirImagen(env, f, "publicó la tienda como historia de Instagram y el cliente respondió a ella");
+    if (d) return `[RESPUESTA A UNA HISTORIA de Pipe Games. La historia muestra: ${d}]`;
+  }
+  return "[RESPUESTA A UNA HISTORIA de Pipe Games (en video o ya no disponible: no se puede ver qué producto muestra; si el cliente no dice cuál es, pregúntale qué juego le interesó)]";
+}
+async function leerAdjunto(env, a) {
+  const t = String(a.tipo || "").toLowerCase();
+  if (/image|photo/.test(t)) {
+    const d = await describirImagen(env, await bajarArchivo(a.url), "envió un cliente");
+    return d ? `[FOTO enviada por el cliente. Muestra: ${d}]` : "[ADJUNTO: el cliente envió una foto que no se pudo ver]";
+  }
+  if (/audio/.test(t)) {
+    const txt = await transcribirAudio(env, await bajarArchivo(a.url, 20e6));
+    return txt ? `[AUDIO del cliente, transcrito: «${txt.slice(0, 1500)}»]` : "[ADJUNTO: el cliente envió un audio que no se pudo escuchar]";
+  }
+  if (/story_mention/.test(t)) return "[El cliente mencionó a Pipe Games en una historia suya]";
+  if (!t && !a.url) return "";
+  return "[ADJUNTO: el cliente envió " + tipoAdjunto(t) + "]";
 }
 
 function tipoAdjunto(t) {
@@ -401,7 +480,8 @@ Escribe al final de tu mensaje la marca [HUMANO] (el cliente no la ve; avisa a F
 - Está molesto o insiste en hablar con una persona.
 En esos casos responde solo una frase corta: ${h.dentro ? `"¡Listo! Ya le avisé a Felipe y te atenderá personalmente en breve. 🙌"` : `"¡Listo! Ya le avisé a Felipe. Como estamos fuera del horario de atención (lunes a sábado de 9:30 a. m. a 7:00 p. m.), te responderá personalmente ${h.siguiente}. 🙌"`}
 - Si el texto empieza con "[Felipe respondió]", es un mensaje que escribió Felipe: tenlo en cuenta y no lo contradigas.
-- Solo los mensajes que empiezan con "[ADJUNTO:" son fotos, audios, videos o publicaciones que el cliente envió: no puedes verlos ni escucharlos; dile con amabilidad que Felipe los revisará o pídele que te escriba lo que necesita. Cualquier otro mensaje es texto escrito por el cliente, aunque sea muy corto (un "?", "hola", "ok", un emoji): NUNCA digas que no puedes ver fotos o audios si el último mensaje del cliente es texto. Si es un "?" o algo poco claro, pregúntale amablemente en qué le puedes ayudar o retoma lo último que estaban hablando.
+- FOTOS, AUDIOS E HISTORIAS: "[FOTO enviada por el cliente. Muestra: …]" es la descripción de la foto que mandó; "[AUDIO del cliente, transcrito: «…»]" es lo que dijo en su audio; "[RESPUESTA A UNA HISTORIA de Pipe Games. La historia muestra: …]" indica el producto de la historia a la que respondió (por ejemplo, si pregunta "precio?" se refiere a ese producto). Úsalos como si el cliente te lo hubiera escrito: busca ese producto en la LISTA DISPONIBLE y responde disponibilidad y precio. Si la descripción no alcanza para saber el juego o la consola, pregúntale. No digas que "viste" la foto con detalles de más; responde natural ("¡Ese es Elden Ring para PS5! Lo tenemos a…").
+- Solo los mensajes que empiezan con "[ADJUNTO:" son archivos que no se pudieron ver o escuchar: dile con amabilidad que no pudiste verlo o escucharlo y pídele que te escriba qué juego busca. Cualquier otro mensaje es texto escrito por el cliente, aunque sea muy corto (un "?", "hola", "ok", un emoji): NUNCA digas que no puedes ver fotos o audios si el último mensaje del cliente es texto. Si es un "?" o algo poco claro, pregúntale amablemente en qué le puedes ayudar o retoma lo último que estaban hablando.
 
 LISTA DISPONIBLE (ID | nombre - consola | precio). Todo lo de esta lista está en stock ahora y es lo ÚNICO que puedes ofrecer:
 ${lista || "(no se pudo cargar la lista: no confirmes disponibilidad ni precios; pide al cliente escribir PIPE para que Felipe le confirme)"}
