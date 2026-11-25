@@ -50,8 +50,8 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 .miembro .estado { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc-ink); background: var(--acc); border-radius: 999px; padding: 2px 8px; }
 .miembro .estado.pronto { background: var(--surface2); color: var(--muted); }
 /* Informe */
-.informe-cab { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; align-items: center; }
-.informe-cab img { width: 96px; height: 96px; border-radius: 50%; border: 3px solid var(--acc); background: #fff; }
+.informe-cab { display: grid; grid-template-columns: clamp(110px, 28vw, 180px) minmax(0, 1fr); gap: 16px; align-items: center; }
+.informe-cab img { width: 100%; height: auto; border-radius: 14px; border: 2px solid var(--acc); background: #fff; }
 .resumen { font-size: 16px; line-height: 1.55; margin: 0; max-width: 70ch; }
 .meta { color: var(--muted); font-size: 13px; }
 .lista { display: grid; gap: 8px; }
@@ -120,7 +120,7 @@ async function worker(metodo) {
 }
 function pintarEquipo() {
   $("equipo").innerHTML = EQUIPO.map(m => `<button type="button" class="miembro${m.id === elegido ? " activo" : ""}" data-m="${m.id}">
-    <img src="${m.id}-avatar.jpg" alt="${m.nombre}" width="72" height="72">
+    <img src="${m.id}-avatar.jpg?v=2" alt="${m.nombre}" width="72" height="72">
     <span><b>${m.nombre}</b><small>${m.rol}</small><span class="estado${m.listo ? "" : " pronto"}">${m.listo ? "Trabajando" : "Próximamente"}</span></span>
   </button>`).join("");
 }
@@ -129,7 +129,7 @@ $("equipo").addEventListener("click", e => { const b = e.target.closest("[data-m
 const item = (titulo, derecha, motivo) => `<div class="item"><span>${titulo}</span>${derecha ? `<span class="cant">${derecha}</span>` : "<span></span>"}${motivo ? `<span class="m">${esc(motivo)}</span>` : ""}</div>`;
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
-  const cab = `<div class="informe-cab"><img src="${m.id}-avatar.jpg" alt="" width="96" height="96"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
+  const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=2" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
   if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
   if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
   const inf = DATOS.mati?.informe, ventas = DATOS.ventas;
