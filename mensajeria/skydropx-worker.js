@@ -47,7 +47,7 @@ export default {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        esperaInstagram: !!env.CLAVE_AGENTE, sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -55,6 +55,8 @@ export default {
     if (req.method === "POST" && url.pathname === "/bold/aviso") return avisoBold(req, env, ctx);
     // Link corto para el cliente: /addi/ir?c=<reserva>.<código> → página de Addi
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
+    // Lista de espera desde el agente de Instagram (Pipe Bot): se valida con la clave compartida CLAVE_AGENTE
+    if (req.method === "POST" && url.pathname === "/espera/instagram") return esperaInstagram(req, env, responder);
     // Sistecrédito: link corto del cliente (crea la transacción al abrirlo) y aviso de cambios de estado
     // Diagnóstico público de la galería de Amazon (solo lectura directa, sin gastar consultas de Serper): /amazon-diag?asin=B0XXXXXXXX
     if (req.method === "GET" && url.pathname === "/amazon-diag") {
@@ -693,6 +695,42 @@ async function escribirReserva(env, reserva, campos, mascara) {
   const r = await fetch("https://firestore.googleapis.com/v1/" + ruta + "?" + qs, { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
     body: JSON.stringify({ fields: { reservas: { mapValue: { fields: { [reserva]: { mapValue: { fields: campos } } } } } } }) });
   if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
+}
+
+// Agrega a la lista de espera (usuarios/{ADMIN}.espera) a un cliente de Instagram que preguntó por un producto agotado
+async function esperaInstagram(req, env, responder) {
+  if (!env.CLAVE_AGENTE || req.headers.get("X-Clave") !== env.CLAVE_AGENTE) return responder({ ok: false, error: "No autorizado" }, 401);
+  if (!env.FIREBASE_SA) return responder({ ok: false, error: "Falta FIREBASE_SA" }, 500);
+  const b = await req.json().catch(() => ({}));
+  const limpio = (v, n) => String(v || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, n);
+  const titulo = limpio(b.titulo, 120).toUpperCase(), usuario = limpio(b.usuario, 60).replace(/^@/, ""), igId = limpio(b.igId, 40);
+  const consola = ["PS5", "PS4", "SWITCH 2", "SWITCH"].includes(String(b.consola || "").toUpperCase()) ? String(b.consola).toUpperCase() : "OTRA";
+  if (!titulo || (!usuario && !igId)) return responder({ ok: false, error: "Faltan datos" }, 400);
+  try {
+    const tk = await tokenServicio(env);
+    const doc = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID;
+    // no se repite: mismo cliente, mismo juego y misma consola que siga esperando
+    const r0 = await fetch("https://firestore.googleapis.com/v1/" + doc + "?mask.fieldPaths=espera", { headers: { Authorization: "Bearer " + tk } });
+    const actual = ((await r0.json().catch(() => ({}))).fields?.espera?.mapValue?.fields) || {};
+    const s = v => v?.stringValue || "";
+    for (const [id, v] of Object.entries(actual)) {
+      const f = v.mapValue?.fields || {};
+      if (s(f.estado) !== "avisado" && (s(f.igId) === igId || s(f.contacto) === "@" + usuario) && s(f.titulo) === titulo && s(f.consola) === consola) return responder({ ok: true, repetido: id });
+    }
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const campos = {
+      nombre: { stringValue: limpio(b.nombre, 80) || (usuario ? "@" + usuario : "Cliente de Instagram") },
+      contacto: { stringValue: usuario ? "@" + usuario : "" }, canal: { stringValue: "instagram" }, igId: { stringValue: igId },
+      titulo: { stringValue: titulo }, consola: { stringValue: consola }, k: { stringValue: "" },
+      notas: { stringValue: limpio("Anotado por Pipe Bot desde Instagram. " + limpio(b.notas, 200), 300) },
+      creado: { integerValue: String(Date.now()) }, estado: { stringValue: "esperando" }
+    };
+    const r = await fetch("https://firestore.googleapis.com/v1/" + doc + "?updateMask.fieldPaths=" + encodeURIComponent("espera." + id), {
+      method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: { espera: { mapValue: { fields: { [id]: { mapValue: { fields: campos } } } } } } }) });
+    if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
+    return responder({ ok: true, id });
+  } catch (e) { return responder({ ok: false, error: String(e.message || e) }, 500); }
 }
 
 async function leerCredito(env, reserva) {

@@ -218,13 +218,14 @@ $("fConsola").addEventListener("change", pistaJuego);
 // ── Guardar ──
 $("fNuevo").addEventListener("submit", async ev => {
   ev.preventDefault();
-  const nombre = titulo($("fNombre").value), contacto = C.contactoWhatsApp($("fContacto").value), { p, titulo: tit } = elegido();
+  const nombre = titulo($("fNombre").value), esIG = editando && ESPERA[editando]?.canal === "instagram", contacto = esIG ? ($("fContacto").value.trim() || " ") : C.contactoWhatsApp($("fContacto").value), { p, titulo: tit } = elegido();
   if (!contacto) { $("fEstado").className = "status err"; $("fEstado").textContent = "Escribe un celular de 10 dígitos o un @usuario de WhatsApp."; $("fContacto").focus(); return; }
   if (!tit) return;
   const id = editando || Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const previo = ESPERA[id] || {};
   const x = { nombre, contacto, titulo: tit.toUpperCase(), consola: $("fConsola").value, k: (p && !p.extra && p.k) || "", notas: $("fNotas").value.trim(), creado: previo.creado || Date.now(), estado: previo.estado || "esperando" };
   if (previo.avisadoT) x.avisadoT = previo.avisadoT;
+  if (previo.canal) { x.canal = previo.canal; x.igId = previo.igId || ""; if (previo.canal === "instagram") x.contacto = $("fContacto").value.trim() || previo.contacto; }
   if (previo.llego && mismaK(previo.k, x.k) && previo.titulo === x.titulo) x.llego = previo.llego;
   $("fGuardar").disabled = true;
   try { await guardar({ [`espera.${id}`]: x }); limpiarForm(); toast(editando ? "Cambios guardados" : `${C.primerNombre(nombre)} quedó en la lista de espera`); }
@@ -247,12 +248,12 @@ $("fCancelar").onclick = limpiarForm;
 
 // ── Lista ──
 function tarjeta(id, x, modo) {
-  const p = productoDe(x), user = C.esUsuarioWhatsApp(x.contacto);
-  const contacto = user ? x.contacto : "+" + x.contacto.replace(/^57(\d{10})$/, "57 $1");
+  const p = productoDe(x), ig = x.canal === "instagram", user = ig || C.esUsuarioWhatsApp(x.contacto);
+  const contacto = ig ? `${x.contacto || "sin usuario"} · Instagram` : user ? x.contacto : "+" + x.contacto.replace(/^57(\d{10})$/, "57 $1");
   const precio = p ? `<span class="precio">${C.cop(p.v)}</span>` : "";
   let botones = "";
-  if (modo === "llego") botones = `<button class="btn wa" data-avisar="${id}">Avisar por WhatsApp</button><button class="btn" data-avisado="${id}">Ya le avisé</button>`;
-  else if (modo === "espera") botones = `<button class="btn" data-anotado="${id}" title="Confírmale que quedó en la lista">Confirmarle por WhatsApp</button>`;
+  if (modo === "llego") botones = `<button class="btn wa" data-avisar="${id}">Avisar por ${ig ? "Instagram" : "WhatsApp"}</button><button class="btn" data-avisado="${id}">Ya le avisé</button>`;
+  else if (modo === "espera") botones = ig ? "" : `<button class="btn" data-anotado="${id}" title="Confírmale que quedó en la lista">Confirmarle por WhatsApp</button>`;
   else botones = `<button class="btn" data-volver="${id}">Volver a esperar</button><button class="btn" data-msg="${id}">Reenviar aviso</button>`;
   botones += `<button class="btn" data-editar="${id}">Editar</button><button class="btn peligro" data-borrar="${id}">Eliminar</button>`;
   const estadoTxt = modo === "llego" ? `Disponible${p?.pre ? " en preventa" : ""} desde el ${fecha(x.llego || Date.now())}`
@@ -306,6 +307,13 @@ function mensaje(x, anotado) {
 }
 // Se abre sin esperas para que el navegador del celular no bloquee la ventana
 function abrirWA(x, anotado) {
+  if (x.canal === "instagram") {
+    // Instagram: se copia el mensaje y se abre el chat del cliente para pegarlo
+    try { navigator.clipboard.writeText(mensaje(x, anotado)).catch(() => {}); } catch {}
+    toast("Mensaje copiado: pégalo en el chat de Instagram del cliente.");
+    window.open(x.contacto ? "https://ig.me/m/" + encodeURIComponent(x.contacto.replace(/^@/, "")) : "https://www.instagram.com/direct/inbox/", "_blank", "noopener");
+    return;
+  }
   if (C.esUsuarioWhatsApp(x.contacto)) {
     try { navigator.clipboard.writeText(x.contacto).catch(() => {}); } catch {}
     toast(`Usuario ${x.contacto} copiado: búscalo en WhatsApp y envíale el mensaje.`);

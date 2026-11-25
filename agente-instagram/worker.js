@@ -148,12 +148,36 @@ async function responderCliente(env, cliente) {
   if (!respuesta) return;
   let pasarAFelipe = false;
   if (respuesta.includes("[HUMANO]")) { pasarAFelipe = true; respuesta = respuesta.replace(/\[HUMANO\]/g, "").trim(); }
+  // [ESPERA: TÍTULO | CONSOLA] → el cliente aceptó quedar en la lista de espera
+  const esperas = [...respuesta.matchAll(/\[ESPERA:\s*([^\]|]+?)\s*\|\s*([^\]]+?)\s*\]/g)].map(m => ({ titulo: m[1], consola: m[2] }));
+  respuesta = respuesta.replace(/\[ESPERA:[^\]]*\]/g, "").replace(/[ \t]+\n/g, "\n").trim();
+  for (const e of esperas) await anotarEspera(env, cliente, e).catch(err => console.log("espera", err.message));
   if (respuesta) {
     await env.AGENTE.put("ultimo_bot:" + cliente, respuesta.slice(0, 4000), { expirationTtl: 86400 });
     await enviar(env, cliente, respuesta);
     await guardarTurno(env, cliente, "assistant", respuesta);
   }
   if (pasarAFelipe) await env.AGENTE.put("pausa:" + cliente, "humano", { expirationTtl: 12 * 3600 });
+}
+
+/* ---------- lista de espera (se guarda en el panel de Pipe Games a través del Worker de Skydropx) ---------- */
+const ESPERA_URL = "https://skydropx-pipegames.pipe-games22.workers.dev/espera/instagram";
+async function anotarEspera(env, cliente, e) {
+  if (!env.CLAVE_AGENTE) { console.log("Falta CLAVE_AGENTE: no se pudo anotar en la lista de espera"); return; }
+  let usuario = "", nombre = "";
+  try {
+    const token = await env.AGENTE.get("fb_token");
+    if (token) {
+      const r = await fetch(`${GRAPH_FB}/${cliente}?fields=username,name`, { headers: { Authorization: "Bearer " + token } });
+      const j = await r.json().catch(() => ({}));
+      usuario = j.username || ""; nombre = j.name || "";
+    }
+  } catch {}
+  const r = await fetch(env.ESPERA_URL || ESPERA_URL, {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Clave": env.CLAVE_AGENTE },
+    body: JSON.stringify({ igId: cliente, usuario, nombre, titulo: e.titulo, consola: e.consola })
+  });
+  console.log("espera", r.status, (await r.text()).slice(0, 200));
 }
 
 /* ---------- revisión de chats cada minuto (por si Meta no envía los avisos) ---------- */
@@ -327,7 +351,8 @@ CÓMO ESCRIBES
 - CÓMO RECONOCER EL JUEGO: los clientes escriben como hablan: abrevian, omiten palabras, escriben sin guiones ni tildes o con errores ("spiderman miles ultimate", "gta 5", "zelda tears", "mario kart", "fifa", "cod"). Reconoce el juego por su nombre conocido y búscalo en la lista aunque no lo escriban igual. Ejemplos: "Spiderman Miles Ultimate" = Spider-Man Miles Morales Ultimate Edition; "GTA 5" = Grand Theft Auto V; "Zelda Tears" = The Legend of Zelda: Tears of the Kingdom; "FIFA" = EA Sports FC.
 - Lo que SÍ hace que sea otro producto: otro número o entrega de la saga (GTA V no es GTA VI; Spider-Man 2 no es Miles Morales), otra consola (PS4/PS5, Switch/Switch 2) u otra versión cuando el cliente la pide expresamente (open box, código en caja, edición de coleccionista).
 - Si el cliente no dice la edición y en la lista hay una sola versión de ese juego para su consola, ofrécela diciendo cuál es (por ejemplo "Tenemos Spider-Man Miles Morales Ultimate Edition para PS5 a $X"). Si hay varias versiones o consolas, muéstralas o pregunta cuál quiere. Solo si de verdad no puedes saber qué juego es, pregúntale.
-- Si el cliente pregunta por algo que no está en la LISTA DISPONIBLE (esté o no en la lista de AGOTADOS), dile claramente que en este momento está agotado o no lo tenemos. Ofrece una alternativa parecida de la lista si la hay, y dile que si quiere que le avisen cuando llegue, escriba PIPE y Felipe lo anota en la lista de espera.
+- Si el cliente pregunta por algo que no está en la LISTA DISPONIBLE (esté o no en la lista de AGOTADOS), dile claramente que en este momento está agotado o no lo tenemos. Ofrece una alternativa parecida de la lista si la hay, y pregúntale si quiere que lo anotes en la lista de espera para avisarle por aquí cuando llegue.
+- LISTA DE ESPERA: solo si el cliente acepta (o él mismo pide que le avisen), confírmale que quedó anotado y escribe al final del mensaje la marca [ESPERA: NOMBRE DEL JUEGO | CONSOLA] (el cliente no la ve), con el nombre completo del juego y la consola PS5, PS4, SWITCH, SWITCH 2 u OTRA. Si no sabes la consola, pregúntala antes de anotarlo. Una marca por juego, y no lo anotes dos veces por el mismo juego en la conversación. No prometas fechas de llegada.
 - Los lanzamientos y preventas (por ejemplo GTA VI) solo están disponibles si aparecen en la LISTA DISPONIBLE. Si no aparecen, están agotados: no prometas unidades, fechas de llegada ni reservas.
 - Antes de dar un precio, confirma la consola si el juego existe en varias (PS4, PS5, Switch o Switch 2). No mezcles PS4 con PS5 ni Switch con Switch 2.
 - Cuando el cliente quiera comprar un producto, escribe [PEDIDO:ID] con el ID del producto de la lista (por ejemplo [PEDIDO:MINECRAFT-PS5]); el sistema lo cambia por un enlace que abre el catálogo con ese producto en el carrito, donde escoge envío y forma de pago. No escribas enlaces de pedido tú mismo.
