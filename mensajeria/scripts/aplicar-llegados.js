@@ -87,16 +87,49 @@ function crear(k, nombre, pl, precio, esAcc, origen) {
   nuevos++;
 }
 
-// 1) Lo que llegó de importación: precio de LISTADO (y se crea si no existe)
+// 0) Precios sincronizados entre la hoja LISTADO del Excel y el catálogo.
+//    Se guarda el último precio que mandó el Excel (precios-excel.json) para saber quién cambió:
+//    - Si el precio del Excel cambió desde la última vez → el catálogo toma el precio del Excel.
+//    - Si el Excel no cambió pero el catálogo tiene otro precio → se cambió en el catálogo (panel Admin):
+//      se respeta y queda en stock/precios-pendientes.csv para que la macro del Excel lo copie a LISTADO.
+const SNAP = path.join(RAIZ, "mensajeria", "precios-excel.json");
+let previos = null;
+try { previos = JSON.parse(fs.readFileSync(SNAP, "utf8")); } catch {}
+const deLlegados = new Set(llegados.map(r => r[0]));
+const excel = {};
+for (const [k, , , precio] of listado) if (k && precio > 0) excel[k] = Math.round(precio);
+for (const [k, , , precio] of llegados) if (k && precio > 0 && !(k in excel)) excel[k] = Math.round(precio);
+const pendientes = [];
+for (const [k, pExcel] of Object.entries(excel)) {
+  const enCatalogo = porLlave[k];
+  if (!enCatalogo || !enCatalogo.length) continue;
+  const antes = previos ? previos[k] : undefined;
+  const cambioExcel = previos ? (antes !== pExcel) : false;          // primera vez: solo se toma la foto del Excel
+  for (const g of enCatalogo) {
+    const pCat = precioNum(g.price);
+    if (pCat === pExcel) continue;
+    if (cambioExcel || (deLlegados.has(k) && antes === undefined)) {
+      console.log(`Precio desde el Excel ${g.name} (${g.platform}): ${g.price} → ${precioTxt(pExcel)}`);
+      g.price = precioTxt(pExcel); precios++;
+    } else pendientes.push([k, pCat, pExcel, g.name + " (" + g.platform + ")"]);
+  }
+}
+fs.writeFileSync(SNAP, JSON.stringify(excel, null, 0) + "\n");
+{
+  const csvq = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+  const vistos = new Set();
+  const filas = pendientes.filter(r => !vistos.has(r[0]) && vistos.add(r[0]));
+  const salida = "Clave,PrecioCatalogo,PrecioExcel,Producto\n" + filas.map(r => r.map(csvq).join(",")).join("\n") + (filas.length ? "\n" : "");
+  fs.mkdirSync(path.join(RAIZ, "stock"), { recursive: true });
+  fs.writeFileSync(path.join(RAIZ, "stock", "precios-pendientes.csv"), salida);
+  console.log(`Precios cambiados en el catálogo, pendientes de pasar al Excel: ${filas.length}`);
+}
+
+// 1) Lo que llegó de importación y no está en el catálogo: se crea con el precio de LISTADO
 for (const [k, nombre, pl, precio, esAcc] of llegados) {
   if (!k || !(precio > 0)) continue;
   const enCatalogo = porLlave[k];
-  if (enCatalogo && enCatalogo.length) {
-    for (const g of enCatalogo) {
-      if (precioNum(g.price) !== Math.round(precio)) { console.log(`Precio ${g.name} (${g.platform}): ${g.price} → ${precioTxt(precio)}`); g.price = precioTxt(precio); precios++; }
-    }
-    continue;
-  }
+  if (enCatalogo && enCatalogo.length) continue;
   crear(k, nombre, pl, precio, esAcc, "importación");
 }
 

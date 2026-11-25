@@ -46,7 +46,7 @@ jobs:
             node mensajeria/scripts/aplicar-llegados.js   # precios y productos nuevos de la hoja LISTADO del Excel
             node mensajeria/scripts/extraer-tarifas.js
             node mensajeria/scripts/catalogo-meta.js      # lista para Meta y página /stock/
-            git add index.html mensajeria/tarifas-envio.js mensajeria/productos-catalogo.js catalogo-meta.csv catalogo-meta stock/index.html stock/stock.csv
+            git add index.html mensajeria/tarifas-envio.js mensajeria/productos-catalogo.js catalogo-meta.csv catalogo-meta stock/index.html stock/stock.csv stock/precios-pendientes.csv mensajeria/precios-excel.json
             if git diff --cached --quiet; then echo "Sin cambios"; exit 0; fi
             git commit -q -m "Catálogo, tarifas y catálogo de Meta actualizados desde el stock del Excel"
             if git push origin HEAD:main; then echo "publicar=1" >> "$GITHUB_OUTPUT"; exit 0; fi
