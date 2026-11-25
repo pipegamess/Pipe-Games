@@ -846,7 +846,30 @@ $("#fCobro").addEventListener("change", calcular);
 $("#cbMetodos").addEventListener("click", e => { const b = e.target.closest("[data-met]"); if (!b) return; cbMetodo = b.dataset.met; calcular(); });
 // Lista de productos del catálogo para elegir artículos
 // Productos para cobrar: solo los disponibles en el catálogo, con el stock en vivo (stock.json del Excel)
-let PROD_DISP = PRODUCTOS.filter(p => p.a), dispCargado = 0, dispListo = false;
+// Unidades de un producto en stock.json. La clave puede ser una lista (mismo producto con varios nombres en el Excel):
+// se suman las disponibles; si solo hay en importación queda en -1 (igual que el catálogo).
+function cantidadK(prod, k) {
+  if (!Array.isArray(k)) return prod[k];
+  const vals = k.map(x => prod[x]).filter(v => v !== undefined);
+  if (!vals.length) return undefined;
+  const disp = vals.filter(v => v > 0).reduce((a, v) => a + v, 0);
+  return disp > 0 ? disp : (vals.some(v => v < 0) ? -1 : 0);
+}
+// misma clave: basta con que compartan una (la clave del catálogo puede ser una lista o haber cambiado)
+const mismaK = (a, b) => { const A = [].concat(a || []).filter(Boolean), B = [].concat(b || []).filter(Boolean); return A.some(x => B.includes(x)); };
+// Productos que están en el Excel con unidades pero no en el catálogo (para la lista de espera)
+function extrasExcel(st, lista) {
+  const prod = st?.productos || {}, usadas = new Set();
+  lista.forEach(p => [].concat(p.k || []).forEach(k => usadas.add(k)));
+  const nombres = {};
+  for (const r of [...(st?.listado || []), ...(st?.llegados || [])]) if (r && r[0]) nombres[r[0]] = { n: r[1], p: r[2], v: r[3] || 0 };
+  const platTxt = p => ({ SWITCH2: "SWITCH 2" })[p] || p;
+  return Object.entries(prod).filter(([k, c]) => c > 0 && !usadas.has(k)).map(([k]) => {
+    const d = nombres[k] || { n: k.split("|")[0], p: platTxt(k.split("|")[1] || ""), v: 0 };
+    return { n: String(d.n).toUpperCase(), p: String(d.p).toUpperCase(), v: d.v, a: true, k, extra: true };
+  });
+}
+let PROD_DISP = PRODUCTOS.filter(p => p.a), dispCargado = 0, dispListo = false, EXTRA_EXCEL = [];
 function pintarCatalogoCobro() { $("#cbCatalogo").innerHTML = PROD_DISP.map(p => `<option value="${esc(p.n)} · ${esc(p.p)}">${C.cop(p.v)}</option>`).join(""); }
 async function cargarDisponibles(forzar) {
   if (!forzar && Date.now() - dispCargado < 30000) return;
@@ -857,11 +880,12 @@ async function cargarDisponibles(forzar) {
   const prod = st?.productos || {}, usar = Object.keys(prod).length >= 50; // misma protección del catálogo
   PROD_DISP = lista.filter(p => {
     if (!usar || !p.k) return p.a;
-    let c = prod[p.k];
+    let c = cantidadK(prod, p.k);
     if (c === undefined) { if (!p.e) return p.a; c = 0; } // enlazado al Excel y ya no está: agotado
     if (c < 0) return p.a; // solo unidades en importación (preventa): como esté en el catálogo
     return c > 0;
   });
+  EXTRA_EXCEL = usar ? extrasExcel(st, lista) : [];
   pintarCatalogoCobro(); dispListo = true; revisarEspera();
 }
 // Lista de espera: cuando un juego esperado vuelve a estar disponible se marca "llegó" y sale en las notificaciones
@@ -871,8 +895,10 @@ function revisarEspera() {
   const cambios = {};
   Object.entries(S.espera).forEach(([id, x]) => {
     if (x.llego || x.estado === "avisado") return;
-    const t = normNombre(x.titulo), misma = PROD_DISP.filter(p => x.consola === "OTRA" || cons(p.p) === x.consola);
-    const p = (x.k && PROD_DISP.find(p => p.k === x.k)) || (!x.k && misma.find(p => normNombre(p.n) === t || (t.length >= 4 && (normNombre(p.n).includes(t) || t.includes(normNombre(p.n))))));
+    const t = normNombre(x.titulo), sin = v => v.replace(/ /g, ""), tc = sin(t);
+    const parecido = p => { const n = normNombre(p.n); return n === t || sin(n) === tc || (t.length >= 4 && (n.includes(t) || t.includes(n) || sin(n).includes(tc) || tc.includes(sin(n)))); };
+    const misma = [...PROD_DISP, ...EXTRA_EXCEL].filter(p => x.consola === "OTRA" || cons(p.p) === x.consola);
+    const p = (x.k && PROD_DISP.find(p => mismaK(p.k, x.k))) || (!(x.k && PRODUCTOS.some(p => mismaK(p.k, x.k))) && misma.find(parecido));
     if (p) cambios[`espera.${id}.llego`] = Date.now();
   });
   if (Object.keys(cambios).length) updateDoc(doc(db, "usuarios", ADMIN_UID), cambios).then(() => setTimeout(revisarNotis, 500)).catch(() => {});
@@ -2411,7 +2437,7 @@ function escuchar() {
   }, () => {}));
   subs.push(onSnapshot(collection(db, "invitaciones"), s => { S.inv = s.docs.map(d => ({ codigo: d.id, ...d.data() })); pintar(); }, err));
   subs.push(onSnapshot(query(collection(db, "entregasDinero"), orderBy("t", "desc"), limit(200)), s => { S.entregas = s.docs.map(d => ({ id: d.id, ...d.data() })); pintar(); }, err));
-  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; S.notiLeidas = s.exists() ? s.data().notiLeidas || [] : []; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(!s.metadata?.fromCache && !s.metadata?.hasPendingWrites); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.espera = s.exists() ? s.data().espera || {} : {}; pintarNotis(); revisarEspera(); S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); pintarEstadoLink(); if (S.tab === "nueva") pintarMapa();
+  subs.push(onSnapshot(doc(db, "usuarios", ADMIN_UID), s => { revisarVersionPanel(s.exists() ? s.data().panelVersion : ""); S.recogida = s.exists() ? s.data().recogida || null : null; S.notiVisto = s.exists() ? s.data().notiVisto || 0 : 0; S.notiLeidas = s.exists() ? s.data().notiLeidas || [] : []; pintarNotis(); S.skx = s.exists() ? s.data().skydropx || {} : {}; S.skxGuias = s.exists() ? s.data().guiasSkydropx || {} : {}; S.skxOrdenes = s.exists() ? s.data().ordenesSkydropx || {} : {}; cargarSkx(!s.metadata?.fromCache && !s.metadata?.hasPendingWrites); pintarSkxOrdenes(); S.ajustesCobro = s.exists() ? s.data().ajustesCobro || {} : {}; S.cobros = s.exists() ? s.data().cobros || {} : {}; S.reservas = s.exists() ? s.data().reservas || {} : {}; S.espera = s.exists() ? s.data().espera || {} : {}; setTimeout(revisarEspera, 0); pintarNotis(); revisarEspera(); S.preciosReserva = s.exists() ? s.data().preciosReserva || {} : {}; cargarAjustesCobro(); if (S.tab === "cobros") pintarCobros(); if (esMaestro() && S.solicitudes?.length) procesarSolicitudes(S.solicitudes); if (esMaestro() && S.saldosPend?.length) procesarSaldos(S.saldosPend); limpiarFotos(s.exists() ? s.data() : {}); pintarRecogida(); pintarPrep(); pintarEstadoLink(); if (S.tab === "nueva") pintarMapa();
     if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => r.confirmacion && !r.confirmacion.ciudadLocal && !r.skydropx?.orden && !r.skydropx?.guia && !r.skydropx?.envioId && !r.skydropx?.omitida && !r.skydropx?.error && !(r.skydropx?.enviando && Date.now() - r.skydropx.enviando < 120000)).forEach(([id]) => enviarOrdenReserva(id, true));
     // Pedido del catálogo en Bogotá, Chía o Soacha: al quedar pagado se crea la guía sola
     if (esMaestro()) Object.entries(S.reservas || {}).filter(([, r]) => (r.red === "Catálogo" || ["addi", "siste", "tarjeta"].includes(r.confirmacion?.metodo)) && r.pagado && r.confirmacion?.ciudadLocal && !r.confirmacion.guia).forEach(([id]) => crearGuiaPagada(id));

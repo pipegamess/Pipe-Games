@@ -149,6 +149,29 @@ let ESPERA = {}, PROD = [], editando = null, stockT = 0;
 function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 3500); }
 
 // ── Catálogo con stock en vivo (misma regla del catálogo, el panel y Pipe Bot) ──
+// Unidades de un producto en stock.json. La clave puede ser una lista (mismo producto con varios nombres en el Excel):
+// se suman las disponibles; si solo hay en importación queda en -1 (igual que el catálogo).
+function cantidadK(prod, k) {
+  if (!Array.isArray(k)) return prod[k];
+  const vals = k.map(x => prod[x]).filter(v => v !== undefined);
+  if (!vals.length) return undefined;
+  const disp = vals.filter(v => v > 0).reduce((a, v) => a + v, 0);
+  return disp > 0 ? disp : (vals.some(v => v < 0) ? -1 : 0);
+}
+// misma clave: basta con que compartan una (la clave del catálogo puede ser una lista o haber cambiado)
+const mismaK = (a, b) => { const A = [].concat(a || []).filter(Boolean), B = [].concat(b || []).filter(Boolean); return A.some(x => B.includes(x)); };
+// Productos que están en el Excel con unidades pero no en el catálogo (para la lista de espera)
+function extrasExcel(st, lista) {
+  const prod = st?.productos || {}, usadas = new Set();
+  lista.forEach(p => [].concat(p.k || []).forEach(k => usadas.add(k)));
+  const nombres = {};
+  for (const r of [...(st?.listado || []), ...(st?.llegados || [])]) if (r && r[0]) nombres[r[0]] = { n: r[1], p: r[2], v: r[3] || 0 };
+  const platTxt = p => ({ SWITCH2: "SWITCH 2" })[p] || p;
+  return Object.entries(prod).filter(([k, c]) => c > 0 && !usadas.has(k)).map(([k]) => {
+    const d = nombres[k] || { n: k.split("|")[0], p: platTxt(k.split("|")[1] || ""), v: 0 };
+    return { n: String(d.n).toUpperCase(), p: String(d.p).toUpperCase(), v: d.v, a: true, k, extra: true };
+  });
+}
 async function cargarStock() {
   let lista = [], st = null;
   try { lista = (await import(`../mensajeria/productos-catalogo.js?t=${Date.now()}`)).PRODUCTOS || []; } catch {}
@@ -156,9 +179,11 @@ async function cargarStock() {
   const prod = st?.productos || {}, usar = Object.keys(prod).length >= 50;
   PROD = lista.map(p => {
     let disp = p.a, pre = false;
-    if (usar && p.k) { let c = prod[p.k]; if (c === undefined && p.e) c = 0; if (c !== undefined && c >= 0) disp = c > 0; else if (c < 0) pre = true; }
+    if (usar && p.k) { let c = cantidadK(prod, p.k); if (c === undefined && p.e) c = 0; if (c !== undefined && c >= 0) disp = c > 0; else if (c < 0) pre = true; }
     return { ...p, disp, pre, t: norm(p.n) };
   });
+  // lo que llegó al Excel (STOCK o LISTADO) aunque todavía no esté en el catálogo
+  if (usar) extrasExcel(st, lista).forEach(p => PROD.push({ ...p, disp: true, pre: false, t: norm(p.n) }));
   stockT = Date.now();
   $("dlJuegos").innerHTML = PROD.map(p => `<option value="${esc(p.n)} · ${esc(p.p)}">${p.disp ? "Disponible" : "Agotado"} · ${esc(C.cop(p.v))}</option>`).join("");
   $("stockInfo").textContent = PROD.length ? `Stock revisado a las ${new Date().toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" })} · ${PROD.filter(p => p.disp).length} productos disponibles. Se vuelve a revisar cada 3 minutos.` : "No se pudo leer el catálogo.";
@@ -167,10 +192,11 @@ async function cargarStock() {
 const consolaDe = p => ["PS5", "PS4", "SWITCH 2", "SWITCH"].includes(p) ? p : "OTRA";
 // Busca el producto del catálogo para una persona en espera: por la clave guardada, o por nombre y consola.
 function productoDe(x) {
-  if (x.k) { const p = PROD.find(p => p.k === x.k); if (p) return p; }
+  if (x.k) { const p = PROD.find(p => mismaK(p.k, x.k)); if (p) return p; }
   const t = norm(x.titulo); if (t.length < 3) return null;
+  const sin = v => v.replace(/ /g, ""), tc = sin(t);
   const misma = PROD.filter(p => x.consola === "OTRA" || consolaDe(p.p) === x.consola);
-  return misma.find(p => p.t === t) || (t.length >= 4 && (misma.filter(p => p.t.includes(t) || t.includes(p.t)).sort((a, b) => b.disp - a.disp)[0])) || null;
+  return misma.find(p => p.t === t || sin(p.t) === tc) || (t.length >= 4 && (misma.filter(p => p.t.includes(t) || t.includes(p.t) || sin(p.t).includes(tc) || tc.includes(sin(p.t))).sort((a, b) => b.disp - a.disp || !!a.extra - !!b.extra)[0])) || null;
 }
 // Lo que se escribió en el formulario: "NOMBRE · PLAT" del catálogo o texto libre
 function elegido() {
@@ -197,9 +223,9 @@ $("fNuevo").addEventListener("submit", async ev => {
   if (!tit) return;
   const id = editando || Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const previo = ESPERA[id] || {};
-  const x = { nombre, contacto, titulo: tit.toUpperCase(), consola: $("fConsola").value, k: p?.k || "", notas: $("fNotas").value.trim(), creado: previo.creado || Date.now(), estado: previo.estado || "esperando" };
+  const x = { nombre, contacto, titulo: tit.toUpperCase(), consola: $("fConsola").value, k: (p && !p.extra && p.k) || "", notas: $("fNotas").value.trim(), creado: previo.creado || Date.now(), estado: previo.estado || "esperando" };
   if (previo.avisadoT) x.avisadoT = previo.avisadoT;
-  if (previo.llego && previo.k === x.k && previo.titulo === x.titulo) x.llego = previo.llego;
+  if (previo.llego && mismaK(previo.k, x.k) && previo.titulo === x.titulo) x.llego = previo.llego;
   $("fGuardar").disabled = true;
   try { await guardar({ [`espera.${id}`]: x }); limpiarForm(); toast(editando ? "Cambios guardados" : `${C.primerNombre(nombre)} quedó en la lista de espera`); }
   catch (e) { $("fEstado").className = "status err"; $("fEstado").textContent = "No se pudo guardar: " + (e.code || e.message); }
@@ -297,7 +323,7 @@ document.addEventListener("click", async e => {
   if (acc === "anotado") { abrirWA(x, true); return; }
   if (acc === "editar") {
     editando = id; $("fNombre").value = x.nombre; $("fContacto").value = x.contacto;
-    const p = x.k && PROD.find(p => p.k === x.k);
+    const p = x.k && PROD.find(p => mismaK(p.k, x.k));
     $("fJuego").value = p ? `${p.n} · ${p.p}` : x.titulo; $("fConsola").value = x.consola; $("fNotas").value = x.notas || "";
     $("fTitulo").textContent = "Editar cliente"; $("fGuardar").textContent = "Guardar cambios"; $("fCancelar").hidden = false; pistaJuego();
     $("fNuevo").scrollIntoView({ behavior: "smooth" }); $("fNombre").focus({ preventScroll: true }); return;

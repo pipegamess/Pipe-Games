@@ -19,7 +19,7 @@ async function cargar() {
   const prod = st?.productos || {}, usar = Object.keys(prod).length >= 50;
   PROD = lista.map(p => {
     let disp = p.a;
-    if (usar && p.k) { let c = prod[p.k]; if (c === undefined && p.e) c = 0; if (c !== undefined && c >= 0) disp = c > 0; }
+    if (usar && p.k) { let c = Array.isArray(p.k) ? (v => v.length ? (v.some(x => x > 0) ? v.filter(x => x > 0).reduce((a, x) => a + x, 0) : (v.some(x => x < 0) ? -1 : 0)) : undefined)(p.k.map(x => prod[x]).filter(x => x !== undefined)) : prod[p.k]; if (c === undefined && p.e) c = 0; if (c !== undefined && c >= 0) disp = c > 0; }
     return { ...p, disp, t: norm(p.n), tp: norm(p.p).replace(/\s/g, "") };
   });
   cargado = Date.now();
