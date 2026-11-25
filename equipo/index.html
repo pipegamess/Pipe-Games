@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Equipo · Pipe Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<style>
+/* Equipo Pipe Games: Mati (reabastecimiento), Tomi (lanzamientos), Anto (precios) y Luca (Mercado Ads).
+   Los informes y las ventas son privados: se leen a través del Worker con la cuenta de despacho. */
+:root {
+  --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --line: rgba(255,255,255,0.09);
+  --text: #e8e8f0; --muted: #8a8aa8; --acc: #f5c400; --acc-ink: #141000; --ok: #3ecf8e; --warn: #ffb35c; --err: #ff7b7b;
+  --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 22px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 6vw, 34px); letter-spacing: 0.02em; margin: 0; line-height: 1.05; }
+h1 span { color: var(--acc); }
+h2 { font-family: var(--display); font-size: 20px; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; }
+h3 { font-family: var(--display); font-size: 17px; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 8px; color: var(--acc); }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; max-width: 64ch; }
+.top { display: flex; gap: 8px; flex-wrap: wrap; }
+.top a, button.ghost { font: 600 13px/1 var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; text-decoration: none; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 12px; }
+.login { max-width: 400px; margin: 10vh auto 0; }
+label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+input { font: 500 15px var(--body); color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; }
+button.primary { font: 700 15px var(--display); letter-spacing: .06em; text-transform: uppercase; background: var(--acc); color: var(--acc-ink); border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer; }
+button.primary:disabled { opacity: .55; cursor: wait; }
+.status { font-size: 13px; min-height: 18px; }
+.status.err { color: var(--err); }
+/* Tarjetas del equipo */
+.equipo { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.miembro { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: center; cursor: pointer; text-align: left; color: var(--text); font: inherit; }
+.miembro.activo { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc) inset; }
+.miembro img { width: 72px; height: 72px; border-radius: 50%; border: 3px solid var(--acc); object-fit: cover; background: #fff; }
+.miembro b { font-family: var(--display); font-size: 22px; letter-spacing: .02em; display: block; line-height: 1.1; }
+.miembro small { display: block; color: var(--muted); font-size: 13px; }
+.miembro .estado { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--acc-ink); background: var(--acc); border-radius: 999px; padding: 2px 8px; }
+.miembro .estado.pronto { background: var(--surface2); color: var(--muted); }
+/* Informe */
+.informe-cab { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; align-items: center; }
+.informe-cab img { width: 96px; height: 96px; border-radius: 50%; border: 3px solid var(--acc); background: #fff; }
+.resumen { font-size: 16px; line-height: 1.55; margin: 0; max-width: 70ch; }
+.meta { color: var(--muted); font-size: 13px; }
+.lista { display: grid; gap: 8px; }
+.item { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; }
+.item b { font-weight: 700; }
+.item .m { grid-column: 1 / -1; color: var(--muted); font-size: 13.5px; }
+.cant { font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--acc); white-space: nowrap; }
+.prio { font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 999px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
+.prio.alta { background: rgba(255,123,123,.16); color: var(--err); }
+.prio.media { background: rgba(255,179,92,.16); color: var(--warn); }
+.prio.baja { background: rgba(62,207,142,.14); color: var(--ok); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.vacio { color: var(--muted); font-size: 14px; margin: 0; }
+.aviso { background: rgba(245,196,0,.1); border: 1px solid rgba(245,196,0,.35); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+</style>
+</head>
+<body>
+
+<form class="panel login" id="vLogin" hidden>
+  <h2 style="text-transform:none">Equipo · Pipe Games</h2>
+  <p class="sub">Entra con tu correo y contraseña de administrador de Pipe Games.</p>
+  <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
+  <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit" id="lEntrar">Entrar</button>
+  <div class="status err" id="lError" role="alert"></div>
+</form>
+
+<div class="wrap" id="vApp" hidden>
+  <header>
+    <div>
+      <h1>Equipo <span>Pipe Games</span></h1>
+      <p class="sub">Cuatro analistas con IA que revisan tus ventas, tu stock y el mercado, y te dicen qué hacer. Todo lo que ven es privado.</p>
+    </div>
+    <div class="top"><a href="../inicio/">Centro de Mando</a><a href="../mensajeria/">Panel de despacho</a><button class="ghost" type="button" id="salir">Salir</button></div>
+  </header>
+
+  <div class="equipo" id="equipo"></div>
+
+  <section class="panel" id="vInforme"></section>
+</div>
+
+<script type="module">
+import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js?v=20261118a";
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
+const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
+const auth = getAuth(initializeApp(firebaseConfig));
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fechaHora = t => t ? new Date(t).toLocaleString("es-CO", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }) : "";
+
+const EQUIPO = [
+  { id: "mati", nombre: "Mati", rol: "Analista de Reabastecimiento", lema: "Te dice QUÉ recomprar", listo: true },
+  { id: "tomi", nombre: "Tomi", rol: "Vigía de Lanzamientos", lema: "Te dice QUÉ viene" },
+  { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice CÓMO estás de precio" },
+  { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
+];
+let elegido = "mati", DATOS = null;
+
+async function worker(metodo) {
+  const token = await auth.currentUser.getIdToken();
+  const r = await fetch(SKYDROPX_URL.replace(/\/+$/, ""), { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || ("Error " + r.status));
+  return j;
+}
+function pintarEquipo() {
+  $("equipo").innerHTML = EQUIPO.map(m => `<button type="button" class="miembro${m.id === elegido ? " activo" : ""}" data-m="${m.id}">
+    <img src="${m.id}-avatar.jpg" alt="${m.nombre}" width="72" height="72">
+    <span><b>${m.nombre}</b><small>${m.rol}</small><span class="estado${m.listo ? "" : " pronto"}">${m.listo ? "Trabajando" : "Próximamente"}</span></span>
+  </button>`).join("");
+}
+$("equipo").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (!b) return; elegido = b.dataset.m; pintarEquipo(); pintarInforme(); });
+
+const item = (titulo, derecha, motivo) => `<div class="item"><span>${titulo}</span>${derecha ? `<span class="cant">${derecha}</span>` : "<span></span>"}${motivo ? `<span class="m">${esc(motivo)}</span>` : ""}</div>`;
+function pintarInforme() {
+  const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
+  const cab = `<div class="informe-cab"><img src="${m.id}-avatar.jpg" alt="" width="96" height="96"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
+  if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
+  if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
+  const inf = DATOS.mati?.informe, ventas = DATOS.ventas;
+  const avisoVentas = !ventas ? `<div class="aviso">Mati todavía no tiene tus ventas del Excel. Mientras tanto decide solo con el stock y la lista de espera. Cuando instales la macro v21, las ventas llegan solas (en privado).</div>`
+    : `<p class="meta">Ventas del Excel recibidas el ${fechaHora(ventas.t)} · ${ventas.filas} registros (producto por mes).</p>`;
+  const btn = `<div class="acciones"><button class="primary" type="button" id="generar">Pedirle a Mati un informe nuevo</button><span class="status" id="gEstado"></span></div>`;
+  if (!inf) { v.innerHTML = cab + avisoVentas + `<p class="vacio">Aún no hay informes. Mati entrega uno cada lunes en la mañana, o puedes pedírselo ahora.</p>` + btn; return; }
+  const lista = (arr, f) => arr && arr.length ? `<div class="lista">${arr.map(f).join("")}</div>` : `<p class="vacio">Nada por ahora.</p>`;
+  v.innerHTML = cab + `<p class="resumen">${esc(inf.resumen)}</p><p class="meta">Informe del ${fechaHora(DATOS.mati.t)}</p>` + avisoVentas +
+    (inf.alertas?.length ? `<div class="aviso">${inf.alertas.map(esc).join("<br>")}</div>` : "") +
+    `<div><h3>Recomprar</h3>${lista(inf.recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}<span class="prio ${esc(x.prioridad)}">${esc(x.prioridad || "")}</span>`, x.cantidad ? "×" + x.cantidad : "", x.motivo))}</div>
+     <div class="cols">
+       <div><h3>No recomprar</h3>${lista(inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo))}</div>
+       <div><h3>Impulsar (stock quieto)</h3>${lista(inf.impulsar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.idea))}</div>
+     </div>
+     <div><h3>Lo piden y no lo tienes</h3>${lista(inf.pedir_nuevo, x => item(`<b>${esc(x.producto)}</b>`, "", x.motivo))}</div>` + btn;
+}
+$("vInforme").addEventListener("click", async e => {
+  if (!e.target.closest("#generar")) return;
+  const b = $("generar"); b.disabled = true; $("gEstado").className = "status"; $("gEstado").textContent = "Mati está revisando ventas, stock y lista de espera (unos 30 segundos)…";
+  try { const r = await worker("MATI_GENERAR"); DATOS = { ...DATOS, mati: { t: r.t, informe: r.informe } }; pintarInforme(); }
+  catch (err) { $("gEstado").className = "status err"; $("gEstado").textContent = err.message; b.disabled = false; }
+});
+async function cargar() {
+  try { DATOS = await worker("EQUIPO_LEER"); }
+  catch (e) { DATOS = { mati: null, ventas: null }; $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se pudo leer el informe: ${esc(e.message)}</p>`); }
+  pintarInforme();
+}
+
+$("vLogin").addEventListener("submit", async ev => {
+  ev.preventDefault(); $("lError").textContent = ""; $("lEntrar").disabled = true;
+  try { await signInWithEmailAndPassword(auth, $("lCorreo").value.trim(), $("lClave").value); }
+  catch { $("lError").textContent = "Correo o contraseña incorrectos."; }
+  $("lEntrar").disabled = false;
+});
+$("salir").onclick = () => signOut(auth);
+onAuthStateChanged(auth, async u => {
+  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta cuenta no tiene acceso al equipo."; return; }
+  $("vLogin").hidden = !!u; $("vApp").hidden = !u;
+  if (!u) { DATOS = null; return; }
+  pintarEquipo(); pintarInforme(); cargar();
+});
+</script>
+</body>
+</html>
