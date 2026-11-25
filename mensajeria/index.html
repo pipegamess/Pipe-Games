@@ -1946,17 +1946,20 @@ async function enviarOrdenReserva2(id, auto) {
 }
 // Formas de escribir ciudad/departamento del destino que se prueban con Skydropx
 const ALIAS_DEPTO = { "valle del cauca": ["Valle"], "la guajira": ["Guajira"], "san andres y providencia": ["San Andres", "Archipielago de San Andres"], "bogota d.c.": ["Bogota D.C.", "Cundinamarca"], "norte de santander": ["N. de Santander"] };
-function variantesDestino(ciudad, depto, barrio) {
+// En Skydropx el "complemento / Detalles de la dirección" de la orden es area_level3 (igual que en el remitente):
+// si el cliente escribió torre/apto/casa, va ahí; el barrio queda en la referencia.
+function variantesDestino(ciudad, depto, barrio, complemento = "") {
   const c = quitarTildes(ciudad), dp = quitarTildes(depto);
   const ciudades = [...new Set([c, ciudad, c.replace(/\s*\(.*\)/, ""), c.split(",")[0], c.replace(/ de indias$/i, ""), c.toUpperCase()])].filter(Boolean);
   const deptos = [...new Set([dp, depto, ...(ALIAS_DEPTO[dp.toLowerCase()] || []), dp.toUpperCase()])].filter(Boolean);
   const l = [];
   for (const d of deptos) for (const ci of ciudades) {
+    if (complemento) l.push({ area_level1: d, area_level2: ci, area_level3: String(complemento).replace(/\s+/g, " ").trim().slice(0, 100), state: d, city: ci });
     l.push({ area_level1: d, area_level2: ci, area_level3: quitarTildes(barrio || ci), state: d, city: ci });
     if (barrio) l.push({ area_level1: d, area_level2: ci, area_level3: ci, state: d, city: ci, sector: ci });
   }
   const vistos = new Set();
-  return l.filter(v => { const k = JSON.stringify(v); if (vistos.has(k)) return false; vistos.add(k); return true; }).slice(0, 16);
+  return l.filter(v => { const k = JSON.stringify(v); if (vistos.has(k)) return false; vistos.add(k); return true; }).slice(0, 24);
 }
 // Arma y envía la orden a Skydropx; devuelve el id de la orden o lanza el error de Skydropx
 async function postOrdenSkx(x, id) {
@@ -1965,7 +1968,7 @@ async function postOrdenSkx(x, id) {
   const t = x.tipoProducto?.l ? x.tipoProducto : (tiposSkx()[Math.min(S.skx?.tipoDefecto ?? 0, tiposSkx().length - 1)] || TIPOS_BASE[0]);
   const contenido = x.contenido || (/juego/i.test(t.n) ? "Videojuego" : t.n);
   const transp = nombreTransp(x.transportadora);
-  const nota = `Transportadora elegida por el cliente: ${transp || "sin elegir"}${x.envioCobrado ? ` · Envío cobrado al cliente: ${C.cop(x.envioCobrado)}` : ""}`;
+  const nota = `Transportadora elegida por el cliente: ${transp || "sin elegir"}${x.envioCobrado ? ` · Envío cobrado al cliente: ${C.cop(x.envioCobrado)}` : ""}${x.complemento ? ` · Complemento: ${x.complemento}` : ""}`;
   const dir = (p) => ({
     // "Detalles de la dirección" en Skydropx = further_information (complemento completo); la referencia corta queda con el barrio
     address: p.dir, street1: p.dir, internal_number: "", reference: (p.referenciaExacta ? p.referenciaExacta.slice(0, 30) : p.detalles ? String(p.barrio || "").trim().slice(0, 30) : cortaRef(p.ref)) || "N/A", sector: p.barrio || p.ciudad,
@@ -1981,7 +1984,7 @@ async function postOrdenSkx(x, id) {
     parcels: [{ weight: t.kg, length: t.l, width: t.a, height: t.h, quantity: 1, dimension_unit: "CM", mass_unit: "KG", package_type: S.skx?.tipoPaquete || "package", consignment_note: contenido, package_content: contenido, declared_value: t.v || 50000, declared_amount: t.v || 50000 }],
     products: [{ name: contenido, sku: "PG", price: String(t.v || 0), quantity: 1 }],
     shipper_address: dir({ exacto: true, referenciaExacta: rem.referencia, detalles: rem.detalles || "", nombre: rem.nombre || "Pipe Games", empresa: rem.empresa || rem.nombre || "Pipe Games", tel: rem.telefono, correo: rem.correo, dir: rem.direccion, ref: rem.barrio, barrio: rem.barrio, ciudad: rem.ciudad || "Bogotá", depto: rem.depto || "Cundinamarca", cp: rem.cp }),
-    recipient_address: dir({ nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo, dir: x.direccion, ref: [x.complemento, x.barrio ? "Barrio " + x.barrio : ""].filter(Boolean).join(" · "), detalles: x.complemento || "", barrio: x.barrio, ciudad: m?.c || (x.municipio || "").split(" - ")[0], depto: m?.d || (x.municipio || "").split(" - ")[1] || "" })
+    recipient_address: dir({ nombre: titulo(x.nombre), tel: x.telefono, correo: x.correo, dir: x.direccion, ref: [x.complemento, x.barrio ? "Barrio " + x.barrio : ""].filter(Boolean).join(" · "), referenciaExacta: x.complemento ? cortaRef([x.complemento, x.barrio ? "Barrio " + x.barrio : ""].filter(Boolean).join(" · ")) : "", detalles: x.complemento || "", barrio: x.barrio, ciudad: m?.c || (x.municipio || "").split(" - ")[0], depto: m?.d || (x.municipio || "").split(" - ")[1] || "" })
   } };
   // Si se trajo la dirección de Skydropx, sus campos mandan sobre los del formulario
   const dirSkx = S.skx?.direccionSkx;
@@ -1995,7 +1998,7 @@ async function postOrdenSkx(x, id) {
   {
     // Skydropx valida ciudad y departamento del destino contra su lista: se prueban otras formas de escribirlos
     const ciudadDest = m?.c || (x.municipio || "").split(" - ")[0], deptoDest = m?.d || (x.municipio || "").split(" - ")[1] || "";
-    const formasDest = variantesDestino(ciudadDest, deptoDest, x.barrio);
+    const formasDest = variantesDestino(ciudadDest, deptoDest, x.barrio, x.complemento);
     let iD = 0, iP = 0, r = null, err = null, sinSkx = false;
     for (let intento = 0; intento < 20; intento++) {
       cuerpo.order.shipping_preferences = prefs[Math.min(iP, prefs.length - 1)];
@@ -2193,7 +2196,7 @@ $("#skxTarifas").addEventListener("click", async e => {
       .replace(/conjunto( residencial)?/ig, "Conj.").replace(/torre/ig, "T").replace(/apartamento|apto\.?/ig, "Ap").replace(/barrio/ig, "B.").replace(/\s*·\s*/g, " ")
       .replace(/\s+-\s+/g, " ").replace(/\b(de|del|la|el)\s+/ig, "").replace(/\b(T|Ap)\s+(\d)/g, "$1$2").replace(/\s+/g, " ").trim(); return x.length > max ? x.slice(0, max).trim() : x; };
     const dirDe = (nombre, tel, correo, dir, ref, empresa = "", detalles = "", barrio = "") => ({ street1: dir, name: nombre, company: empresa, phone: tel, email: correo || "ventas@pipegames.com.co",
-      reference: (detalles ? String(barrio || "").trim().slice(0, 30) : corta(ref)) || "N/A", ...(detalles ? { further_information: detalles.slice(0, 100) } : {}) });
+      reference: (detalles ? corta([detalles, barrio ? "Barrio " + barrio : ""].filter(Boolean).join(" ")) : corta(ref)) || "N/A", ...(detalles ? { further_information: detalles.slice(0, 100) } : {}) });
     if (!(d.valor > 0)) throw new Error("El valor declarado quedó en $0. Revisa el valor del tipo de producto en “Conexión y datos del remitente”.");
     const base = { rate_id: rateId, printing_format: S.skx?.formatoEtiqueta || "thermal", declared_amount: d.valor,
       address_from: { ...dirDe(d.rem.nombre || "Pipe Games", d.rem.telefono, d.rem.correo, d.rem.direccion, d.rem.barrio, d.rem.empresa || d.rem.nombre || "Pipe Games"),
