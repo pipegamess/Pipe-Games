@@ -96,6 +96,9 @@ const SNAP = path.join(RAIZ, "mensajeria", "precios-excel.json");
 let previos = null;
 try { previos = JSON.parse(fs.readFileSync(SNAP, "utf8")); } catch {}
 const deLlegados = new Set(llegados.map(r => r[0]));
+// Productos en los que, desde el Excel, decidiste que manda el precio del Excel (macro: botón NO)
+let forzar = new Set();
+try { forzar = new Set(JSON.parse(fs.readFileSync(path.join(RAIZ, "stock.json"), "utf8")).forzar || []); } catch {}
 const excel = {};
 for (const [k, , , precio] of listado) if (k && precio > 0) excel[k] = Math.round(precio);
 for (const [k, , , precio] of llegados) if (k && precio > 0 && !(k in excel)) excel[k] = Math.round(precio);
@@ -104,7 +107,7 @@ for (const [k, pExcel] of Object.entries(excel)) {
   const enCatalogo = porLlave[k];
   if (!enCatalogo || !enCatalogo.length) continue;
   const antes = previos ? previos[k] : undefined;
-  const cambioExcel = previos ? (antes !== pExcel) : false;          // primera vez: solo se toma la foto del Excel
+  const cambioExcel = forzar.has(k) || (previos ? (antes !== pExcel) : false);          // primera vez: solo se toma la foto del Excel
   for (const g of enCatalogo) {
     const pCat = precioNum(g.price);
     if (pCat === pExcel) continue;
