@@ -48,7 +48,7 @@ export default {
         cuenta: (env.AGENTE && await env.AGENTE.get("fb_cuenta_nombre")) || null,
         secreto: !!(env.META_APP_SECRET || env.IG_APP_SECRET), app: !!(env.META_APP_ID && env.META_CONFIG_ID),
         verify: !!env.VERIFY_TOKEN, claude: !!env.ANTHROPIC_API_KEY, kv: !!env.AGENTE,
-        audios: !!env.AI, alertas: !!env.NTFY_TEMA, listaEspera: { clave: !!env.CLAVE_AGENTE, enlaceSkydropx: !!env.SKYDROPX, ultima: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultima_espera") || "null") : null }
+        audios: !!env.AI, alertas: !!env.NTFY_TEMA, ultimoAdjunto: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultimo_adjunto") || "null") : null, listaEspera: { clave: !!env.CLAVE_AGENTE, enlaceSkydropx: !!env.SKYDROPX, ultima: env.AGENTE ? JSON.parse(await env.AGENTE.get("ultima_espera") || "null") : null }
       });
     }
     if (req.method === "GET" && url.pathname === "/costos") {
@@ -204,7 +204,7 @@ async function revisarChats(env) {
   const ahora = Date.now();
   let inicio = Number(await env.AGENTE.get("revision_inicio"));
   if (!inicio) { inicio = ahora; await env.AGENTE.put("revision_inicio", String(ahora)); return; } // no contesta chats viejos
-  const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from,attachments,shares,story}&limit=15`,
+  const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from,attachments{mime_type,name,image_data{url,preview_url},video_data{url,preview_url},file_url},shares{link,name},story}&limit=15`,
     { headers: { Authorization: "Bearer " + token } });
   const j = await r.json().catch(() => ({}));
   if (!j.data) { console.log("revisar chats", r.status, JSON.stringify(j).slice(0, 300)); return; }
@@ -237,8 +237,8 @@ async function revisarChats(env) {
         continue;
       }
       const adjuntos = ((m.attachments && m.attachments.data) || []).map(a => ({
-        tipo: a.mime_type || (a.image_data ? "image" : a.video_data ? "video" : ""),
-        url: (a.image_data && a.image_data.url) || (a.video_data && a.video_data.url) || a.file_url
+        tipo: a.mime_type || (a.image_data ? "image" : a.video_data ? "video" : /\.(m4a|mp4a|aac|mp3|ogg|wav)/i.test(a.name || a.file_url || "") ? "audio" : a.file_url ? "file" : "adjunto"),
+        url: (a.image_data && (a.image_data.url || a.image_data.preview_url)) || (a.video_data && a.video_data.url) || a.file_url
       })).concat(((m.shares && m.shares.data) || []).map(() => ({ tipo: "share" })));
       const contenido = await armarMensaje(env, { texto, historia: m.story && m.story.reply_to && m.story.reply_to.link, adjuntos });
       if (!contenido) continue;   // las reacciones llegan vacías
@@ -347,8 +347,8 @@ async function armarMensaje(env, { texto, historia, adjuntos }) {
 async function bajarArchivo(url, max = 8e6) {
   if (!url) return null;
   try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
+    const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; PipeBot/1.0)" } });
+    if (!r.ok) { console.log("bajar", r.status, url.slice(0, 80)); return null; }
     const buf = await r.arrayBuffer();
     if (!buf.byteLength || buf.byteLength > max) return null;
     return { buf, tipo: (r.headers.get("content-type") || "").split(";")[0].toLowerCase() };
@@ -377,7 +377,7 @@ async function describirImagen(env, archivo, para) {
   });
   const j = await r.json().catch(() => ({}));
   await registrarUso(env, { claude: j.usage, foto: 1 });
-  if (!r.ok) { console.log("visión", r.status, JSON.stringify(j).slice(0, 200)); return ""; }
+  if (!r.ok) { console.log("visión", r.status, JSON.stringify(j).slice(0, 200)); await alertaError(env, "Pipe Bot no pudo leer una foto", "Claude " + r.status + ": " + ((j.error && j.error.message) || "")); return ""; }
   return (j.content || []).filter(c => c.type === "text").map(c => c.text).join(" ").trim();
 }
 async function transcribirAudio(env, archivo) {
@@ -403,7 +403,19 @@ async function leerHistoria(env, url) {
   return "[RESPUESTA A UNA HISTORIA de Pipe Games (en video o ya no disponible: no se puede ver qué producto muestra; si el cliente no dice cuál es, pregúntale qué juego le interesó)]";
 }
 async function leerAdjunto(env, a) {
-  const t = String(a.tipo || "").toLowerCase();
+  const res = await leerAdjunto2(env, a);
+  try { await env.AGENTE.put("ultimo_adjunto", JSON.stringify({ t: new Date().toISOString(), tipo: a.tipo || "", conEnlace: !!a.url, resultado: String(res).slice(0, 160) }), { expirationTtl: 7 * 86400 }); } catch {}
+  return res;
+}
+async function leerAdjunto2(env, a) {
+  let t = String(a.tipo || "").toLowerCase();
+  // tipo desconocido pero con enlace: se mira qué es al bajarlo
+  if (a.url && !/image|photo|audio|video|reel|share|story|post/.test(t)) {
+    const f = await bajarArchivo(a.url, 20e6);
+    if (f && f.tipo.startsWith("image/")) { const d = await describirImagen(env, f, "envió un cliente"); return d ? `[FOTO enviada por el cliente. Muestra: ${d}]` : "[ADJUNTO: el cliente envió una foto que no se pudo ver]"; }
+    if (f && f.tipo.startsWith("audio/")) { const txt = await transcribirAudio(env, f); return txt ? `[AUDIO del cliente, transcrito: «${txt.slice(0, 1500)}»]` : "[ADJUNTO: el cliente envió un audio que no se pudo escuchar]"; }
+    t = f ? f.tipo : t;
+  }
   if (/image|photo/.test(t)) {
     const d = await describirImagen(env, await bajarArchivo(a.url), "envió un cliente");
     return d ? `[FOTO enviada por el cliente. Muestra: ${d}]` : "[ADJUNTO: el cliente envió una foto que no se pudo ver]";
