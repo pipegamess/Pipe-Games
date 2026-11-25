@@ -114,7 +114,6 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
       </label>
       <label id="lMetodoTxt" hidden>Método de pago<input id="metodoTxt" placeholder="Ej. Transferencia Bre-B, Addi, tarjeta de crédito…"></label>
       <label>Garantía (comentario)<input id="garantia" value="GARANTÍA 1 MES POR DEFECTOS DE FÁBRICA."></label>
-      <label>Notas adicionales (opcional)<textarea id="notas" rows="2" maxlength="220" placeholder="Ej. Incluye estuche. Producto Open Box revisado."></textarea></label>
     </fieldset>
 
     <fieldset>
@@ -150,6 +149,11 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
         <p class="hint" id="respEstado"></p>
       </fieldset>
     </details>
+
+    <fieldset>
+      <legend>Notas adicionales (opcional)</legend>
+      <label>Salen debajo de la garantía<textarea id="notas" rows="2" maxlength="220" placeholder="Ej. Incluye estuche. Producto Open Box revisado."></textarea></label>
+    </fieldset>
 
     <div class="btns">
       <button type="submit" class="primary" id="btnPdf">Descargar PDF</button>
