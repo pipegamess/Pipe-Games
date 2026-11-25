@@ -109,9 +109,12 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
           <option value="APP ÉXITO">APP ÉXITO</option>
           <option value="ÉXITO MOVILIDAD">ÉXITO MOVILIDAD</option>
           <option value="ÉXITO.COM">ÉXITO.COM</option>
+          <option value="__pago">MÉTODO DE PAGO (escribir)</option>
         </select>
       </label>
+      <label id="lMetodoTxt" hidden>Método de pago<input id="metodoTxt" placeholder="Ej. Transferencia Bre-B, Addi, tarjeta de crédito…"></label>
       <label>Garantía (comentario)<input id="garantia" value="GARANTÍA 1 MES POR DEFECTOS DE FÁBRICA."></label>
+      <label>Notas adicionales (opcional)<textarea id="notas" rows="2" maxlength="220" placeholder="Ej. Incluye estuche. Producto Open Box revisado."></textarea></label>
     </fieldset>
 
     <fieldset>
@@ -230,6 +233,7 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
         <p id="s-sub" data-r="548.5" style="top:389.2pt;font-size:11.8pt"></p>
         <p id="s-tot" class="b" data-r="548.3" style="top:404pt;font-size:11.8pt"></p>
         <p id="s-garantia" data-max="230" style="left:58pt;top:419.5pt;font-size:10.1pt"></p>
+        <p id="s-notas" style="left:58pt;top:432.5pt;width:230pt;font-size:8.6pt;line-height:1.2;white-space:normal"></p>
         <p id="s-metodo" class="b" data-max="230" style="left:58.2pt;top:460.2pt;font-size:10.1pt"></p>
       </div>
     </div>
@@ -278,7 +282,7 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
     return `${t.getFullYear()}-${z(t.getMonth()+1)}-${z(t.getDate())}`;
   }
 
-  const fields = ["fecha","orden","metodo","garantia","nombre","direccion","cedula","ciudad"];
+  const fields = ["fecha","orden","metodo","metodoTxt","garantia","notas","nombre","direccion","cedula","ciudad"];
   function collect(){
     const o={}; fields.forEach(f=>o[f]=$(f).value);
     o.items=[]; for(let i=0;i<N;i++) o.items.push({q:$("q"+i).value,p:$("p"+i).value,u:$("u"+i).value});
@@ -324,8 +328,13 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
     place($("s-tot"), money(total));
     $("totalForm").textContent = "$ " + money(total);
     place($("s-garantia"), o.garantia.trim());
-    const met = o.metodo.trim().toUpperCase();
-    place($("s-metodo"), "PLATAFORMA DE VENTA: " + met);
+    // Notas adicionales: hasta 2 líneas debajo de la garantía (se achica la letra si no cabe)
+    const nt = $("s-notas"); nt.textContent = o.notas.trim(); nt.style.fontSize = "8.6pt";
+    for (let fs = 8.6; nt.offsetHeight / PT > 22 && fs > 6; fs -= 0.4) nt.style.fontSize = fs.toFixed(1) + "pt";
+    // Plataforma de venta, o "MÉTODO DE PAGO:" con lo que se escriba
+    const porPago = o.metodo === "__pago";
+    $("lMetodoTxt").hidden = !porPago;
+    place($("s-metodo"), porPago ? "MÉTODO DE PAGO: " + o.metodoTxt.trim().toUpperCase() : "PLATAFORMA DE VENTA: " + o.metodo.trim().toUpperCase());
     for(let i=0;i<4;i++) place($("s-r"+i), $("resp"+i).value.trim().toUpperCase());
     store.set("pg_borrador", o);
   }
@@ -466,7 +475,7 @@ button.clear{color:var(--warn);border-color:currentColor;background:transparent}
 
   // ---- clear everything except the warranty (responsable is fixed on the sheet) ----
   function limpiarTodo(){
-    ["fecha","orden","metodo","nombre","direccion","cedula","ciudad","pegar"].forEach(f=>$(f).value="");
+    ["fecha","orden","metodo","metodoTxt","notas","nombre","direccion","cedula","ciudad","pegar"].forEach(f=>$(f).value="");
     for(let i=0;i<N;i++){ $("q"+i).value=""; $("p"+i).value=""; $("u"+i).value="" }
     render(); setStatus("Datos borrados. Se mantienen la garantía y los datos del responsable.","ok");
     $("fecha").focus();
