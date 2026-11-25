@@ -30,28 +30,29 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Precios y productos nuevos que llegaron de importación (hoja LISTADO del Excel)
-        run: node mensajeria/scripts/aplicar-llegados.js
-      - run: node mensajeria/scripts/extraer-tarifas.js
-      - name: Lista de productos para Meta
-        run: |
-          npm install --no-save --no-package-lock sharp@0.33.5
-          node mensajeria/scripts/catalogo-meta.js
-      - name: Guardar si cambió
+      - run: npm install --no-save --no-package-lock sharp@0.33.5
+      # Genera y guarda. Si mientras tanto llegó otro push (por ejemplo el Excel subió stock varias veces seguidas),
+      # no se mezcla: se toma la versión más nueva del repositorio y se vuelve a generar todo desde ahí.
+      - name: Generar y guardar si cambió
         id: guardar
         run: |
-          git add index.html mensajeria/tarifas-envio.js mensajeria/productos-catalogo.js catalogo-meta.csv catalogo-meta stock/index.html stock/stock.csv
-          if git diff --cached --quiet; then echo "Sin cambios"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898799+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Catálogo, tarifas y catálogo de Meta actualizados desde el stock del Excel"
-          # Si el Excel sube stock varias veces seguidas, otro push puede llegar primero: se reintenta
           for i in 1 2 3 4 5; do
-            git pull --rebase --no-tags origin main && git push origin HEAD:main && break
-            if [ "$i" = 5 ]; then echo "No se pudo guardar tras 5 intentos"; exit 1; fi
-            sleep $((i * 5))
+            if [ "$i" -gt 1 ]; then
+              sleep $((i * 5))
+              git fetch -q --no-tags origin main && git reset -q --hard origin/main
+            fi
+            node mensajeria/scripts/aplicar-llegados.js   # precios y productos nuevos de la hoja LISTADO del Excel
+            node mensajeria/scripts/extraer-tarifas.js
+            node mensajeria/scripts/catalogo-meta.js      # lista para Meta y página /stock/
+            git add index.html mensajeria/tarifas-envio.js mensajeria/productos-catalogo.js catalogo-meta.csv catalogo-meta stock/index.html stock/stock.csv
+            if git diff --cached --quiet; then echo "Sin cambios"; exit 0; fi
+            git commit -q -m "Catálogo, tarifas y catálogo de Meta actualizados desde el stock del Excel"
+            if git push origin HEAD:main; then echo "publicar=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+            echo "Otro cambio llegó primero; se regenera sobre la versión nueva (intento $i)"
           done
-          echo "publicar=1" >> "$GITHUB_OUTPUT"
+          echo "No se pudo guardar tras 5 intentos"; exit 1
       # Los commits del bot no publican la página solos: se pide la publicación
       - name: Publicar sitio
         if: steps.guardar.outputs.publicar == '1'
