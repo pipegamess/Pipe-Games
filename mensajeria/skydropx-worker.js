@@ -27,7 +27,7 @@ const RUTAS_PERMITIDAS = /^\/(quotations|shipments|carriers|orders|labels|pickup
 
 let tokenSkydropx = { valor: "", vence: 0, base: "" };
 
-export default {
+const Manejador = {
   async fetch(req, env, ctx) {
     const origenCfg = (env.ORIGEN || "https://pipegames.com.co").replace(/\/+$/, "");
     const origenReq = req.headers.get("Origin") || "";
@@ -47,7 +47,7 @@ export default {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        esperaInstagram: !!env.CLAVE_AGENTE, sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -228,6 +228,18 @@ export default {
     } catch (e) {
       return responder({ error: "Error hablando con Skydropx: " + (e.message || e) }, 502);
     }
+  }
+};
+
+// Errores no previstos: se avisan al celular (ntfy) y se dejan pasar como antes.
+// Revisión del panel cada 5 minutos (Triggers → Cron: */5 * * * *): avisa solicitudes nuevas, pagos, entregas y novedades.
+export default {
+  async fetch(req, env, ctx) {
+    try { return await Manejador.fetch(req, env, ctx); }
+    catch (e) { ctx.waitUntil(alertaError(env, "Worker de Skydropx", new URL(req.url).pathname + ": " + String(e && e.message || e))); throw e; }
+  },
+  async scheduled(evento, env, ctx) {
+    ctx.waitUntil(revisarPanel(env).catch(e => alertaError(env, "Revisión del panel", String(e && e.message || e))));
   }
 };
 
@@ -571,7 +583,8 @@ async function avisoAddi(req, env, url) {
     const campos = { credito: { mapValue: { fields: aCamposFS(credito) } } };
     const mascara = Object.keys(credito).map(k => "credito." + k);
     if (estado === "approved") { campos.pagado = { integerValue: String(Date.now()) }; mascara.push("pagado"); }
-    try { await escribirReserva(env, reserva, campos, mascara); } catch (e) { return json('{"error":"no se pudo guardar"}', 500); } // Addi reintenta
+    if (["approved", "rejected", "declined"].includes(estado)) await notificar(env, estado === "approved" ? "✅ Addi aprobó un crédito" : "❌ Addi rechazó un crédito", `Reserva ${reserva}${credito.monto ? " · " + pesos(credito.monto) : ""}`, 4, ["moneybag"]);
+    try { await escribirReserva(env, reserva, campos, mascara); } catch (e) { await alertaError(env, "Aviso de Addi", "No se pudo guardar el resultado del crédito: " + String(e.message || e)); return json('{"error":"no se pudo guardar"}', 500); } // Addi reintenta
   }
   return json(cuerpoTxt || "{}"); // Addi espera la misma respuesta que envió
 }
@@ -629,6 +642,7 @@ async function linkBold(token, env) {
 async function marcarPagadoBold(env, token, pago, monto) {
   await guardarBoldEnSaldo(env, token, { estado: "pagado", pago: String(pago || ""), monto: Number(monto) || 0, tPago: Date.now() });
   const sd = await leerSaldo(env, token);
+  await notificar(env, "💳 Pago con tarjeta aprobado (Bold)", `${(sd && (sd.nombre || sd.cliente)) || "Cliente"} · ${pesos(monto)}`, 4, ["credit_card"]);
   if (sd?.reservaId) await escribirReserva(env, sd.reservaId, { pagado: { integerValue: String(Date.now()) }, pagoBold: { mapValue: { fields: aCamposFS({ pago: String(pago || ""), monto: Number(monto) || 0, t: Date.now() }) } } }, ["pagado", "pagoBold"]);
 }
 // Consulta el estado del link en Bold (sirve aunque no esté configurado el webhook)
@@ -735,8 +749,9 @@ async function esperaInstagram(req, env, responder) {
       method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
       body: JSON.stringify({ fields: { espera: { mapValue: { fields: { [id]: { mapValue: { fields: campos } } } } } } }) });
     if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
+    await notificar(env, "🆕 Nuevo en lista de espera (Instagram)", `${campos.nombre.stringValue} quiere ${titulo}${consola !== "OTRA" ? " (" + consola + ")" : ""}`, 3, ["video_game"]);
     return responder({ ok: true, id });
-  } catch (e) { return responder({ ok: false, error: String(e.message || e) }, 500); }
+  } catch (e) { await alertaError(env, "Lista de espera desde Instagram", String(e.message || e)); return responder({ ok: false, error: String(e.message || e) }, 500); }
 }
 
 async function leerCredito(env, reserva) {
@@ -907,4 +922,79 @@ async function irAddi(env, url) {
     if (Date.now() - t > 2 * 3600e3) return html("Este link venció (dura 2 horas). Escríbenos por WhatsApp y te enviamos uno nuevo.");
     return Response.redirect(c.url, 302);
   } catch (e) { return html("No pudimos abrir el pago (código F0" + (String(e?.message || "").startsWith("respondió") ? "-" + String(e.message).slice(9, 13).trim() : "") + "). Intenta de nuevo en un momento o escríbenos por WhatsApp."); }
+}
+
+
+/* ---------- Notificaciones al celular (ntfy) ----------
+   Secreto NTFY_TEMA en este Worker (el mismo tema de la app ntfy). */
+async function notificar(env, titulo, texto, prioridad = 3, etiquetas = []) {
+  if (!env.NTFY_TEMA) return;
+  await fetch("https://ntfy.sh/", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topic: env.NTFY_TEMA, title: titulo, message: String(texto).slice(0, 900), priority: prioridad, tags: etiquetas }) }).catch(() => {});
+}
+// Errores: máximo un aviso por hora por cada tipo de error
+async function alertaError(env, donde, detalle) {
+  try {
+    const clave = new Request("https://alertas.pipegames/" + encodeURIComponent((donde + detalle).slice(0, 120)));
+    if (await caches.default.match(clave)) return;
+    await caches.default.put(clave, new Response("1", { headers: { "Cache-Control": "max-age=3600" } }));
+  } catch {}
+  await notificar(env, "⚠️ Error: " + donde, detalle, 4, ["warning"]);
+}
+
+/* ---------- Revisión del panel de despacho (cron cada 5 minutos) ---------- */
+async function consultaFS(env, tk, coleccion, campo, op, valor) {
+  const r = await fetch("https://firestore.googleapis.com/v1/projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents:runQuery", {
+    method: "POST", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: coleccion }], where: { fieldFilter: { field: { fieldPath: campo }, op, value: valor } }, limit: 60 } })
+  });
+  if (!r.ok) throw new Error("consulta " + coleccion + " " + r.status + ": " + (await r.text()).slice(0, 150));
+  return (await r.json()).filter(x => x.document).map(x => ({ id: x.document.name.split("/").pop(), ...Object.fromEntries(Object.entries(x.document.fields || {}).map(([k, v]) => [k, deFS(v)])) }));
+}
+const pesos = n => "$" + Math.round(Number(n) || 0).toLocaleString("es-CO");
+async function revisarPanel(env) {
+  if (!env.NTFY_TEMA || !env.FIREBASE_SA || !env.FIREBASE_PROJECT || !env.ADMIN_UID) return;
+  const tk = await tokenServicio(env);
+  const base = "https://firestore.googleapis.com/v1/projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/";
+  const rEst = await fetch(base + "sistema/notificaciones", { headers: { Authorization: "Bearer " + tk } });
+  const est = rEst.ok ? Object.fromEntries(Object.entries((await rEst.json()).fields || {}).map(([k, v]) => [k, deFS(v)])) : {};
+  const ahora = Date.now(), desde = Number(est.t) || 0, vistos = new Set(est.saldos || []);
+  const avisos = [];
+  if (desde) {
+    // 1) Solicitudes de envío que llenó el cliente (formulario)
+    for (const x of await consultaFS(env, tk, "solicitudes", "creado", "GREATER_THAN", { integerValue: String(desde) }))
+      avisos.push(["📦 Nueva solicitud de envío", `${x.nombre || "Cliente"} · ${x.municipio || x.ciudad || ""}${x.pedido ? " · " + String(x.pedido).slice(0, 120) : ""}`, 4]);
+    // 2) Entregas, novedades y guías creadas por el cliente
+    for (const g of await consultaFS(env, tk, "guias", "actualizado", "GREATER_THAN", { integerValue: String(desde) }))
+      for (const e of g.eventos || []) {
+        if (!(e.t > desde) || e.por === "despacho") continue;
+        if (e.estado === "entregada") avisos.push(["✅ Guía entregada", `${g.numero || g.id} · ${g.cliente || ""}`, 3]);
+        else if (e.estado === "novedad") avisos.push(["⚠️ Novedad en una guía", `${g.numero || g.id} · ${g.cliente || ""}${e.nota ? " · " + e.nota : ""}`, 4]);
+        else if (e.estado === "disponible" && e.por === "Formulario web") avisos.push(["🆕 Guía creada por el cliente", `${g.numero || g.id} · ${g.cliente || ""}`, 3]);
+      }
+  }
+  // 3) Saldos y pagos confirmados por el cliente
+  const saldos = await consultaFS(env, tk, "saldos", "estado", "EQUAL", { stringValue: "confirmado" });
+  if (desde) for (const x of saldos) if (!vistos.has(x.id)) {
+    const r = x.respuesta || {};
+    avisos.push(["💰 Cliente confirmó el saldo", `${r.nombre || x.nombre || x.cliente || "Cliente"}${x.total || x.saldo ? " · " + pesos(x.total || x.saldo) : ""}${r.medio ? " · " + r.medio : ""}`, 4]);
+  }
+  // 4) Lo que vive en el documento del panel: links de pago confirmados, órdenes nacionales y juegos que llegaron
+  const rA = await fetch(base + "usuarios/" + env.ADMIN_UID + "?mask.fieldPaths=reservas&mask.fieldPaths=ordenesSkydropx&mask.fieldPaths=espera", { headers: { Authorization: "Bearer " + tk } });
+  const a = rA.ok ? Object.fromEntries(Object.entries((await rA.json()).fields || {}).map(([k, v]) => [k, deFS(v)])) : {};
+  if (desde) {
+    for (const r of Object.values(a.reservas || {})) if (r && r.confirmacion && r.confirmacion.t > desde)
+      avisos.push(["🧾 Cliente confirmó ciudad y pago", `${r.nombre || "Cliente"} · ${r.producto || ""}${r.confirmacion.total ? " · total " + pesos(r.confirmacion.total) : ""}`, 4]);
+    for (const o of Object.values(a.ordenesSkydropx || {})) if (o && o.t > desde)
+      avisos.push(["🚚 Datos de envío nacional recibidos", `${o.cliente || "Cliente"} · ${o.ciudad || ""}${o.transportadora ? " · " + o.transportadora : ""}`, 4]);
+    for (const x of Object.values(a.espera || {})) if (x && x.llego > desde && x.estado !== "avisado")
+      avisos.push(["🎮 Llegó un juego que esperaban", `${x.titulo || ""} · avisar a ${x.nombre || "el cliente"}`, 3]);
+  }
+  // Muchos a la vez: se agrupan en un solo aviso
+  if (avisos.length > 4) await notificar(env, `Panel de despacho: ${avisos.length} novedades`, avisos.map(x => x[0].replace(/^\S+\s/, "") + ": " + x[1]).join("\n"), 4, ["bell"]);
+  else for (const [t, m, p] of avisos) await notificar(env, t, m, p, ["bell"]);
+  // Se guarda hasta dónde se revisó
+  const ids = saldos.map(x => x.id).slice(-300);
+  await fetch(base + "sistema/notificaciones", { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: { t: { integerValue: String(ahora) }, saldos: { arrayValue: { values: ids.map(v => ({ stringValue: v })) } } } }) });
 }

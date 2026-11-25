@@ -85,7 +85,7 @@ export default {
     }
     let datos; try { datos = JSON.parse(cuerpo); } catch { return new Response("ok"); }
     // Se responde 200 de inmediato y el trabajo sigue en segundo plano (Meta reintenta si tardamos)
-    ctx.waitUntil(procesar(datos, env).catch(e => console.log("error", e && e.stack || e)));
+    ctx.waitUntil(procesar(datos, env).catch(e => { console.log("error", e && e.stack || e); return alertaError(env, "Error en Pipe Bot", String(e && e.message || e)); }));
     return new Response("ok");
   },
 
@@ -308,6 +308,15 @@ async function notificar(env, titulo, texto, prioridad = "default") {
     body: JSON.stringify({ topic: env.NTFY_TEMA, title: titulo, message: texto, priority: prio, tags: ["moneybag"] })
   }).catch(e => ({ status: 0, e }));
   console.log("ntfy", r.status);
+}
+// Errores de Pipe Bot: un aviso por hora por cada tipo
+async function alertaError(env, titulo, detalle) {
+  try {
+    const k = "alertaerr:" + titulo.slice(0, 80);
+    if (env.AGENTE && await env.AGENTE.get(k)) return;
+    if (env.AGENTE) await env.AGENTE.put(k, "1", { expirationTtl: 3600 });
+  } catch {}
+  await notificar(env, "⚠️ " + titulo, String(detalle).slice(0, 600), "high");
 }
 async function resumenCostos(env) {
   const dia = hoyBog(), mes = dia.slice(0, 7);
@@ -604,7 +613,12 @@ async function preguntarClaude(env, historial) {
   });
   const j = await r.json().catch(() => ({}));
   await registrarUso(env, { claude: j.usage, respuesta: 1 });
-  if (!r.ok) { console.log("Claude", r.status, JSON.stringify(j).slice(0, 300)); return ""; }
+  if (!r.ok) {
+    console.log("Claude", r.status, JSON.stringify(j).slice(0, 300));
+    const msg = (j.error && j.error.message) || "";
+    await alertaError(env, "Pipe Bot no pudo responder (Claude " + r.status + ")", /credit|balance|billing|limit/i.test(msg) ? "Parece que se acabó el saldo o se llegó al límite de la API de Claude: " + msg : msg || "sin detalle");
+    return "";
+  }
   const texto = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("").trim();
   return texto.replace(/\[PEDIDO:([A-Z0-9-]+)\]/g, (t, id) => cat.enlaces[id] || "pipegames.com.co");
 }
@@ -613,7 +627,7 @@ async function preguntarClaude(env, historial) {
 async function enviar(env, cliente, texto) {
   const fbToken = await env.AGENTE.get("fb_token"), fbCuenta = await env.AGENTE.get("fb_cuenta");
   const token = fbToken || (await env.AGENTE.get("token")) || env.IG_TOKEN;
-  if (!token) { console.log("Falta conectar Instagram"); return; }
+  if (!token) { console.log("Falta conectar Instagram"); await alertaError(env, "Pipe Bot desconectado", "Falta conectar Instagram: abre /conectar del agente."); return; }
   const destino = fbToken && fbCuenta ? `${GRAPH_FB}/${fbCuenta}/messages` : GRAPH + "/me/messages";
   await env.AGENTE.put("enviando:" + cliente, "1", { expirationTtl: 60 });
   for (const parte of partir(texto, 950)) {
@@ -624,7 +638,7 @@ async function enviar(env, cliente, texto) {
     });
     const j = await r.json().catch(() => ({}));
     if (j.message_id) await env.AGENTE.put("mio:" + j.message_id, "1", { expirationTtl: 3600 });
-    else console.log("Instagram", r.status, JSON.stringify(j).slice(0, 300));
+    else { console.log("Instagram", r.status, JSON.stringify(j).slice(0, 300)); await alertaError(env, "Pipe Bot no pudo enviar un mensaje en Instagram", (j.error && j.error.message) || ("HTTP " + r.status)); }
   }
 }
 // Instagram acepta hasta 1000 bytes por mensaje

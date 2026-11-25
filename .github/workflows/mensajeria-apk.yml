@@ -66,3 +66,14 @@ jobs:
           body: Descarga mensajeria-prueba.apk e instálalo en el celular del mensajero.
           files: mensajeria-prueba.apk
           make_latest: true
+      - name: Avisar al celular si falló
+        if: failure()
+        env:
+          NTFY_TEMA: ${{ secrets.NTFY_TEMA }}
+          NOMBRE: ${{ github.workflow }}
+          ENLACE: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [ -z "$NTFY_TEMA" ] && exit 0
+          jq -n --arg t "$NTFY_TEMA" --arg n "$NOMBRE" --arg u "$ENLACE" \
+            '{topic:$t, title:("⚠️ Falló en GitHub: " + $n), message:("Revisa el detalle: " + $u), priority:4, tags:["warning"], click:$u}' \
+            | curl -s -X POST -H "Content-Type: application/json" --data @- https://ntfy.sh/ > /dev/null || true
