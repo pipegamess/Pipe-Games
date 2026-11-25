@@ -95,7 +95,7 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 </div>
 
 <script type="module">
-import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js?v=20261118a";
+import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js?v=30261118a";
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
@@ -104,7 +104,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const fechaHora = t => t ? new Date(t).toLocaleString("es-CO", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }) : "";
 
 const EQUIPO = [
-  { id: "mati", nombre: "Mati", rol: "Analista de Reabastecimiento", lema: "Te dice QUÉ recomprar", listo: true },
+  { id: "mati", nombre: "Mati", rol: "Analista de Inventario", lema: "Siempre un paso adelante · te dice qué recomprar", listo: true },
   { id: "tomi", nombre: "Tomi", rol: "Vigía de Lanzamientos", lema: "Te dice QUÉ viene" },
   { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice CÓMO estás de precio" },
   { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
@@ -120,7 +120,7 @@ async function worker(metodo) {
 }
 function pintarEquipo() {
   $("equipo").innerHTML = EQUIPO.map(m => `<button type="button" class="miembro${m.id === elegido ? " activo" : ""}" data-m="${m.id}">
-    <img src="${m.id}-avatar.jpg?v=2" alt="${m.nombre}" width="72" height="72">
+    <img src="${m.id}-avatar.jpg?v=3" alt="${m.nombre}" width="72" height="72">
     <span><b>${m.nombre}</b><small>${m.rol}</small><span class="estado${m.listo ? "" : " pronto"}">${m.listo ? "Trabajando" : "Próximamente"}</span></span>
   </button>`).join("");
 }
@@ -129,7 +129,7 @@ $("equipo").addEventListener("click", e => { const b = e.target.closest("[data-m
 const item = (titulo, derecha, motivo) => `<div class="item"><span>${titulo}</span>${derecha ? `<span class="cant">${derecha}</span>` : "<span></span>"}${motivo ? `<span class="m">${esc(motivo)}</span>` : ""}</div>`;
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
-  const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=2" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
+  const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=3" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
   if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
   if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
   const inf = DATOS.mati?.informe, ventas = DATOS.ventas;

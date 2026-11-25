@@ -1113,7 +1113,7 @@ async function correrMati(env, forzado) {
   if (!forzado && previo && Date.now() - Number(previo.t || 0) < 6 * 86400000) return { ok: true, omitido: "ya hay informe de esta semana" };
   const d = await datosMati(env, tk);
   const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_mismo_mes_anio_pasado, f.ventas_mes_siguiente_anio_pasado, f.ganancia_promedio_unidad, f.clientes_en_espera].join(" | ")).join("\n");
-  const prompt = `Eres Mati, el Analista de Reabastecimiento de Pipe Games, tienda virtual de videojuegos físicos en Bogotá (PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios). Felipe compra pocas unidades por producto (normalmente de 3 a 6) en Amazon o en comercio local, con importación que tarda días o semanas, así que cada peso invertido cuenta.
+  const prompt = `Eres Mati, el Analista de Inventario de Pipe Games, tienda virtual de videojuegos físicos en Bogotá (PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios). Felipe compra pocas unidades por producto (normalmente de 3 a 6) en Amazon o en comercio local, con importación que tarda días o semanas, así que cada peso invertido cuenta.
 
 TU TAREA: decirle a Felipe QUÉ RECOMPRAR esta semana, cuánto, y qué NO recomprar, usando SOLO los datos de abajo. No inventes datos ni lanzamientos.
 
@@ -1149,7 +1149,7 @@ Máximo 12 en recomprar, 6 en no_recomprar, 6 en impulsar, 5 en pedir_nuevo, 4 a
   informe.datos = { productosAnalizados: d.conMov.length + d.quietos.length, ventasDelExcel: d.hayVentas, ventasActualizadas: d.tVentas || null, tokens: j.usage || null };
   await escribirDocFS(env, tk, "privado/equipo_mati", { t: Date.now(), informe: JSON.stringify(informe) });
   const top = (informe.recomprar || []).filter(x => x.prioridad === "alta").slice(0, 3).map(x => `${x.producto}${x.consola ? " " + x.consola : ""} (${x.cantidad})`).join(", ");
-  await notificar(env, "📦 Mati: informe de reabastecimiento listo", (informe.resumen || "") + (top ? "\nPrioridad alta: " + top : "") + "\nVer en pipegames.com.co/equipo/", 3, ["package"]);
+  await notificar(env, "📦 Mati: informe de inventario listo", (informe.resumen || "") + (top ? "\nPrioridad alta: " + top : "") + "\nVer en pipegames.com.co/equipo/", 3, ["package"]);
   return { ok: true, informe, t: Date.now() };
 }
 async function leerEquipo(env) {
