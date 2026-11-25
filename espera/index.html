@@ -225,7 +225,7 @@ $("fNuevo").addEventListener("submit", async ev => {
   const previo = ESPERA[id] || {};
   const x = { nombre, contacto, titulo: tit.toUpperCase(), consola: $("fConsola").value, k: (p && !p.extra && p.k) || "", notas: $("fNotas").value.trim(), creado: previo.creado || Date.now(), estado: previo.estado || "esperando" };
   if (previo.avisadoT) x.avisadoT = previo.avisadoT;
-  if (previo.canal) { x.canal = previo.canal; x.igId = previo.igId || ""; if (previo.canal === "instagram") x.contacto = $("fContacto").value.trim() || previo.contacto; }
+  if (previo.canal) { x.canal = previo.canal; x.igId = previo.igId || ""; x.instagram = previo.instagram || ""; if (previo.canal === "instagram") x.contacto = $("fContacto").value.trim() || previo.contacto; }
   if (previo.llego && mismaK(previo.k, x.k) && previo.titulo === x.titulo) x.llego = previo.llego;
   $("fGuardar").disabled = true;
   try { await guardar({ [`espera.${id}`]: x }); limpiarForm(); toast(editando ? "Cambios guardados" : `${C.primerNombre(nombre)} quedó en la lista de espera`); }

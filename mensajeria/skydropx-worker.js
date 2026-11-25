@@ -718,11 +718,17 @@ async function esperaInstagram(req, env, responder) {
       if (s(f.estado) !== "avisado" && (s(f.igId) === igId || s(f.contacto) === "@" + usuario) && s(f.titulo) === titulo && s(f.consola) === consola) return responder({ ok: true, repetido: id });
     }
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    // celular de WhatsApp (Colombia): si lo dio, el aviso va por WhatsApp; si no, por Instagram
+    let cel = String(b.celular || "").replace(/\D/g, "");
+    if (cel.startsWith("0057")) cel = cel.slice(2);
+    if (cel.length === 10 && cel.startsWith("3")) cel = "57" + cel;
+    const conWA = /^573\d{9}$/.test(cel);
     const campos = {
-      nombre: { stringValue: limpio(b.nombre, 80) || (usuario ? "@" + usuario : "Cliente de Instagram") },
-      contacto: { stringValue: usuario ? "@" + usuario : "" }, canal: { stringValue: "instagram" }, igId: { stringValue: igId },
+      nombre: { stringValue: limpio(b.nombre, 80).toUpperCase() || (usuario ? "@" + usuario : "Cliente de Instagram") },
+      contacto: { stringValue: conWA ? cel : (usuario ? "@" + usuario : "") }, canal: { stringValue: conWA ? "whatsapp" : "instagram" },
+      igId: { stringValue: igId }, instagram: { stringValue: usuario ? "@" + usuario : "" },
       titulo: { stringValue: titulo }, consola: { stringValue: consola }, k: { stringValue: "" },
-      notas: { stringValue: limpio("Anotado por Pipe Bot desde Instagram. " + limpio(b.notas, 200), 300) },
+      notas: { stringValue: limpio("Anotado por Pipe Bot desde Instagram" + (usuario ? " (@" + usuario + ")" : "") + ". " + limpio(b.notas, 200), 300) },
       creado: { integerValue: String(Date.now()) }, estado: { stringValue: "esperando" }
     };
     const r = await fetch("https://firestore.googleapis.com/v1/" + doc + "?updateMask.fieldPaths=" + encodeURIComponent("espera." + id), {
