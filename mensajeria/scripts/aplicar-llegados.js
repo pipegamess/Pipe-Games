@@ -52,12 +52,13 @@ function platCatalogo(pl, esAcc) {
 
 let precios = 0, nuevos = 0;
 // ¿Ya hay en el catálogo un producto parecido de la misma consola? (mismo juego con otro nombre)
-const palabras = t => String(t || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+const palabras = t => String(t || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/OPEN\s*BOX/g, " ")
   .replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(w => w && !["PS4", "PS5", "SWITCH", "SW2", "NS2", "EDITION", "EDICION", "THE", "DE", "OF"].includes(w));
+const esOB = t => /OPEN\s*BOX/i.test(String(t || ""));
 function parecido(nombre, plat) {
   const a = palabras(nombre), numA = a.filter(w => /^\d+$/.test(w)).sort().join(",");
   for (const n of Object.keys(datos)) for (const g of datos[n]) {
-    if (g.platform !== plat) continue;
+    if (g.platform !== plat || esOB(g.name) !== esOB(nombre)) continue;   // un Open Box no es el mismo producto que el nuevo
     const b = palabras(g.name), numB = b.filter(w => /^\d+$/.test(w)).sort().join(",");
     if (numA !== numB || !a.length || !b.length) continue;     // FC 26 ≠ FC 27
     const enB = a.filter(w => b.includes(w)).length / a.length, enA = b.filter(w => a.includes(w)).length / b.length;
@@ -71,6 +72,8 @@ function crear(k, nombre, pl, precio, esAcc, origen) {
   if (igual) { console.log(`No se crea ${nombre} (${plat}): parece ser "${igual.name}" — enlazarlo en PG_STOCK_MAP`); return; }
   const lista = (!esAcc && PLATS_JUEGO[llavePlat(pl)]) || "acc";
   const nuevo = { name: String(nombre).trim().toUpperCase(), platform: plat, price: precioTxt(precio), active: true, img: "", estreno: false };
+  // Open Box: usa la foto del mismo juego nuevo (el catálogo lo marca con la cinta OPEN BOX)
+  if (esOB(nombre)) { const base = parecido(String(nombre).replace(/\(?\s*OPEN\s*BOX\s*\)?/i, " "), plat); if (base && base.img) nuevo.img = base.img; }
   const arr = datos[lista];
   // se ubica después del producto de igual o menor precio de la misma consola
   let pos = -1;
@@ -94,7 +97,6 @@ for (const [k, nombre, pl, precio, esAcc] of llegados) {
     }
     continue;
   }
-  if (/OPEN\s*BOX/i.test(nombre)) continue;
   crear(k, nombre, pl, precio, esAcc, "importación");
 }
 
@@ -102,7 +104,6 @@ for (const [k, nombre, pl, precio, esAcc] of llegados) {
 for (const [k, nombre, pl, precio, esAcc] of listado) {
   if (!k || !(precio > 0) || porLlave[k]) continue;
   if (!PLATS_JUEGO[llavePlat(pl)]) continue;          // gorras, convertidores, etc.: no se crean solos
-  if (/OPEN\s*BOX/i.test(nombre)) continue;            // los Open Box no van al catálogo
   if (!(productos[k] > 0)) continue;                  // sin unidades disponibles
   crear(k, nombre, pl, precio, esAcc, "LISTADO");
 }

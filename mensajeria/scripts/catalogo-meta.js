@@ -95,8 +95,8 @@ async function foto(src) {
       const nombre = titulo(x.name), cat = /CONSOLA/i.test(x.name) ? "Consolas" : categoria[lista];
       filas.push({
         id, title: `${nombre} - ${plat}`.slice(0, 150),
-        description: `${nombre} para ${plat}. ${cat === "Videojuegos" ? "Juego físico nuevo y sellado de fábrica." : "Producto nuevo y sellado de fábrica."} Envíos a toda Colombia; domicilio en Bogotá, Chía y Soacha.`,
-        availability: activo ? "in stock" : "out of stock", condition: "new", price: `${v} COP`,
+        description: `${nombre} para ${plat}. ${/OPEN\s*BOX/i.test(x.name) ? "Open Box: caja abierta, producto original revisado." : cat === "Videojuegos" ? "Juego físico nuevo y sellado de fábrica." : "Producto nuevo y sellado de fábrica."} Envíos a toda Colombia; domicilio en Bogotá, Chía y Soacha.`,
+        availability: activo ? "in stock" : "out of stock", condition: /OPEN\s*BOX/i.test(x.name) ? "used" : "new", price: `${v} COP`,
         link: `${SITIO}/?pedido=${encodeURIComponent(JSON.stringify([{ n: x.name, p: plat, q: 1 }]))}`,
         image_link: img, brand: marca(plat), product_type: `${cat} > ${plat}`
       });
