@@ -31,6 +31,16 @@ h2 { font-family: var(--display); font-size: 20px; letter-spacing: 0.05em; text-
 h2 small { font: 500 13px/1 var(--body); letter-spacing: 0; text-transform: none; color: var(--muted); }
 .sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; max-width: 62ch; }
 .top { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Campana de avisos */
+.campana { position: relative; }
+.campana .n { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--err); color: #fff; font: 700 11px/18px var(--body); text-align: center; }
+.campana .n[hidden] { display: none; }
+#notiCaja { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: min(360px, calc(100vw - 32px)); max-height: 60vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.45); padding: 8px; }
+#notiCaja .it { display: block; width: 100%; text-align: left; background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; margin: 0 0 6px; color: var(--text); font: 500 13px/1.35 var(--body); cursor: pointer; }
+#notiCaja .it.nuevo { border-color: var(--acc); }
+#notiCaja .it small { display: block; color: var(--muted); margin-top: 2px; }
+#notiCaja .pie { display: flex; gap: 6px; justify-content: space-between; align-items: center; padding: 4px 2px 0; color: var(--muted); font-size: 12px; }
+.top-wrap { position: relative; }
 .top a, button.ghost { font: 600 13px/1 var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; text-decoration: none; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
 .campos { display: grid; gap: 12px; grid-template-columns: 1fr; }
@@ -90,7 +100,7 @@ details[open] > summary h2::before { content: "▾"; }
       <h1>Lista de espera <span>Pipe Games</span></h1>
       <p class="sub">Clientes que preguntaron por un juego agotado. Cuando el título vuelve a estar disponible en el catálogo aparece en “Ya llegó” y te llega un aviso en el panel de despacho.</p>
     </div>
-    <div class="top"><a href="../inicio/">Centro de Mando</a><a href="../mensajeria/">Panel de despacho</a><button class="ghost" type="button" id="salir">Salir</button></div>
+    <div class="top top-wrap"><button class="ghost campana" type="button" id="campana" title="Avisos de la lista de espera" aria-label="Avisos">🔔<span class="n" id="campanaN" hidden></span></button><div id="notiCaja" hidden></div><a href="../inicio/">Centro de Mando</a><a href="../mensajeria/">Panel de despacho</a><button class="ghost" type="button" id="salir">Salir</button></div>
   </header>
 
   <form class="panel" id="fNuevo" autocomplete="off">
@@ -187,7 +197,7 @@ async function cargarStock() {
   stockT = Date.now();
   $("dlJuegos").innerHTML = PROD.map(p => `<option value="${esc(p.n)} · ${esc(p.p)}">${p.disp ? "Disponible" : "Agotado"} · ${esc(C.cop(p.v))}</option>`).join("");
   $("stockInfo").textContent = PROD.length ? `Stock revisado a las ${new Date().toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" })} · ${PROD.filter(p => p.disp).length} productos disponibles. Se vuelve a revisar cada 3 minutos.` : "No se pudo leer el catálogo.";
-  pintar();
+  pintar(); if (typeof pintarCampana === "function") pintarCampana();
 }
 const consolaDe = p => ["PS5", "PS4", "SWITCH 2", "SWITCH"].includes(p) ? p : "OTRA";
 // Busca el producto del catálogo para una persona en espera: por la clave guardada, o por nombre y consola.
@@ -356,11 +366,58 @@ onAuthStateChanged(auth, async u => {
   $("vLogin").hidden = !!u; $("vApp").hidden = !u;
   unsub?.(); unsub = null; clearInterval(timer);
   if (!u) { ESPERA = {}; $("lCorreo").focus(); return; }
-  unsub = onSnapshot(REF(), s => { ESPERA = (s.exists() && s.data().espera) || {}; pintar(); }, e => toast("No se pudo leer la lista: " + e.code));
+  unsub = onSnapshot(REF(), s => { ESPERA = (s.exists() && s.data().espera) || {}; pintar(); pintarCampana(); }, e => toast("No se pudo leer la lista: " + e.code));
   cargarStock(); timer = setInterval(cargarStock, 180000);
 });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && auth.currentUser && Date.now() - stockT > 60000) cargarStock(); });
 window.addEventListener("hashchange", () => { marcarHash.hecho = null; marcarHash(); });
+
+// ── Campana: clientes nuevos (Pipe Bot / Instagram) y juegos que ya llegaron ──
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+let campanaAvisados = null;
+function avisosEspera() {
+  const visto = Number(lsGet("esperaVisto")) || 0, l = [];
+  Object.entries(ESPERA).forEach(([id, x]) => {
+    if (x.estado === "avisado") return;
+    const p = PROD.length ? productoDe(x) : null;
+    if (p?.disp) l.push({ id, t: x.llego || Date.now(), tipo: "llego", txt: `Ya llegó ${x.titulo} · avisar a ${C.primerNombre(x.nombre)}`, sub: `${x.consola === "OTRA" ? "" : x.consola + " · "}Disponible desde el ${fecha(x.llego || Date.now())}` });
+    else if (/Pipe Bot/i.test(x.notas || "") && (x.creado || 0) > visto) l.push({ id, t: x.creado, tipo: "nuevo", txt: `Nuevo en espera: ${x.nombre} quiere ${x.titulo}`, sub: `${x.consola === "OTRA" ? "" : x.consola + " · "}Anotado por Pipe Bot desde Instagram · ${fecha(x.creado)}` });
+  });
+  return l.sort((a, b) => b.t - a.t);
+}
+function pintarCampana() {
+  const l = avisosEspera(), n = $("campanaN");
+  n.textContent = l.length; n.hidden = !l.length;
+  if (!$("notiCaja").hidden) abrirCampana(true);
+  // aviso del navegador por lo que aparezca nuevo con la página abierta
+  const ids = new Set(l.map(a => a.tipo + a.id));
+  if (campanaAvisados) l.filter(a => !campanaAvisados.has(a.tipo + a.id)).forEach(a => {
+    try { if ("Notification" in window && Notification.permission === "granted") new Notification(a.tipo === "llego" ? "Lista de espera · Ya llegó" : "Lista de espera · Cliente nuevo", { body: a.txt, tag: "espera-" + a.tipo + a.id }); } catch {}
+  });
+  campanaAvisados = ids;
+}
+function abrirCampana(solo) {
+  const caja = $("notiCaja"), l = avisosEspera();
+  caja.innerHTML = (l.length ? l.map(a => `<button type="button" class="it${a.tipo === "nuevo" ? " nuevo" : ""}" data-ir="${a.id}">${a.tipo === "llego" ? "✅" : "🆕"} ${esc(a.txt)}<small>${esc(a.sub)}</small></button>`).join("")
+    : `<p class="vacio" style="margin:6px">Sin avisos pendientes.</p>`) +
+    `<div class="pie"><span>Los “Ya llegó” se quitan al marcar “Ya le avisé”.</span>${l.some(a => a.tipo === "nuevo") ? `<button type="button" class="ghost" id="notiVisto" style="padding:6px 9px">Marcar vistos</button>` : ""}</div>`;
+  if (!solo) caja.hidden = false;
+}
+$("campana").addEventListener("click", e => {
+  e.stopPropagation();
+  try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission(); } catch {}
+  if ($("notiCaja").hidden) abrirCampana(); else $("notiCaja").hidden = true;
+});
+$("notiCaja").addEventListener("click", e => {
+  e.stopPropagation();
+  if (e.target.closest("#notiVisto")) { lsSet("esperaVisto", String(Date.now())); pintarCampana(); abrirCampana(); return; }
+  const b = e.target.closest("[data-ir]"); if (!b) return;
+  $("notiCaja").hidden = true;
+  const el = document.getElementById("e-" + b.dataset.ir);
+  if (el) { el.classList.remove("marca"); void el.offsetWidth; el.classList.add("marca"); el.scrollIntoView({ behavior: "smooth", block: "center" }); }
+});
+document.addEventListener("click", () => { $("notiCaja").hidden = true; });
 </script>
 </body>
 </html>
