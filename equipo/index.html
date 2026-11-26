@@ -133,7 +133,7 @@ function pintarInforme() {
   if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
   if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
   const inf = DATOS.mati?.informe, ventas = DATOS.ventas;
-  const avisoVentas = !ventas ? `<div class="aviso">Mati todavía no tiene tus ventas del Excel. Mientras tanto decide solo con el stock y la lista de espera. Cuando instales la macro v21, las ventas llegan solas (en privado).</div>`
+  const avisoVentas = !ventas ? `<div class="aviso">Mati todavía no tiene tus ventas del Excel. Mientras tanto decide solo con el stock y la lista de espera. Las ventas llegan solas (en privado) cada vez que abres el Excel.</div>`
     : `<p class="meta">Ventas del Excel recibidas el ${fechaHora(ventas.t)} · ${ventas.filas} registros (producto por mes).</p>`;
   const btn = `<div class="acciones"><button class="primary" type="button" id="generar">Pedirle a Mati un informe nuevo</button><span class="status" id="gEstado"></span></div>`;
   if (!inf) { v.innerHTML = cab + avisoVentas + `<p class="vacio">Aún no hay informes. Mati entrega uno cada lunes en la mañana, o puedes pedírselo ahora.</p>` + btn; return; }
