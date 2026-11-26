@@ -145,7 +145,7 @@ const fechaHora = t => t ? new Date(t).toLocaleString("es-CO", { weekday: "long"
 const EQUIPO = [
   { id: "mati", nombre: "Mati", rol: "Analista de Inventario", lema: "Siempre un paso adelante · te dice qué recomprar", listo: true },
   { id: "tomi", nombre: "Tomi", rol: "Vigía de Lanzamientos", lema: "Te dice qué juegos vienen y qué preparar", listo: true },
-  { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice cómo estás de precio frente a otras tiendas", listo: true },
+  { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice cómo estás de precio frente a otras tiendas", pausa: "En pausa hasta conectar Mercado Libre: así podrá comparar tus publicaciones con las de otros vendedores." },
   { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
 ];
 let elegido = "mati", DATOS = null, verT = null, borrando = false, verTomi = null, borrandoTomi = false;
@@ -161,7 +161,7 @@ async function worker(metodo, extra) {
 function pintarEquipo() {
   $("equipo").innerHTML = EQUIPO.map(m => `<button type="button" class="miembro${m.id === elegido ? " activo" : ""}" data-m="${m.id}">
     <img src="${m.id}-avatar.jpg?v=3" alt="${m.nombre}" width="72" height="72">
-    <span><b>${m.nombre}</b><small>${m.rol}</small><span class="estado${m.listo ? "" : " pronto"}">${m.listo ? "Trabajando" : "Próximamente"}</span></span>
+    <span><b>${m.nombre}</b><small>${m.rol}</small><span class="estado${m.listo ? "" : " pronto"}">${m.listo ? "Trabajando" : m.pausa ? "En pausa" : "Próximamente"}</span></span>
   </button>`).join("");
 }
 $("equipo").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (!b) return; elegido = b.dataset.m; pintarEquipo(); pintarInforme(); });
@@ -262,7 +262,7 @@ function pintarInforme() {
   const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=3" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
   if (m.id === "tomi" && DATOS) return pintarTomi(cab);
   if (m.id === "anto" && DATOS) return pintarAnto(cab);
-  if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
+  if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.pausa ? esc(m.pausa) : m.nombre + " se suma al equipo pronto."}</p>`; return; }
   if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
   const ventas = DATOS.ventas, lista = informes(), marcas = DATOS.marcas || {};
   const actual = lista.find(x => x.t === verT) || lista[0], inf = actual && actual.informe;

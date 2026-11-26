@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "9", versionAnto: "2", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "9", versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -286,7 +286,8 @@ export default {
     const bog = new Date(Date.now() - 5 * 3600000);
     // Equipo: todos los informes los sábados desde las 5:30 p. m. (hora Colombia)
     const sabadoTarde = bog.getUTCDay() === 6 && bog.getUTCHours() * 60 + bog.getUTCMinutes() >= 17 * 60 + 30;
-    if (sabadoTarde) ctx.waitUntil(correrAnto(env, false).catch(e => alertaError(env, "Informe de Anto", String(e && e.message || e))));
+    // Anto en pausa hasta conectar Mercado Libre (para reactivarla, quitar el "false &&")
+    if (false && sabadoTarde) ctx.waitUntil(correrAnto(env, false).catch(e => alertaError(env, "Informe de Anto", String(e && e.message || e))));
     if (sabadoTarde) ctx.waitUntil(correrTomi(env, false).catch(e => alertaError(env, "Informe de Tomi", String(e && e.message || e))));
     if (sabadoTarde) ctx.waitUntil(correrMati(env, false).catch(e => alertaError(env, "Informe de Mati", String(e && e.message || e))));
   }
