@@ -214,7 +214,8 @@ function pintarTomi(cab) {
   const lz = [...(inf.lanzamientos || [])].sort((a, b) => String(a.fecha_iso || "").localeCompare(String(b.fecha_iso || "")));
   const urg = lz.filter(x => x.interes === "alta");
   const mesDe = x => { const d = new Date((x.fecha_iso || "") + "T12:00:00"); return isNaN(d) ? "Sin fecha" : d.toLocaleDateString("es-CO", { month: "long", year: "numeric" }); };
-  const dia = x => { const d = new Date((x.fecha_iso || "") + "T12:00:00"); return isNaN(d) || !x.fecha_confirmada ? "Por confirmar" : d.toLocaleDateString("es-CO", { day: "numeric", month: "short" }); };
+  const hoy = new Date().toISOString().slice(0, 10);
+  const dia = x => { const d = new Date((x.fecha_iso || "") + "T12:00:00"); if (isNaN(d) || !x.fecha_confirmada) return "Por confirmar"; const f = d.toLocaleDateString("es-CO", { day: "numeric", month: "short" }); return (x.ya_salio || x.fecha_iso < hoy) ? "Salió " + f : f; };
   const fila = x => `<div class="lanz"><div class="f">${esc(dia(x))}<small>${esc((x.consolas || []).join(" · "))}</small></div><div><b>${esc(x.titulo)}</b><span class="prio ${esc(x.interes)}">${esc(x.interes || "")}</span>
     ${x.por_que ? `<p>${esc(x.por_que)}</p>` : ""}${x.accion ? `<p class="hacer">${esc(x.accion)}</p>` : ""}${!x.fecha_confirmada && x.fecha ? `<p>Fecha anunciada: ${esc(x.fecha)}</p>` : ""}${/^https?:\/\//.test(x.fuente || "") ? `<a href="${esc(x.fuente)}" target="_blank" rel="noopener">Fuente</a>` : ""}</div></div>`;
   let porMes = "", mesAnt = "";

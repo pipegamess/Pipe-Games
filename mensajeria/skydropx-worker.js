@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "3", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "4", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1382,6 +1382,8 @@ REGLAS:
 CÓMO ESCRIBIR (Felipe lo lee rápido en el celular): español claro, frases completas, sin abreviaturas ni jerga. Fechas como "12 de diciembre de 2026".
 ${ESTILO_RESUMEN}
 - En el "resumen" y en las alertas, CADA juego que nombres lleva entre paréntesis su consola o consolas y su fecha exacta si la tiene, por ejemplo: "Until Dawn 2 (PS5, 15 de enero de 2027)", "Professor Layton (Switch y Switch 2, 4 de diciembre de 2026)". Si la fecha no está confirmada escribe "fecha por confirmar" o el mes anunciado. Si un juego ya salió, di la fecha en que salió.
+- COHERENCIA DE FECHAS: hoy es ${d.hoy}. Compara cada fecha con hoy: si ya pasó, escribe "salió el 19 de noviembre de 2026" (nunca "llega" ni "sale"). Si das una fecha exacta, NO digas que está sin confirmar; si de verdad no está confirmada, no pongas día exacto: escribe "fecha por confirmar" o solo el mes. Nunca mezcles las dos cosas.
+- Cada línea dice QUÉ pasa, POR QUÉ te importa y QUÉ hacer, con una acción concreta y medible (por ejemplo "pide 3 unidades", "abre la preventa en Instagram", "avisa a los 2 clientes en espera"). Prohibidas las acciones vagas como "verifica tu stock" o "revisa".
 
 LO MÁS VENDIDO EN PIPE GAMES ESTE AÑO (producto · consola (unidades)):
 ${d.masVendidos.join("\n") || "(sin datos de ventas)"}
@@ -1401,6 +1403,9 @@ RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
 {"resumen":"3 a 5 líneas, cada una empieza con \"- \" y van separadas por \\n","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
 Ordena "lanzamientos" por fecha. Máximo 20 lanzamientos, 8 preventas, 6 avisar_clientes, 4 alertas. Si no hay fecha exacta usa fecha_iso con el primer día del mes o del año. No uses bloques de código.`;
   const { informe, j } = await pedirJSON(env, prompt, "\n\nIMPORTANTE: sé muy breve (máximo 12 lanzamientos, frases de máximo 12 palabras) y responde SOLO el JSON, sin ``` ni texto adicional.");
+  // seguro: lo que ya salió queda marcado como salido y con fecha confirmada
+  for (const x of informe.lanzamientos || []) if (x.fecha_iso && x.fecha_iso < d.hoy && x.fecha_confirmada !== false) x.ya_salio = true;
+  informe.hoy = d.hoy;
   informe.datos = { resultados: d.resultados.length, paginas: d.listas.map(l => l.url), tokens: j.usage || null };
   const t = await guardarInforme(env, tk, "tomi", informe);
   const top = (informe.lanzamientos || []).filter(x => x.interes === "alta").slice(0, 3).map(x => x.titulo + " (" + x.fecha + ")").join(", ");
