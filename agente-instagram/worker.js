@@ -659,7 +659,13 @@ async function enviar(env, cliente, texto) {
   if (!token) { console.log("Falta conectar Instagram"); await alertaError(env, "Pipe Bot desconectado", "Falta conectar Instagram: abre /conectar del agente."); return; }
   const destino = fbToken && fbCuenta ? `${GRAPH_FB}/${fbCuenta}/messages` : GRAPH + "/me/messages";
   await env.AGENTE.put("enviando:" + cliente, "1", { expirationTtl: 60 });
-  for (const parte of partir(texto, 950)) {
+  // Instagram corta el texto cuando el mensaje lleva un enlace (lo convierte en tarjeta de vista previa).
+  // Por eso el texto va sin enlaces y cada enlace se manda aparte, en su propio mensaje, al final.
+  const enlaces = [];
+  const limpio = String(texto).replace(/https?:\/\/[^\s)>\]]+/g, u => { const fin = (u.match(/[.,;:!?]+$/) || [""])[0]; u = u.slice(0, u.length - fin.length); if (!enlaces.includes(u)) enlaces.push(u); return "(enlace abajo 👇)" + fin; })
+    .replace(/:\s*\(enlace abajo 👇\)/g, " (enlace abajo 👇)").replace(/[ \t]+/g, " ").trim();
+  const partes = partir(limpio, 600).concat(enlaces);
+  for (const parte of partes) {
     const r = await fetch(destino, {
       method: "POST",
       headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
