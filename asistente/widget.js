@@ -174,8 +174,45 @@ chat.addEventListener("click", e => {
   const v = e.target.closest("[data-ver]"); if (v) return elegir(v.dataset.ver);
   // Compra guiada (solo en el catálogo)
   const pd = e.target.closest("[data-pedir]"); if (pd) return agregar(pd.dataset.pedir);
+  const ep = e.target.closest("[data-espera]"); if (ep) return pedirEspera(ep.dataset.espera);
   const ac = e.target.closest("[data-accion]"); if (ac && CLI) return accion(ac.dataset.accion, ac);
   const sc = e.target.closest("[data-seccion]"); if (sc && typeof window.pbIrSeccion === "function") { cerrar(); window.pbIrSeccion(sc.dataset.seccion); }
+});
+
+/* ══ Lista de espera: producto agotado → nombre, apellido y WhatsApp → queda anotado y Felipe le avisa cuando llegue ══ */
+const ESPERA_URL = "https://skydropx-pipegames.pipe-games22.workers.dev/espera/web";
+function pedirEspera(dato) {
+  const [n, p] = dato.split("|");
+  poner(esc((CLI ? "Avísame cuando llegue " : "Anotar cliente: ") + n + " · " + p), "yo");
+  const caja = poner(`<p>${CLI ? "¡Listo! Déjanos tus datos y te escribimos por WhatsApp apenas llegue" : "Datos del cliente para avisarle cuando llegue"} <b>${esc(n)} · ${esc(p)}</b>:</p>
+    <form class="pb-espera" data-producto="${esc(dato)}" style="display:grid;gap:6px">
+      <input name="nombre" placeholder="Nombre" autocomplete="given-name" required maxlength="60" style="font-size:16px;padding:8px;border-radius:8px">
+      <input name="apellido" placeholder="Apellido" autocomplete="family-name" maxlength="60" style="font-size:16px;padding:8px;border-radius:8px">
+      <input name="celular" placeholder="WhatsApp (ej: 3001234567)" inputmode="tel" autocomplete="tel" required maxlength="16" style="font-size:16px;padding:8px;border-radius:8px">
+      <input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+      <button type="submit" class="pb-cta">🔔 ${CLI ? "Avisarme" : "Anotar en la lista de espera"}</button>
+      <span class="sub pb-espera-estado"></span>
+    </form>`, "bot");
+  const f = caja.querySelector("form"); if (f) f.nombre.focus();
+}
+chat.addEventListener("submit", async e => {
+  const f = e.target.closest("form.pb-espera"); if (!f) return;
+  e.preventDefault();
+  const [n, p] = f.dataset.producto.split("|"), est = f.querySelector(".pb-espera-estado"), bt = f.querySelector("button");
+  const cel = f.celular.value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
+  if (f.nombre.value.trim().length < 2) { est.textContent = "Escribe el nombre."; return; }
+  if (!/^3\d{9}$/.test(cel)) { est.textContent = "El WhatsApp debe tener 10 dígitos y empezar por 3."; return; }
+  bt.disabled = true; est.textContent = "Anotando…";
+  try {
+    const r = await fetch(ESPERA_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titulo: n, consola: p, nombre: f.nombre.value, apellido: f.apellido.value, celular: cel, website: f.website.value, origen: CLI ? "catalogo" : "centro" }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || "No se pudo anotar.");
+    f.replaceWith(Object.assign(document.createElement("p"), { innerHTML: j.repetido
+      ? `✅ Ya estabas en la lista de espera de <b>${esc(n)} · ${esc(p)}</b>. Te avisaremos por WhatsApp apenas llegue.`
+      : (CLI ? `✅ ¡Quedaste anotado! Te escribiremos por WhatsApp apenas llegue <b>${esc(n)} · ${esc(p)}</b>.` : `✅ Cliente anotado en la lista de espera de <b>${esc(n)} · ${esc(p)}</b>.`) }));
+  } catch (err) { bt.disabled = false; est.textContent = err.message; }
+  chat.scrollTop = chat.scrollHeight;
 });
 
 /* ══ Compra guiada: producto → ¿otro o continuar? → ciudad → pago → datos → WhatsApp ══ */

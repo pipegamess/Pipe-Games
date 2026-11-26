@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-sin-importacion", versionTomi: "10", preguntas: true, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-sin-importacion", versionTomi: "10", preguntas: true, esperaWeb: true, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -57,6 +57,8 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
     // Lista de espera desde el agente de Instagram (Pipe Bot): se valida con la clave compartida CLAVE_AGENTE
     if (req.method === "POST" && url.pathname === "/espera/instagram") return esperaInstagram(req, env, responder);
+    // Lista de espera desde Pipe Bot del catálogo y del Centro de Mando (público, con protecciones)
+    if (req.method === "POST" && url.pathname === "/espera/web") return esperaWeb(req, env, responder);
     // Mercado Libre (OAuth): conectar la cuenta y ver el estado
     if (req.method === "GET" && url.pathname.startsWith("/ml/")) return rutasML(req, env, url, responder);
     // Ventas del Excel (privadas): la macro las envía con la clave CLAVE_AGENTE y quedan solo en Firebase
@@ -808,6 +810,61 @@ async function esperaInstagram(req, env, responder) {
     await notificar(env, "🆕 Nuevo en lista de espera (Instagram)", `${campos.nombre.stringValue} quiere ${titulo}${consola !== "OTRA" ? " (" + consola + ")" : ""}`, 3, ["video_game"]);
     return responder({ ok: true, id });
   } catch (e) { await alertaError(env, "Lista de espera desde Instagram", String(e.message || e)); return responder({ ok: false, error: String(e.message || e) }, 500); }
+}
+
+// Lista de espera desde Pipe Bot del catálogo y del Centro de Mando (público: sin clave).
+// Protecciones: el producto debe existir en el catálogo, WhatsApp colombiano válido, campo trampa para robots,
+// máximo 6 anotaciones por hora desde la misma conexión y sin repetir (mismo número, juego y consola).
+async function esperaWeb(req, env, responder) {
+  if (!env.FIREBASE_SA) return responder({ ok: false, error: "Falta FIREBASE_SA" }, 500);
+  const b = await req.json().catch(() => ({}));
+  if (b.website) return responder({ ok: true });   // campo trampa: solo lo llenan los robots
+  const limpio = (v, n) => String(v || "").replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+  const nombre = limpio(b.nombre, 60), apellido = limpio(b.apellido, 60);
+  let cel = String(b.celular || "").replace(/\D/g, "");
+  if (cel.startsWith("0057")) cel = cel.slice(2);
+  if (cel.length === 10 && cel.startsWith("3")) cel = "57" + cel;
+  if (nombre.length < 2) return responder({ ok: false, error: "Escribe tu nombre." }, 400);
+  if (!/^573\d{9}$/.test(cel)) return responder({ ok: false, error: "El WhatsApp debe ser un celular de Colombia de 10 dígitos (empieza por 3)." }, 400);
+  // límite por conexión
+  const ip = req.headers.get("CF-Connecting-IP") || "x";
+  const llaveRL = new Request("https://limite.pipegames/espera/" + encodeURIComponent(ip));
+  const previo = await caches.default.match(llaveRL).then(r => r ? r.json() : null).catch(() => null);
+  const ahora = Date.now(), intentos = (previo || []).filter(t => ahora - t < 3600000);
+  if (intentos.length >= 6) return responder({ ok: false, error: "Ya anotaste varios productos. Intenta más tarde o escríbenos por WhatsApp." }, 429);
+  await caches.default.put(llaveRL, new Response(JSON.stringify([...intentos, ahora]), { headers: { "Cache-Control": "max-age=3600" } })).catch(() => {});
+  // el producto tiene que estar en el catálogo
+  const txt = await (await fetch("https://pipegames.com.co/mensajeria/productos-catalogo.js?t=" + Date.now())).text();
+  const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1));
+  const prod = catalogo.find(p => claveNombre(p.n, p.p) === claveNombre(b.titulo, b.consola));
+  if (!prod) return responder({ ok: false, error: "No encontré ese producto en el catálogo." }, 400);
+  const consola = ["PS5", "PS4", "SWITCH 2", "SWITCH"].includes(String(prod.p).toUpperCase()) ? String(prod.p).toUpperCase() : "OTRA";
+  const titulo = String(prod.n).toUpperCase(), origen = b.origen === "centro" ? "Centro de Mando" : "catálogo";
+  try {
+    const tk = await tokenServicio(env);
+    const doc = "projects/" + env.FIREBASE_PROJECT + "/databases/(default)/documents/usuarios/" + env.ADMIN_UID;
+    const r0 = await fetch("https://firestore.googleapis.com/v1/" + doc + "?mask.fieldPaths=espera", { headers: { Authorization: "Bearer " + tk } });
+    const actual = ((await r0.json().catch(() => ({}))).fields?.espera?.mapValue?.fields) || {};
+    const s = v => v?.stringValue || "";
+    for (const [id, v] of Object.entries(actual)) {
+      const f = v.mapValue?.fields || {};
+      if (s(f.estado) !== "avisado" && s(f.contacto) === cel && s(f.titulo) === titulo && s(f.consola) === consola) return responder({ ok: true, repetido: id });
+    }
+    const id = ahora.toString(36) + Math.random().toString(36).slice(2, 6);
+    const campos = {
+      nombre: { stringValue: (nombre + " " + apellido).trim().toUpperCase() }, contacto: { stringValue: cel }, canal: { stringValue: "whatsapp" },
+      igId: { stringValue: "" }, instagram: { stringValue: "" },
+      titulo: { stringValue: titulo }, consola: { stringValue: consola }, k: { stringValue: [].concat(prod.k || [])[0] || "" },
+      notas: { stringValue: "Anotado por Pipe Bot desde el " + origen + "." },
+      creado: { integerValue: String(ahora) }, estado: { stringValue: "esperando" }
+    };
+    const r = await fetch("https://firestore.googleapis.com/v1/" + doc + "?updateMask.fieldPaths=" + encodeURIComponent("espera." + id), {
+      method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: { espera: { mapValue: { fields: { [id]: { mapValue: { fields: campos } } } } } } }) });
+    if (!r.ok) throw new Error("Firestore " + r.status + ": " + (await r.text()).slice(0, 200));
+    await notificar(env, "🆕 Nuevo en lista de espera (" + origen + ")", `${campos.nombre.stringValue} quiere ${titulo}${consola !== "OTRA" ? " (" + consola + ")" : ""}`, 3, ["video_game"]);
+    return responder({ ok: true, id });
+  } catch (e) { await alertaError(env, "Lista de espera desde el " + origen, String(e.message || e)); return responder({ ok: false, error: "No se pudo anotar. Escríbenos por WhatsApp." }, 500); }
 }
 
 async function leerCredito(env, reserva) {

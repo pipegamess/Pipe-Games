@@ -128,12 +128,14 @@ function garantiaDe(p) {
   if (!p.l || /\|(PS\d|SWITCH\d?|XBOX)/i.test(p.k || "")) return "1 mes por defectos de fábrica"; // videojuegos // juegos de PS4, PS5 y Switch
   return null;
 }
+// Lista de espera: en el catálogo lo usa el cliente; en el Centro de Mando, Felipe anota a un cliente
+const botonEspera = (p, cli) => `<p><button type="button" class="pb-cta" data-espera="${esc(p.n)}|${esc(p.p)}">🔔 ${cli ? "Avísame cuando llegue" : "Anotar a un cliente en la lista de espera"}</button></p>`;
 // Ficha de un producto: precio con cada medio de pago y, para clientes, el botón para pedirlo
 function ficha(p, cli) {
   // Al cliente no se le muestra precio de lo agotado
-  if (cli && !p.disp) return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip no">AGOTADO</span></h3><p>Actualmente está agotado. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>`;
+  if (cli && !p.disp) return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip no">AGOTADO</span></h3><p>Actualmente está agotado. Si quieres, te anotamos en la lista de espera y te avisamos por WhatsApp apenas llegue.</p>${botonEspera(p, true)}`;
   return `<h3>${esc(p.n)} · ${esc(p.p)} <span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></h3>
-      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}${garantiaDe(p) ? fila("Garantía", esc(garantiaDe(p))) : ""}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">🛒 Agregar al pedido</button></p>` : ""}${cli && !p.disp ? `<p class="nota">Está agotado por ahora. Pregúntanos por <a href="${WA}" target="_blank" rel="noopener">WhatsApp</a> si llega pronto.</p>` : ""}`;
+      <table>${fila("Precio (transferencia)", `<b>${cop(p.v)}</b>`)}${preciosPago(p.v).split("</tr>").slice(1).join("</tr>")}${garantiaDe(p) ? fila("Garantía", esc(garantiaDe(p))) : ""}</table>${cli && p.disp ? `<p><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">🛒 Agregar al pedido</button></p>` : ""}${!p.disp ? botonEspera(p, cli) : ""}`;
 }
 // opts.modo === "cliente": versión para el catálogo; solo precios, disponibilidad, envíos, pagos, horario y contacto
 const WA = "https://wa.me/573118836995";
@@ -169,7 +171,7 @@ function responder(q, opts = {}) {
   if (prods.length === 1) {
     partes.push(ficha(prods[0], cli));
   } else if (prods.length > 1) {
-    partes.push(`<h3>Encontré ${prods.length}${prods.length === 6 ? " o más" : ""}</h3>` + prods.map(p => (cli && !p.disp) ? `<div class="prod"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip no">AGOTADO</span></b><span class="sub">Actualmente está agotado.</span></div>` : `<div class="prod" role="button" tabindex="0" data-ver="${esc(p.n)}|${esc(p.p)}"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></b><span class="pr">${cop(p.v)}</span><span class="sub">Addi ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.addi.calc(p.v))} · Sistecrédito ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.siste.calc(p.v))} · Tarjeta ${cop(MET.tarjeta.calc(p.v))}</span></div>`).join("")
+    partes.push(`<h3>Encontré ${prods.length}${prods.length === 6 ? " o más" : ""}</h3>` + prods.map(p => (cli && !p.disp) ? `<div class="prod" role="button" tabindex="0" data-ver="${esc(p.n)}|${esc(p.p)}"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip no">AGOTADO</span></b><span class="sub">Agotado · toca para que te avisemos cuando llegue.</span></div>` : `<div class="prod" role="button" tabindex="0" data-ver="${esc(p.n)}|${esc(p.p)}"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></b><span class="pr">${cop(p.v)}</span><span class="sub">Addi ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.addi.calc(p.v))} · Sistecrédito ${p.v >= TOPE_CUOTAS ? "no aplica" : cop(MET.siste.calc(p.v))} · Tarjeta ${cop(MET.tarjeta.calc(p.v))}</span></div>`).join("")
       + `<p class="nota">Toca uno para ver todos sus precios${cli ? " y pedirlo" : ""}.</p>`);
   }
 
