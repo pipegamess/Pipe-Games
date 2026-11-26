@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "7", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "8", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1393,10 +1393,11 @@ REGLAS:
 - Solo juegos con edición FÍSICA probable para PS4, PS5, Switch o Switch 2. Ignora lo que sea solo de Xbox, PC o móvil, y lo exclusivamente digital.
 - Incluye también noticias importantes: retrasos, fechas nuevas anunciadas, ediciones especiales.
 - "interes" (alta|media|baja) según lo que se vende en Pipe Games: sagas o géneros parecidos a sus más vendidos de ${d.hoy.slice(0, 4)}, juegos muy esperados en Colombia, clientes en lista de espera. Lo de Nintendo y los deportes (FC, NBA) suele venderse bien.
-- Mira el catálogo con su STOCK: "X en stock", "AGOTADO" o "en importación". Si un juego está AGOTADO, dilo así (nunca digas que lo tienes) y la acción es recomprar o abrir preventa, no avisar ni promocionar. Si tiene stock, dilo con la cantidad.
+- Mira el catálogo con su STOCK: "X en stock", "AGOTADO" o "en importación". Si un juego está AGOTADO, dilo así (nunca digas que lo tienes) y la acción es abrir preventa o pedirlo, no avisar ni promocionar (solo aplica a lanzamientos). Si tiene stock, dilo con la cantidad.
 - NUNCA sugieras publicar ofertas, descuentos o promociones de algo que está AGOTADO o en importación.
+- REPARTO DEL EQUIPO: recomprar juegos que ya salieron hace tiempo (como Mario Kart 8 Deluxe) es trabajo de MATI, no tuyo. Tú NUNCA recomiendas recomprar un juego viejo ni hablas de su stock. Solo hablas de juegos que salen en los próximos 3 meses o que salieron en las últimas 4 semanas, y de noticias de lanzamientos (fechas nuevas, retrasos, ediciones especiales). Si un cliente en espera pide un juego viejo, ignóralo: eso lo maneja Mati.
 - Tu trabajo son LANZAMIENTOS (juegos y ediciones nuevas, fechas, retrasos). IGNORA las ofertas y descuentos de tiendas o de fabricantes (Black Friday, Cyber Monday, rebajas de Nintendo o Sony): no son lanzamientos y no los menciones.
-- "avisar_clientes": solo cuando el cliente en espera pide algo que hoy SÍ tiene stock o que ya tiene fecha nueva. Si sigue agotado, no hay nada que avisar todavía: inclúyelo en preventas o recompra.
+- "avisar_clientes": solo cuando un cliente en espera pide un LANZAMIENTO de tu lista (un juego nuevo o próximo) y hay una novedad real: ya tiene fecha, ya salió o ya tienes stock.
 - Lee bien la lista de espera: si un cliente pide una CONSOLA (por ejemplo "Switch 2 edición Zelda"), no la confundas con un JUEGO del mismo nombre.
 - "preventas": solo los que de verdad conviene pedir ya, con cantidad realista (1 a 6).
 - "avisar_clientes": juegos que coinciden con la lista de espera.
