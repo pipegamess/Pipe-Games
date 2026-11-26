@@ -145,7 +145,7 @@ const fechaHora = t => t ? new Date(t).toLocaleString("es-CO", { weekday: "long"
 const EQUIPO = [
   { id: "mati", nombre: "Mati", rol: "Analista de Inventario", lema: "Siempre un paso adelante · te dice qué recomprar", listo: true },
   { id: "tomi", nombre: "Tomi", rol: "Vigía de Lanzamientos", lema: "Te dice qué juegos vienen y qué preparar", listo: true },
-  { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice CÓMO estás de precio" },
+  { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice cómo estás de precio frente a otras tiendas", listo: true },
   { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
 ];
 let elegido = "mati", DATOS = null, verT = null, borrando = false, verTomi = null, borrandoTomi = false;
@@ -231,10 +231,37 @@ function pintarTomi(cab) {
       ? `<span class="status err">¿Eliminar el informe del ${esc(fechaHora(actual.t))}? No se puede recuperar.</span><button type="button" class="primary" id="borrarTomiSi" data-t="${actual.t}">Sí, eliminar</button><button type="button" class="ghost" id="borrarTomiNo">Cancelar</button>`
       : `<button type="button" class="ghost" id="borrarTomi">Eliminar este informe</button>`}<span class="status" id="btEstado"></span></div>`;
 }
+// Partes comunes para Anto y Luca: historial, botón de informe nuevo y eliminar
+const VER = {}, BORRANDO = {};
+const NOMBRE = { anto: "Anto", luca: "Luca" };
+const pesos = n => n ? "$" + Math.round(n).toLocaleString("es-CO") : "";
+function marco(quien, cab, cuerpo, espera) {
+  const lista = (DATOS[quien] && DATOS[quien].historial) || [];
+  const actual = lista.find(x => x.t === VER[quien]) || lista[0];
+  const btn = `<div class="acciones"><button class="primary" type="button" data-gen="${quien}">Pedirle a ${NOMBRE[quien]} un informe nuevo</button><span class="status" id="est-${quien}"></span></div>`;
+  if (!actual) return cab + `<p class="vacio">Aún no hay informes. ${NOMBRE[quien]} entrega uno cada sábado a las 5:30 p. m., o puedes pedírselo ahora (${espera}).</p>` + btn;
+  const hist = lista.length > 1 ? `<label class="hist">Ver informe: <select data-hist="${quien}">${lista.map((x, i) => `<option value="${x.t}"${x === actual ? " selected" : ""}>${i === 0 ? "Último · " : ""}${esc(fechaHora(x.t))}</option>`).join("")}</select></label>` : "";
+  return cab + hist + `<p class="meta">${actual === lista[0] ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p>` + cuerpo(actual.informe) + btn +
+    `<div class="acciones" style="margin-top:6px">${BORRANDO[quien]
+      ? `<span class="status err">¿Eliminar el informe del ${esc(fechaHora(actual.t))}? No se puede recuperar.</span><button type="button" class="primary" data-delsi="${quien}" data-t="${actual.t}">Sí, eliminar</button><button type="button" class="ghost" data-delno="${quien}">Cancelar</button>`
+      : `<button type="button" class="ghost" data-del="${quien}">Eliminar este informe</button>`}<span class="status" id="best-${quien}"></span></div>`;
+}
+function pintarAnto(cab) {
+  const filaP = (x, conSug) => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, conSug && x.sugerido ? pesos(x.sugerido) : "",
+    `Tú ${pesos(x.tu_precio)}${x.referencia ? " · " + (x.tienda_referencia ? esc(x.tienda_referencia) + " " : "referencia ") + pesos(x.referencia) : ""}${x.motivo ? " · " + x.motivo : ""}`);
+  $("vInforme").innerHTML = marco("anto", cab, inf => pintarResumen(inf.resumen) + pintarAlertas(inf.alertas) +
+    `<div class="chips"><span class="chip">Bajar: ${(inf.bajar || []).length}</span><span class="chip">Subir: ${(inf.subir || []).length}</span><span class="chip">Bien: ${(inf.bien || []).length}</span><span class="chip">Sin datos: ${(inf.sin_datos || []).length}</span></div>` +
+    seccion("Bajar precio", inf.bajar, x => filaP(x, true), true) +
+    seccion("Subir precio", inf.subir, x => filaP(x, true), false) +
+    seccion("Precio bien", inf.bien, x => filaP(x, false), false) +
+    seccion("Sin datos de otras tiendas", inf.sin_datos, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", ""), false) +
+    `<p class="meta">Anto solo sugiere: los precios se cambian en tu Excel (LISTADO) y se sincronizan con el catálogo.</p>`, "tarda cerca de 1 minuto porque busca precios en otras tiendas");
+}
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
   const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=3" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
   if (m.id === "tomi" && DATOS) return pintarTomi(cab);
+  if (m.id === "anto" && DATOS) return pintarAnto(cab);
   if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
   if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
   const ventas = DATOS.ventas, lista = informes(), marcas = DATOS.marcas || {};
@@ -265,6 +292,7 @@ function pintarInforme() {
       : `<button type="button" class="ghost" id="borrar">Eliminar este informe</button>`}<span class="status" id="bEstado"></span></div>`;
 }
 $("vInforme").addEventListener("change", async e => {
+  if (e.target.dataset && e.target.dataset.hist) { VER[e.target.dataset.hist] = Number(e.target.value); BORRANDO[e.target.dataset.hist] = false; pintarInforme(); return; }
   if (e.target.id === "histTomi") { verTomi = Number(e.target.value); borrandoTomi = false; pintarInforme(); return; }
   if (e.target.id === "histSel") { verT = Number(e.target.value); borrando = false; pintarInforme(); return; }
   const c = e.target.closest("input[data-k]"); if (!c) return;
@@ -285,6 +313,25 @@ $("vInforme").addEventListener("click", async e => {
     pintarInforme();
     try { await worker("MATI_CONFIRMAR", { clave, destino }); }
     catch (err) { if (antes) DATOS.alias[clave] = antes; else delete DATOS.alias[clave]; pintarInforme(); $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se guardó: ${esc(err.message)}</p>`); }
+    return;
+  }
+  const g = e.target.closest("[data-gen],[data-del],[data-delno],[data-delsi]");
+  if (g) {
+    const ds = g.dataset, quien = ds.gen || ds.del || ds.delno || ds.delsi, M = quien.toUpperCase();
+    if (ds.del) { BORRANDO[quien] = true; pintarInforme(); return; }
+    if (ds.delno) { BORRANDO[quien] = false; pintarInforme(); return; }
+    if (ds.delsi) {
+      const t = Number(ds.t); g.disabled = true;
+      try { await worker(M + "_BORRAR", { t }); DATOS[quien] = { historial: ((DATOS[quien] && DATOS[quien].historial) || []).filter(x => Number(x.t) !== t) }; VER[quien] = null; BORRANDO[quien] = false; pintarInforme(); }
+      catch (err) { g.disabled = false; $("best-" + quien).className = "status err"; $("best-" + quien).textContent = err.message; }
+      return;
+    }
+    g.disabled = true; const est = $("est-" + quien); est.className = "status"; est.textContent = NOMBRE[quien] + " está trabajando (cerca de 1 minuto)…";
+    const antes = Date.now();
+    try { const r = await worker(M + "_GENERAR"); DATOS[quien] = { historial: [{ t: r.t, informe: r.informe }, ...((DATOS[quien] && DATOS[quien].historial) || [])].slice(0, 8) }; VER[quien] = null; pintarInforme(); }
+    catch (err) {
+      if (/fetch|network|load failed|conexi/i.test(err.message)) { est.textContent = "Se cortó la conexión; sigo esperando el informe…"; if (await esperarInforme(quien, antes)) return; }
+      est.className = "status err"; est.textContent = err.message; g.disabled = false; }
     return;
   }
   if (e.target.closest("#borrarTomi")) { borrandoTomi = true; pintarInforme(); return; }
@@ -333,7 +380,7 @@ async function esperarInforme(quien, antes) {
     await new Promise(r => setTimeout(r, 10000));
     try {
       const d = await worker("EQUIPO_LEER");
-      const ult = quien === "tomi" ? (d.tomi && d.tomi.historial[0]) : (d.historial && d.historial[0]);
+      const ult = quien === "mati" ? (d.historial && d.historial[0]) : (d[quien] && d[quien].historial[0]);
       if (ult && Number(ult.t) > antes) { DATOS = d; verT = null; verTomi = null; pintarInforme(); return true; }
     } catch {}
   }

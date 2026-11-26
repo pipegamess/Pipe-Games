@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "9", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "9", versionAnto: "1", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -122,6 +122,12 @@ const Manejador = {
     }
     if (String(pedido.metodo || "").toUpperCase() === "TOMI_GENERAR") {
       try { const tarea = correrTomi(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Tomi: " + (e.message || e) }, 500); }
+    }
+    if (String(pedido.metodo || "").toUpperCase() === "ANTO_GENERAR") {
+      try { const tarea = correrAnto(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Anto: " + (e.message || e) }, 500); }
+    }
+    if (String(pedido.metodo || "").toUpperCase() === "ANTO_BORRAR") {
+      try { return responder(await borrarInforme(env, "anto", pedido.t)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "TOMI_BORRAR") {
       try { return responder(await borrarInforme(env, "tomi", pedido.t)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
@@ -280,6 +286,7 @@ export default {
     const bog = new Date(Date.now() - 5 * 3600000);
     // Equipo: todos los informes los sábados desde las 5:30 p. m. (hora Colombia)
     const sabadoTarde = bog.getUTCDay() === 6 && bog.getUTCHours() * 60 + bog.getUTCMinutes() >= 17 * 60 + 30;
+    if (sabadoTarde) ctx.waitUntil(correrAnto(env, false).catch(e => alertaError(env, "Informe de Anto", String(e && e.message || e))));
     if (sabadoTarde) ctx.waitUntil(correrTomi(env, false).catch(e => alertaError(env, "Informe de Tomi", String(e && e.message || e))));
     if (sabadoTarde) ctx.waitUntil(correrMati(env, false).catch(e => alertaError(env, "Informe de Mati", String(e && e.message || e))));
   }
@@ -1265,7 +1272,7 @@ async function leerEquipo(env) {
   let historial = JSON.parse((h && h.lista) || "[]");
   if (!historial.length && mati && mati.informe) historial = [{ t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") }];
   return { mati: mati && mati.informe ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, historial,
-    tomi: await leerInformes(env, tk, "tomi"),
+    tomi: await leerInformes(env, tk, "tomi"), anto: await leerInformes(env, tk, "anto"),
     marcas: JSON.parse((marcas && marcas.mapa) || "{}"), alias: JSON.parse((alias && alias.mapa) || "{}"), ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
 }
 
@@ -1441,6 +1448,89 @@ Ordena "lanzamientos" por fecha. Máximo 15 lanzamientos, 6 preventas, 6 avisar_
   const t = await guardarInforme(env, tk, "tomi", informe);
   const top = (informe.lanzamientos || []).filter(x => x.interes === "alta").slice(0, 3).map(x => x.titulo + " (" + x.fecha + ")").join(", ");
   await notificar(env, "🎮 Tomi: lanzamientos de las próximas semanas", (informe.resumen || "") + (top ? "\nPara tener en cuenta: " + top : "") + "\nVer en pipegames.com.co/equipo/", 3, ["video_game"]);
+  return { ok: true, informe, t };
+}
+
+/* ---------- Anto · Revisora de Precios ----------
+   Compara tus precios con los de otras tiendas en Colombia (Google Shopping vía Serper) para los productos
+   que más vendes y los que tienes en stock, y te dice qué subir, qué bajar y qué está bien. Nunca cambia precios sola. */
+function precioCOP(t) {
+  let x = String(t || "").replace(/[^\d.,]/g, "");
+  if (!x) return null;
+  x = x.replace(/[.,]\d{2}$/, "");          // centavos
+  const n = Number(x.replace(/[.,]/g, ""));
+  return n >= 10000 && n <= 20000000 ? n : null;
+}
+const NO_SIRVE = /usad|reacondicion|seminuev|digital|c[oó]digo|key\b|cuenta|alquiler|renta|\bcase\b|funda|skin|poster|figura|amiibo|soundtrack|gu[ií]a/i;
+async function datosAnto(env, tk) {
+  if (!env.SERPER_API_KEY) throw new Error("falta el secreto SERPER_API_KEY");
+  const bog = new Date(Date.now() - 5 * 3600000), anio = bog.getUTCFullYear();
+  const stock = (await (await fetch("https://pipegames.com.co/stock.json?t=" + Date.now())).json()).productos || {};
+  const txt = await (await fetch("https://pipegames.com.co/mensajeria/productos-catalogo.js?t=" + Date.now())).text();
+  const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1));
+  // ventas del año por producto: unidades y costo promedio (venta - ganancia)
+  const v = await leerDocFS(env, tk, "privado/ventas_" + anio);
+  const conf = JSON.parse(((await leerDocFS(env, tk, "privado/equipo_mati_alias")) || {}).mapa || "{}");
+  const vent = {};
+  for (const [, k0, , , u, vv, g] of JSON.parse((v && v.filas) || "[]")) {
+    const k = (conf[k0] && conf[k0] !== "AGOTADO") ? conf[k0] : unificarClave(k0);
+    const x = vent[k] ||= { u: 0, v: 0, g: 0 }; x.u += Number(u) || 0; x.v += Number(vv) || 0; x.g += Number(g) || 0;
+  }
+  const filas = catalogo.filter(p => p.v > 0 && p.a !== false).map(p => {
+    const k = [].concat(p.k || []);
+    const st = cantidadClaves(stock, k.length > 1 ? k : k[0]);
+    const s = k.reduce((a, kk) => { const x = vent[kk]; if (x) { a.u += x.u; a.v += x.v; a.g += x.g; } return a; }, { u: 0, v: 0, g: 0 });
+    return { producto: p.n, consola: p.p, precio: p.v, stock: st, vendidas: s.u, costo: s.u ? Math.round((s.v - s.g) / s.u) : null, precio_promedio_venta: s.u ? Math.round(s.v / s.u) : null };
+  }).filter(f => f.stock > 0);
+  // los que más vendes primero, luego los que más plata tienen parada
+  const elegidos = [...filas].sort((a, b) => b.vendidas - a.vendidas || b.stock * b.precio - a.stock * a.precio).slice(0, 30);
+  const buscar = async f => {
+    const q = f.producto + " " + (f.consola === "OTROS" ? "" : f.consola.replace("SWITCH 2", "Nintendo Switch 2").replace(/^SWITCH$/, "Nintendo Switch"));
+    const j = await serper(env, "shopping", { q, gl: "co", hl: "es", num: 20 }).catch(() => ({}));
+    f.ofertas = (j.shopping || []).map(o => ({ tienda: o.source, titulo: String(o.title || "").slice(0, 90), precio: precioCOP(o.price) }))
+      .filter(o => o.precio && !NO_SIRVE.test(o.titulo) && !/pipe ?games/i.test(o.tienda || "")).slice(0, 10);
+    const ps = f.ofertas.map(o => o.precio).sort((a, b) => a - b);
+    f.competencia_min = ps[0] || null; f.competencia_mediana = ps.length ? ps[Math.floor(ps.length / 2)] : null;
+  };
+  for (let i = 0; i < elegidos.length; i += 6) await Promise.all(elegidos.slice(i, i + 6).map(buscar));
+  return { hoy: bog.toISOString().slice(0, 10), productos: elegidos };
+}
+async function correrAnto(env, forzado) {
+  if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
+  const QUIEN = "anto";
+  const tk = await tokenServicio(env);
+  const previo = await leerDocFS(env, tk, "privado/equipo_anto");
+  if (!forzado && previo && Date.now() - Number(previo.t || 0) < 12 * 3600000) return { ok: true, omitido: "ya hay informe de hoy" };
+  if (!forzado && !(await primerIntento(env, tk, QUIEN))) return { ok: true, omitido: "ya se intentó hace poco" };
+  const d = await datosAnto(env, tk);
+  const tabla = d.productos.map(f => `${f.producto} · ${f.consola} | tu precio ${f.precio} | stock ${f.stock} | vendidas ${f.vendidas} | costo aprox ${f.costo ?? "?"} | competencia: ${f.ofertas.length ? f.ofertas.map(o => o.tienda + " " + o.precio + " (" + o.titulo + ")").join("; ") : "sin resultados"}`).join("\n");
+  const prompt = `Eres Anto, la Revisora de Precios de Pipe Games, tienda virtual de videojuegos físicos NUEVOS en Bogotá, Colombia (PS4, PS5, Switch, Switch 2, consolas y accesorios). Felipe vende por Instagram, WhatsApp, su página y Mercado Libre, con envío a todo el país.
+
+Hoy es ${d.hoy}. TU TAREA: comparar el precio de Felipe con el de otras tiendas en Colombia y decirle qué SUBIR, qué BAJAR y qué está BIEN. Tú no cambias precios: Felipe decide.
+
+REGLAS:
+- Usa SOLO las ofertas de abajo. Descarta las que no sean el mismo producto: otra consola, otra edición, usado, digital, accesorio o paquete con otra cosa. Si después de descartar no queda nada comparable, ponlo en "sin_datos".
+- Compara contra tiendas serias (Falabella, Éxito, Alkosto, Ktronix, Mercado Libre, tiendas de videojuegos). Un precio muy bajo y aislado puede ser error o usado: no lo tomes como referencia única.
+- "bajar": tu precio está claramente por encima (más de 8 %) del precio típico de la competencia y el producto no se está vendiendo bien. Sugiere un precio concreto, redondeado a miles terminados en 000 o 900.
+- "subir": estás claramente por debajo (más de 8 %) y lo vendes bien, o estás por debajo de todas las tiendas. Sugiere un precio concreto.
+- NUNCA sugieras un precio por debajo del costo aproximado + 10 %. Si para competir tendrías que vender a pérdida, dilo en una alerta.
+- "bien": precio en línea con el mercado (dentro de ±8 %). Solo los más relevantes.
+- Ten en cuenta que Felipe da atención personalizada y envío: no tiene que ser el más barato, sino estar en un rango razonable.
+
+CÓMO ESCRIBIR (Felipe lo lee rápido en el celular): español claro, frases completas, sin abreviaturas. Precios como $189.900.
+${ESTILO_RESUMEN}
+- Cada línea del resumen dice el producto (consola), tu precio, el precio de referencia y qué hacer, por ejemplo: "- Mario Kart World (Switch 2): tú $289.900 y Falabella $259.900; baja a $269.900."
+
+PRODUCTOS (producto · consola | tu precio | stock | vendidas este año | costo aprox | ofertas de la competencia: tienda precio (título)):
+${tabla}
+
+RESPONDE SOLO con JSON válido, sin texto antes ni después:
+{"resumen":"3 a 5 líneas, cada una empieza con \\"- \\"","bajar":[{"producto":"","consola":"","tu_precio":0,"referencia":0,"tienda_referencia":"","sugerido":0,"motivo":"una frase"}],"subir":[{"producto":"","consola":"","tu_precio":0,"referencia":0,"tienda_referencia":"","sugerido":0,"motivo":""}],"bien":[{"producto":"","consola":"","tu_precio":0,"referencia":0,"motivo":""}],"sin_datos":[{"producto":"","consola":""}],"alertas":[{"tipo":"revisar|oportunidad|evitar","titulo":"","que_pasa":"","que_hacer":""}]}
+Máximo 10 en bajar, 10 en subir, 8 en bien, 4 alertas. Cada "motivo" de máximo 20 palabras. No uses bloques de código.`;
+  const { informe, j } = await pedirJSON(env, prompt, "\n\nIMPORTANTE: sé muy breve (máximo 6 por lista, motivos de 12 palabras) y responde SOLO el JSON.");
+  informe.datos = { productos: d.productos.length, conOfertas: d.productos.filter(f => f.ofertas.length).length, tokens: j.usage || null };
+  const t = await guardarInforme(env, tk, "anto", informe);
+  await notificar(env, "💲 Anto: revisión de precios lista", (informe.resumen || "") + "\nVer en pipegames.com.co/equipo/", 3, ["moneybag"]);
   return { ok: true, informe, t };
 }
 async function borrarInforme(env, quien, t) {
