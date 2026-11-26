@@ -36,7 +36,7 @@ h3 { font-family: var(--display); font-size: 17px; letter-spacing: .04em; text-t
 .login { max-width: 400px; margin: 10vh auto 0; }
 label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 input { font: 500 15px var(--body); color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; }
-button.primary { font: 700 15px var(--display); letter-spacing: .06em; text-transform: uppercase; background: var(--acc); color: var(--acc-ink); border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer; }
+button.primary, a.primary { font: 700 15px var(--display); letter-spacing: .06em; text-transform: uppercase; background: var(--acc); color: var(--acc-ink); border: 0; border-radius: 10px; padding: 12px 16px; cursor: pointer; }
 button.primary:disabled { opacity: .55; cursor: wait; }
 .status { font-size: 13px; min-height: 18px; }
 .status.err { color: var(--err); }
@@ -108,6 +108,11 @@ ul.resumen li::before { content: "-"; position: absolute; left: 0; top: 0; color
 .ajustes { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
 .ajustes select { font: inherit; padding: 6px 8px; border-radius: 8px; width: 100%; }
 .ajustes .fila { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; }
+.preguntar { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.fila-pq { display: flex; gap: 8px; }
+.fila-pq input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface2); color: var(--text); }
+.fila-pq select { flex: 1; min-width: 0; font: inherit; padding: 8px; border-radius: 10px; }
+#pqMic.escuchando { background: var(--err); color: #fff; }
 .top3 { display: grid; gap: 8px; }
 details.sec { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 0 14px; }
 details.sec > summary { cursor: pointer; list-style: none; padding: 12px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
@@ -158,6 +163,11 @@ details.sec[open] { padding-bottom: 12px; }
         <button class="ghost" type="button" id="rPausa" disabled>⏸️ Pausar</button>
         <button class="ghost" type="button" id="rSaltar" disabled>⏭️ Siguiente</button>
         <button class="ghost" type="button" id="rCerrar">✕ Terminar</button>
+      </div>
+      <div class="preguntar">
+        <div class="fila-pq"><input id="pqTexto" type="text" placeholder="Pregúntales algo… (ej: Mati, ¿cuánto vendí de FC 26 en octubre?)" autocomplete="off"><button type="button" class="ghost" id="pqMic" title="Hablar">🎤</button></div>
+        <div class="fila-pq"><select id="pqQuien"><option value="auto">Responde quien sepa</option><option value="mati">Mati</option><option value="tomi">Tomi</option></select><button type="button" class="primary" id="pqEnviar">Preguntar</button></div>
+        <span class="meta" id="pqEstado"></span>
       </div>
       <details class="ajustes"><summary>Voces y velocidad</summary>
         <div class="fila"><span>Mati</span><select id="vozMati"></select></div>
@@ -239,10 +249,36 @@ function pintarDudas(dudas) {
       <button type="button" data-conf="${esc(x.clave)}" data-dest="AGOTADO">Ninguno de estos: ese producto está agotado (ya no lo tengo)</button></div></div>`; }).join("")}</div></div>`;
 }
 // Resumen por líneas ("- ..."); los informes viejos en párrafo se muestran igual que antes
+function pintarNumeros(n) {
+  if (!n) return "";
+  const desde = n.desde ? "desde el informe del " + new Date(n.desde).toLocaleDateString("es-CO", { day: "numeric", month: "long" }) : "en lo que va del mes";
+  return `<div><h3>Números ${esc(desde)}</h3><div class="chips"><span class="chip">Unidades: ${n.unidades}</span><span class="chip">Ventas: ${pesos(n.ventas) || "$0"}</span><span class="chip">Ganancia: ${pesos(n.ganancia) || "$0"}</span></div>` +
+    (n.top && n.top.length ? `<p class="meta">Lo más vendido: ${n.top.map(x => esc(x.producto) + " ×" + x.unidades).join(" · ")}</p>` : "") +
+    (n.ventasRecibidas ? `<p class="meta">Según las ventas que mandó el Excel el ${fechaHora(n.ventasRecibidas)}.</p>` : "") + `</div>`;
+}
 function pintarResumen(txt) {
   const lineas = String(txt || "").split(/\n+/).map(l => l.trim()).filter(Boolean);
   if (lineas.length > 1 || /^[-•]/.test(lineas[0] || "")) return `<ul class="resumen">${lineas.map(l => `<li>${esc(l.replace(/^[-•]\s*/, ""))}</li>`).join("")}</ul>`;
   return `<p class="resumen">${esc(txt)}</p>`;
+}
+// Preventa: botón que abre el catálogo en modo administrador con la preventa ya escrita, y clientes a quienes avisar
+function linkPreventa(x) {
+  const d = { titulo: x.titulo, consola: x.consola || "", fecha: x.fecha_confirmada === false ? "" : (x.fecha || "") };
+  return "../?nuevaPreventa=" + encodeURIComponent(JSON.stringify(d));
+}
+function linkAviso(x, c) {
+  const nombre = String(c.nombre || "").split(" ")[0];
+  const txt = `Hola${nombre && !nombre.startsWith("@") ? " " + nombre.charAt(0) + nombre.slice(1).toLowerCase() : ""} 👋 Te escribimos de Pipe Games: ya abrimos la PREVENTA de ${x.titulo}${x.consola ? " para " + x.consola : ""}${x.fecha ? " (lanzamiento: " + x.fecha + ")" : ""}. ¿Quieres que te reservemos el tuyo? 🎮`;
+  const num = String(c.contacto || "").replace(/\D/g, "");
+  return /^57\d{10}$/.test(num) ? { href: "https://wa.me/" + num + "?text=" + encodeURIComponent(txt), txt } : { href: "", txt };
+}
+function filaPreventa(x) {
+  const ints = x.interesados || [];
+  const lista = ints.length ? `<div class="m" style="display:grid;gap:6px;margin-top:6px"><span>Clientes en lista de espera interesados (${ints.length}):</span>${ints.map(c => { const l = linkAviso(x, c);
+      return `<span>${esc(c.nombre || c.contacto)} · ${l.href ? `<a href="${esc(l.href)}" target="_blank" rel="noopener">Avisar por WhatsApp</a>` : `${esc(c.contacto || "")} (Instagram) <button type="button" class="ghost" data-copiar="${esc(l.txt)}">Copiar mensaje</button>`}</span>`; }).join("")}</div>` : "";
+  return item(`<b>${esc(x.titulo)}</b> ${esc(x.consola || "")}`, x.cantidad ? "×" + x.cantidad : "",
+    (x.fecha ? "Lanzamiento: " + x.fecha + ". " : "") + (x.por_que || ""),
+    `<div class="acciones" style="grid-column:1/-1"><a class="primary" style="text-decoration:none;padding:8px 12px;border-radius:10px;font-weight:700" href="${esc(linkPreventa(x))}" target="_blank" rel="noopener">Abrir preventa en el catálogo</a></div>` + lista);
 }
 function pintarTomi(cab) {
   const v = $("vInforme"), lista = (DATOS.tomi && DATOS.tomi.historial) || [];
@@ -263,7 +299,7 @@ function pintarTomi(cab) {
   v.innerHTML = cab + hist + `<p class="meta">${actual === lista[0] ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p>` + pintarResumen(inf.resumen) +
     pintarAlertas(inf.alertas) + chips +
     (urg.length ? `<div><h3>Lo que más te interesa</h3><div>${urg.slice(0, 4).map(fila).join("")}</div></div>` : "") +
-    seccion("Preventas sugeridas", inf.preventas, x => item(`<b>${esc(x.titulo)}</b> ${esc(x.consola || "")}`, x.cantidad ? "×" + x.cantidad : "", x.por_que), false) +
+    seccion("Preventas sugeridas", inf.preventas, filaPreventa, true) +
     seccion("Avisar a clientes en espera", inf.avisar_clientes, x => item(`<b>${esc(x.titulo)}</b>`, "", x.que_decir), false) +
     `<details class="sec"><summary><span>Calendario completo <span class="num">(${lz.length})</span></span></summary>${porMes || `<p class="vacio">Nada por ahora.</p>`}</details>` +
     btn + `<div class="acciones" style="margin-top:6px">${borrandoTomi
@@ -315,13 +351,15 @@ function pintarInforme() {
   const pend = rec.filter(x => !marcas[claveMarca(actual.t, x)]);
   const filaRec = x => { const k = claveMarca(actual.t, x), h = !!marcas[k];
     return item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}<span class="prio ${esc(x.prioridad)}">${esc(x.prioridad || "")}</span>`, x.cantidad ? "×" + x.cantidad : "", x.motivo,
-      `<label class="marca"><input type="checkbox" data-k="${esc(k)}"${h ? " checked" : ""}> Ya lo compré</label>`, h ? " hecho" : ""); };
+      `<label class="marca"><input type="checkbox" data-k="${esc(k)}" data-cant="${Number(x.cantidad) || ""}"${h ? " checked" : ""}> Ya lo compré</label>`, h ? " hecho" : ""); };
   const top = pend.filter(x => x.prioridad === "alta").slice(0, 3);
   const chips = `<div class="chips"><span class="chip">Recomprar: ${pend.length} pendientes de ${rec.length}</span><span class="chip">No recomprar: ${(inf.no_recomprar || []).length}</span><span class="chip">Impulsar: ${(inf.impulsar || []).length}</span><span class="chip">Lo piden: ${(inf.pedir_nuevo || []).length}</span></div>`;
   v.innerHTML = cab + hist + `<p class="meta">${esUltimo ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p>` + pintarResumen(inf.resumen) +
     (esUltimo ? pintarDudas(inf.dudas) : "") + pintarAlertas(inf.alertas) + chips +
+    pintarNumeros(inf.semana) +
     (top.length ? `<div><h3>Lo más urgente</h3><div class="top3">${top.map(filaRec).join("")}</div></div>` : (rec.length ? `<p class="vacio">✓ Ya marcaste todo lo urgente de este informe.</p>` : "")) +
     seccion("Recomprar (todo)", rec, filaRec, false) +
+    (inf.aciertos && inf.aciertos.length ? seccion("¿Acerté? (compras de hace un mes)", inf.aciertos, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}<span class="prio ${x.resultado === "acierto" ? "baja" : x.resultado === "lento" ? "media" : "alta"}">${esc(x.resultado)}</span>`, "", `Compraste ${x.cantidad || "?"} el ${new Date(x.comprado + "T12:00:00").toLocaleDateString("es-CO", { day: "numeric", month: "long" })} y se vendieron ${x.vendidas} en ${x.dias} días.`), true) : "") +
     seccion("No recomprar", inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo), false) +
     seccion("Impulsar (stock quieto)", inf.impulsar, x => { const k = claveNombre(x.producto, x.consola), h = !!(DATOS.llegadas || {})[k];
       return item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", h ? "Marcado como recién llegado: Mati no lo tomará como stock quieto." : x.idea,
@@ -351,7 +389,7 @@ $("vInforme").addEventListener("change", async e => {
   DATOS.marcas = DATOS.marcas || {}; if (hecho) DATOS.marcas[k] = Date.now(); else delete DATOS.marcas[k];
   const abiertas = [...document.querySelectorAll("details.sec")].map(d => d.open);
   pintarInforme(); document.querySelectorAll("details.sec").forEach((d, i) => d.open = !!abiertas[i]);
-  try { await worker("MATI_MARCAR", { clave: k, hecho }); }
+  try { await worker("MATI_MARCAR", { clave: k, hecho, cantidad: Number(c.dataset.cant) || null }); }
   catch (err) { if (hecho) delete DATOS.marcas[k]; else DATOS.marcas[k] = 1; pintarInforme(); alertaFallo(err); }
 });
 function alertaFallo(err) { $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se guardó la marca: ${esc(err.message)}</p>`); }
@@ -385,6 +423,8 @@ $("vInforme").addEventListener("click", async e => {
       est.className = "status err"; est.textContent = err.message; g.disabled = false; }
     return;
   }
+  const cp = e.target.closest("[data-copiar]");
+  if (cp) { try { await navigator.clipboard.writeText(cp.dataset.copiar); cp.textContent = "Copiado ✓"; } catch { cp.textContent = "No se pudo copiar"; } return; }
   if (e.target.closest("#borrarTomi")) { borrandoTomi = true; pintarInforme(); return; }
   if (e.target.closest("#borrarTomiNo")) { borrandoTomi = false; pintarInforme(); return; }
   const bt = e.target.closest("#borrarTomiSi");
@@ -460,7 +500,7 @@ if (VOZ) { cargarVoces(); VOZ.onvoiceschanged = cargarVoces; }
 // Texto para hablar: consolas y precios como se dicen
 const hablado = t => String(t || "")
   .replace(/\bPS5\b/gi, "Play 5").replace(/\bPS4\b/gi, "Play 4").replace(/\bSWITCH 2\b/gi, "Switch 2").replace(/\bSWITCH\b/g, "Switch")
-  .replace(/\$\s?([\d.]+)/g, (_, n) => n.replace(/\./g, "") + " pesos").replace(/×(\d+)/g, "$1 unidades")
+  .replace(/\$\s?(\d{1,3}(?:\.\d{3})+|\d+)/g, (_, n) => n.replace(/\./g, "") + " pesos").replace(/×(\d+)/g, "$1 unidades")
   .replace(/^[-•]\s*/gm, "").replace(/\s*\(([^)]*)\)/g, ", $1,").replace(/,\s*([:;.,])/g, "$1").replace(/\s+/g, " ").trim();
 const frases = t => hablado(t).split(/(?<=[.!?;])\s+/).filter(x => x.length > 1);
 function armarGuion() {
@@ -470,6 +510,13 @@ function armarGuion() {
   if (mati) {
     const inf = mati.informe, marcas = DATOS.marcas || {};
     decir("mati", `Hola Felipe, soy Mati, tu analista de inventario. Te cuento mi informe del ${dia(mati.t)}.`);
+    const n = inf.semana;
+    if (n && n.unidades) {
+      decir("mati", `${n.desde ? "Desde el informe anterior" : "En lo que va del mes"} vendiste ${n.unidades} ${n.unidades === 1 ? "unidad" : "unidades"}, por ${Math.round(n.ventas)} pesos, con ${Math.round(n.ganancia)} pesos de ganancia.`);
+      if (n.top && n.top.length) decir("mati", "Lo más vendido: " + n.top.slice(0, 3).map(x => `${x.producto}, ${x.unidades}`).join("; ") + ".");
+    } else if (n) decir("mati", "Desde el informe anterior no veo ventas nuevas en el Excel. Recuerda abrirlo para que me lleguen.");
+    const ac = inf.aciertos || [];
+    if (ac.length) { const ok = ac.filter(x => x.resultado === "acierto").length; decir("mati", `Revisé ${ac.length} ${ac.length === 1 ? "compra" : "compras"} que hiciste por mi consejo hace un mes: ${ok} ${ok === 1 ? "fue acierto" : "fueron acierto"}.`); ac.filter(x => x.resultado === "sin ventas").slice(0, 2).forEach(x => decir("mati", `${x.producto} de ${x.consola} no se ha vendido desde que lo compraste; lo tendré en cuenta.`)); }
     String(inf.resumen || "").split(/\n+/).forEach(l => decir("mati", l));
     const urg = (inf.recomprar || []).filter(x => x.prioridad === "alta" && !marcas[claveMarca(mati.t, x)]).slice(0, 3);
     if (urg.length) { decir("mati", "Lo más urgente para recomprar:"); urg.forEach(x => decir("mati", `${x.producto} de ${x.consola || ""}${x.cantidad ? ", " + x.cantidad + " unidades" : ""}. ${x.motivo || ""}`)); }
@@ -528,6 +575,58 @@ $("rSaltar").onclick = () => {
   enPausa = false; $("rPausa").textContent = "⏸️ Pausar"; hablar();
 };
 $("rCerrar").onclick = () => { reunionViva = false; VOZ && VOZ.cancel(); $("reunion").hidden = true; $("rPausa").disabled = $("rSaltar").disabled = true; };
+// Preguntas: Felipe escribe o dicta, y Mati o Tomi responden en voz alta con sus datos
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) $("pqMic").hidden = true;
+let rec = null, ultimoQuien = "mati";
+function quienResponde(t) {
+  const sel = $("pqQuien").value; if (sel !== "auto") return sel;
+  if (/\btomi\b/i.test(t)) return "tomi"; if (/\bmati\b/i.test(t)) return "mati";
+  return /lanzamient|sale\b|salen|saldr|fecha|preventa|anunci|nuevo juego|estreno|retras|cu[aá]ndo (sale|llega)/i.test(t) ? "tomi" : "mati";
+}
+function pausarReunion() { if (reunionViva && !enPausa) { enPausa = true; $("rPausa").textContent = "▶️ Seguir"; } turno++; VOZ && VOZ.cancel(); }
+function decirSuelto(quien, texto) {
+  const partes = frases(texto), m = EQUIPO.find(x => x.id === quien); let i = 0; const mio = ++turno;
+  const sig = () => {
+    if (mio !== turno) return;
+    if (i >= partes.length) { pintarMesa(null); return; }
+    const u = new SpeechSynthesisUtterance(partes[i++]);
+    const v = voces.find(x => x.name === $(quien === "tomi" ? "vozTomi" : "vozMati").value);
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "es-CO";
+    u.rate = Number($("velocidad").value) || 1;
+    if (!v || $("vozMati").value === $("vozTomi").value) u.pitch = quien === "tomi" ? 1.15 : 0.9;
+    u.onend = sig; u.onerror = e => { if (e.error !== "interrupted" && e.error !== "canceled") sig(); };
+    VOZ.speak(u);
+  };
+  pintarMesa(quien); $("subtitulo").innerHTML = `<b>${m.nombre}:</b> ${esc(texto)}`; sig();
+}
+async function enviarPregunta() {
+  const t = $("pqTexto").value.trim(); if (!t) { $("pqEstado").textContent = "Escribe o dicta una pregunta."; return; }
+  const quien = quienResponde(t), m = EQUIPO.find(x => x.id === quien); ultimoQuien = quien;
+  pausarReunion();
+  try { VOZ && VOZ.speak(new SpeechSynthesisUtterance(" ")); } catch {}   // el iPhone pide un toque para poder hablar después
+  $("pqEnviar").disabled = true; $("pqEstado").textContent = `${m.nombre} está revisando tus datos…`;
+  pintarMesa(quien); $("subtitulo").innerHTML = `<b>Tú:</b> ${esc(t)}`;
+  try {
+    const r = await worker("EQUIPO_PREGUNTAR", { quien, pregunta: t });
+    $("pqTexto").value = ""; $("pqEstado").textContent = reunionViva ? "Toca “▶️ Seguir” para continuar la reunión." : "";
+    if (VOZ) decirSuelto(quien, r.respuesta); else $("subtitulo").innerHTML = `<b>${m.nombre}:</b> ${esc(r.respuesta)}`;
+  } catch (err) { $("pqEstado").textContent = "No se pudo preguntar: " + err.message; }
+  $("pqEnviar").disabled = false;
+}
+$("pqEnviar").onclick = enviarPregunta;
+$("pqTexto").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); enviarPregunta(); } });
+$("pqMic").onclick = () => {
+  if (rec) { rec.stop(); return; }
+  pausarReunion();
+  rec = new SR(); rec.lang = "es-CO"; rec.interimResults = true; rec.continuous = false;
+  let texto = "";
+  rec.onresult = e => { texto = [...e.results].map(r => r[0].transcript).join(" "); $("pqTexto").value = texto; };
+  rec.onerror = e => { $("pqEstado").textContent = e.error === "not-allowed" ? "Permite el micrófono para este sitio (en el iPhone: Ajustes → Safari → Micrófono)." : "No te escuché bien, intenta otra vez."; };
+  rec.onend = () => { rec = null; $("pqMic").classList.remove("escuchando"); $("pqMic").textContent = "🎤"; if (texto.trim()) enviarPregunta(); };
+  $("pqMic").classList.add("escuchando"); $("pqMic").textContent = "■"; $("pqEstado").textContent = "Te escucho… habla y espera un momento.";
+  try { rec.start(); } catch { rec = null; }
+};
 $("vozMati").onchange = e => guardarLS("voz_mati", e.target.value);
 $("vozTomi").onchange = e => guardarLS("voz_tomi", e.target.value);
 

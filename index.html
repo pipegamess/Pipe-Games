@@ -4678,6 +4678,7 @@ function checkPass() {
     document.getElementById("adminBar").classList.add("visible");
     ["ps4","ps5","switch","acc"].forEach(t => render(t, ""));
     renderActive();
+    aplicarPreventaPendiente();
   } else {
     document.getElementById("passError").style.display = "block";
   }
@@ -7062,6 +7063,38 @@ function openBannerModal() {
 
   document.getElementById("bannerModalOverlay").style.display = "flex";
 }
+
+/* ── Preventa sugerida por Tomi (página del Equipo): llega como ?nuevaPreventa={titulo, consola, fecha} ──
+   Se guarda como pendiente, se pide la clave de administrador y se abre el gestor con la preventa ya escrita.
+   Felipe solo agrega la foto y el precio y guarda (se publica como cualquier preventa). */
+function aplicarPreventaPendiente() {
+  let raw = null;
+  try { raw = localStorage.getItem("pgPreventaPendiente"); } catch (e) {}
+  if (!raw || !isAdmin) return;
+  try { localStorage.removeItem("pgPreventaPendiente"); } catch (e) {}
+  let d; try { d = JSON.parse(raw); } catch (e) { return; }
+  const titulo = String(d.titulo || "").toUpperCase().slice(0, 120), consola = String(d.consola || "").toUpperCase().slice(0, 20);
+  if (!titulo) return;
+  try { if (typeof closePhysicalModal === "function") closePhysicalModal(); } catch (e) {}
+  openBannerModal();
+  addExtraBannerForm({ id: "eb_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8), visible: true,
+    title: "PREVENTA " + titulo + (consola ? " " + consola : ""),
+    delivery: d.fecha ? "Lanzamiento: " + String(d.fecha).slice(0, 60) : "Fecha por confirmar",
+    price: "Precio por definir", extra: "Reserva con abono", buttonText: "Reserva ya",
+    waMessage: "Estoy interesado en la *PREVENTA de " + titulo + (consola ? " " + consola : "") + "* 🎮 ¿Me pueden dar más información para reservar el mío?", img: null });
+  const forms = document.querySelectorAll(".extra-banner-form");
+  const ult = forms[forms.length - 1];
+  if (ult) { ult.scrollIntoView({ behavior: "smooth", block: "center" }); ult.style.outline = "3px solid #f5c400"; }
+}
+(function () {
+  try {
+    const q = new URLSearchParams(location.search).get("nuevaPreventa");
+    if (!q) return;
+    localStorage.setItem("pgPreventaPendiente", q);
+    history.replaceState(null, "", location.pathname + location.hash);
+    setTimeout(function () { if (typeof isAdmin !== "undefined" && isAdmin) aplicarPreventaPendiente(); else openModal(); }, 700);
+  } catch (e) {}
+})();
 
 function closeBannerModal() {
   document.getElementById("bannerModalOverlay").style.display = "none";

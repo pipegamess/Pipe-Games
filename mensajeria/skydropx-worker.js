@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-numeros", versionTomi: "9", versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-seguimiento", versionTomi: "10", preguntas: true, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -123,6 +123,9 @@ const Manejador = {
     if (String(pedido.metodo || "").toUpperCase() === "TOMI_GENERAR") {
       try { const tarea = correrTomi(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Tomi: " + (e.message || e) }, 500); }
     }
+    if (String(pedido.metodo || "").toUpperCase() === "EQUIPO_PREGUNTAR") {
+      try { return responder(await preguntarEquipo(env, pedido.quien, pedido.pregunta)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
+    }
     if (String(pedido.metodo || "").toUpperCase() === "ANTO_GENERAR") {
       try { const tarea = correrAnto(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Anto: " + (e.message || e) }, 500); }
     }
@@ -142,7 +145,7 @@ const Manejador = {
       try { return responder(await confirmarMati(env, pedido.clave, pedido.destino)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_MARCAR") {
-      try { return responder(await marcarMati(env, pedido.clave, !!pedido.hecho)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
+      try { return responder(await marcarMati(env, pedido.clave, !!pedido.hecho, pedido.cantidad)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_GENERAR") {
       try { const tarea = correrMati(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Mati: " + (e.message || e) }, 500); }
@@ -1199,6 +1202,68 @@ async function datosMati(env, tk) {
   const quietos = filas.filter(f => mov(f) === 0 && f.stock > 0 && !nuevo(f)).sort((a, b) => b.stock * (b.precio || 0) - a.stock * (a.precio || 0)).slice(0, 25);
   return { meses, tVentas, conMov, quietos, recienLlegados, espSinCatalogo, dudas: dudas.slice(0, 40), hayVentas: Object.keys(ventas).length > 0 };
 }
+
+/* ---------- Seguimiento de Mati: números desde el último informe y "¿acerté?" ---------- */
+async function contextoVentas(env, tk) {
+  const anio = new Date(Date.now() - 5 * 3600000).getUTCFullYear();
+  const v = await leerDocFS(env, tk, "privado/ventas_" + anio);
+  const txt = await (await fetch("https://pipegames.com.co/mensajeria/productos-catalogo.js?t=" + Date.now())).text();
+  const conf = JSON.parse(((await leerDocFS(env, tk, "privado/equipo_mati_alias")) || {}).mapa || "{}");
+  return { filas: JSON.parse((v && v.filas) || "[]"), tVentas: v ? Number(v.t) : 0, catalogo: JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1)), conf };
+}
+// unidades vendidas en el año de un producto (por nombre y consola, o por sus claves del catálogo)
+function unidadesDe(cv, producto, consola) {
+  const kn = claveNombre(producto, consola), claves = new Set();
+  for (const p of cv.catalogo) if (claveNombre(p.n, p.p) === kn) [].concat(p.k || []).forEach(k => claves.add(k));
+  let u = 0;
+  for (const [, k0, n, pl, uu] of cv.filas) {
+    const k = (cv.conf[k0] && cv.conf[k0] !== "AGOTADO") ? cv.conf[k0] : unificarClave(k0);
+    if (claves.has(k) || claveNombre(n, pl) === kn) u += Number(uu) || 0;
+  }
+  return u;
+}
+// Ventas desde el último informe: el Excel manda totales por mes, así que se compara con la foto anterior
+async function numerosSemana(env, tk, cv) {
+  const actual = {};
+  for (const [m, k, n, pl, u, v, g] of cv.filas) { const x = actual[m + "|" + k] ||= [0, 0, 0, n, pl]; x[0] += Number(u) || 0; x[1] += Number(v) || 0; x[2] += Number(g) || 0; }
+  const prevDoc = await leerDocFS(env, tk, "privado/equipo_mati_semana").catch(() => null);
+  const prev = prevDoc ? JSON.parse(prevDoc.mapa || "{}") : null;
+  await escribirDocFS(env, tk, "privado/equipo_mati_semana", { t: Date.now(), mapa: JSON.stringify(Object.fromEntries(Object.entries(actual).map(([k, x]) => [k, x.slice(0, 3)]))) });
+  const bog = new Date(Date.now() - 5 * 3600000), mesAct = bog.toISOString().slice(0, 7);
+  const tot = { unidades: 0, ventas: 0, ganancia: 0 }, porProd = {};
+  for (const [k, x] of Object.entries(actual)) {
+    let du, dv, dg;
+    if (prev) { const p = prev[k] || [0, 0, 0]; du = x[0] - p[0]; dv = x[1] - p[1]; dg = x[2] - p[2]; if (du <= 0) continue; }
+    else { if (!k.startsWith(mesAct)) continue; du = x[0]; dv = x[1]; dg = x[2]; }
+    tot.unidades += du; tot.ventas += dv; tot.ganancia += dg;
+    const nom = x[3] + (x[4] ? " (" + x[4] + ")" : ""); porProd[nom] = (porProd[nom] || 0) + du;
+  }
+  const top = Object.entries(porProd).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([producto, unidades]) => ({ producto, unidades }));
+  return { desde: prev ? Number(prevDoc.t) : null, periodo: prev ? "desde el último informe" : "en lo que va del mes", ...tot, top, ventasRecibidas: cv.tVentas || null };
+}
+// ¿Acertó Mati? Lo que marcaste "Ya lo compré" hace 30 días o más: cuánto se vendió desde entonces
+async function seguimientoCompras(env, tk, cv) {
+  const d = await leerDocFS(env, tk, "privado/equipo_mati_marcas");
+  const mapa = JSON.parse((d && d.mapa) || "{}"), nuevos = [];
+  for (const [k, v] of Object.entries(mapa)) {
+    if (!v || typeof v !== "object" || v.ev) continue;
+    const dias = (Date.now() - v.t) / 86400000;
+    if (dias < 30 || dias > 150) continue;
+    const [, producto = "", consola = ""] = k.split("|");
+    const vendidas = Math.max(0, unidadesDe(cv, producto, consola) - (v.base || 0));
+    const cant = Number(v.cant) || null;
+    const resultado = vendidas === 0 ? "sin ventas" : (cant ? (vendidas >= Math.ceil(cant * 0.6) ? "acierto" : "lento") : "acierto");
+    nuevos.push({ producto: producto.toUpperCase(), consola: consola.toUpperCase(), comprado: new Date(v.t).toISOString().slice(0, 10), dias: Math.round(dias), cantidad: cant, vendidas, resultado });
+    v.ev = true;
+  }
+  const hd = await leerDocFS(env, tk, "privado/equipo_mati_aciertos").catch(() => null);
+  const historial = [...nuevos, ...JSON.parse((hd && hd.lista) || "[]")].slice(0, 60);
+  if (nuevos.length) {
+    await escribirDocFS(env, tk, "privado/equipo_mati_marcas", { t: Date.now(), mapa: JSON.stringify(mapa) });
+    await escribirDocFS(env, tk, "privado/equipo_mati_aciertos", { t: Date.now(), lista: JSON.stringify(historial) });
+  }
+  return { nuevos, historial };
+}
 async function correrMati(env, forzado) {
   const QUIEN = "mati";
   if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
@@ -1207,6 +1272,10 @@ async function correrMati(env, forzado) {
   if (!forzado && previo && Date.now() - Number(previo.t || 0) < 12 * 3600000) return { ok: true, omitido: "ya hay informe de hoy" };
   if (!forzado && !(await primerIntento(env, tk, QUIEN))) return { ok: true, omitido: "ya se intentó hace poco" };
   const d = await datosMati(env, tk);
+  const cv = await contextoVentas(env, tk);
+  const semana = await numerosSemana(env, tk, cv).catch(() => null);
+  const seg = await seguimientoCompras(env, tk, cv).catch(() => ({ nuevos: [], historial: [] }));
+  const aprendido = seg.historial.slice(0, 25).map(x => `${x.producto} (${x.consola}): ${x.resultado} — compró ${x.cantidad || "?"} el ${x.comprado} y vendió ${x.vendidas} en ${x.dias} días`).join("\n");
   const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_en_el_anio, f.ganancia_promedio_unidad, f.clientes_en_espera, f.dias_desde_que_llego === null ? "" : f.dias_desde_que_llego].join(" | ")).join("\n");
   const prompt = `Eres Mati, el Analista de Inventario de Pipe Games, tienda virtual de videojuegos físicos en Bogotá (PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios). Felipe compra pocas unidades por producto (normalmente de 3 a 6) en Amazon o en comercio local, con importación que tarda días o semanas, así que cada peso invertido cuenta.
 
@@ -1226,6 +1295,9 @@ Año analizado: ${d.meses.anio}. Mes actual ${d.meses.actual} (va en curso); mes
 
 PRODUCTOS CON MOVIMIENTO O DEMANDA (producto | consola | stock | precio venta | ventas mes actual | ventas mes pasado | ventas últimos 3 meses completos | ventas acumuladas en ${d.meses.anio} | ganancia promedio por unidad | clientes en espera | días desde que llegó):
 ${tabla(d.conMov) || "(sin datos)"}
+
+CÓMO TE HA IDO CON TUS RECOMENDACIONES (compras que Felipe hizo por tu consejo y cuánto se vendió después). Aprende de esto: si algo parecido quedó sin ventas, sé más prudente con la cantidad; si fue acierto, puedes confiar más en ese tipo de producto:
+${aprendido || "(todavía no hay seguimiento)"}
 
 INVENTARIO QUIETO (sin ventas recientes, con stock y con más de 30 días desde que llegó o fecha desconocida):
 ${tabla(d.quietos) || "(ninguno)"}
@@ -1261,6 +1333,8 @@ ${ESTILO_RESUMEN}
   if (!res.informe) throw new Error("Mati no devolvió un informe válido (" + res.error + ")");
   const informe = res.informe, j = res.j;
   informe.dudas = d.dudas;
+  if (semana) informe.semana = semana;
+  if (seg.nuevos.length) informe.aciertos = seg.nuevos;
   informe.datos = { productosAnalizados: d.conMov.length + d.quietos.length, ventasDelExcel: d.hayVentas, ventasActualizadas: d.tVentas || null, tokens: j.usage || null };
   const ahora = Date.now();
   await escribirDocFS(env, tk, "privado/equipo_mati", { t: ahora, informe: JSON.stringify(informe) });
@@ -1333,8 +1407,9 @@ async function datosTomi(env, tk) {
     return q === undefined ? "sin dato de stock" : q > 0 ? q + " en stock" : q < 0 ? "en importación (aún no llega)" : "AGOTADO"; };
   const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1)).filter(p => /PS4|PS5|SWITCH/.test(p.p)).map(p => p.n + " · " + p.p + ": " + estado(p));
   const adm = await leerDocFS(env, tk, "usuarios/" + env.ADMIN_UID);
-  const espera = Object.values((adm && adm.espera) || {}).filter(x => x && x.estado !== "avisado").map(x => x.titulo + (x.consola && x.consola !== "OTRA" ? " (" + x.consola + ")" : ""));
-  return { hoy: bog.toISOString().slice(0, 10), meses: [a, b, c].map(x => x.es + " " + x.a), resultados: resultados.slice(0, 70), listas, masVendidos, catalogo, espera, yaVendidos: Object.keys(porProd).map(k => k.split(" · ")[0]) };
+  const esperaRaw = Object.values((adm && adm.espera) || {}).filter(x => x && x.estado !== "avisado");
+  const espera = esperaRaw.map(x => x.titulo + (x.consola && x.consola !== "OTRA" ? " (" + x.consola + ")" : ""));
+  return { hoy: bog.toISOString().slice(0, 10), meses: [a, b, c].map(x => x.es + " " + x.a), resultados: resultados.slice(0, 70), listas, masVendidos, catalogo, espera, esperaRaw, yaVendidos: Object.keys(porProd).map(k => k.split(" · ")[0]) };
 }
 // El cron corre cada 5 minutos: si un informe automático falla, no se reintenta antes de 3 horas (cada intento cuesta)
 async function primerIntento(env, tk, quien) {
@@ -1453,6 +1528,13 @@ Ordena "lanzamientos" por fecha. Máximo 15 lanzamientos, 6 preventas, 6 avisar_
   const quitados = (informe.lanzamientos || []).filter(x => yaLoVende(x.titulo)).map(x => x.titulo);
   for (const campo of ["lanzamientos", "preventas", "avisar_clientes"]) if (Array.isArray(informe[campo])) informe[campo] = informe[campo].filter(x => !yaLoVende(x.titulo));
   if (quitados.length) informe.quitados = quitados;
+  // clientes de la lista de espera interesados en cada preventa (para avisarles cuando la abras)
+  const coincide = (a, b) => { const x = norm(a), y = norm(b); return x.length >= 5 && y.length >= 5 && (x.includes(y) || y.includes(x)); };
+  const lz = informe.lanzamientos || [];
+  for (const p of informe.preventas || []) {
+    p.interesados = d.esperaRaw.filter(x => coincide(x.titulo, p.titulo)).slice(0, 15).map(x => ({ nombre: x.nombre || "", contacto: x.contacto || "", canal: x.canal || "", consola: x.consola || "" }));
+    const l = lz.find(x => coincide(x.titulo, p.titulo)); if (l) { p.fecha = l.fecha; p.fecha_iso = l.fecha_iso; p.fecha_confirmada = l.fecha_confirmada; }
+  }
   // seguro: lo que ya salió queda marcado como salido y con fecha confirmada
   for (const x of informe.lanzamientos || []) if (x.fecha_iso && x.fecha_iso < d.hoy && x.fecha_confirmada !== false) x.ya_salio = true;
   informe.hoy = d.hoy;
@@ -1552,6 +1634,53 @@ Máximo 10 en bajar, 10 en subir, 8 en bien, 4 alertas. Cada "motivo" de máximo
   await notificar(env, "💲 Anto: revisión de precios lista", (informe.resumen || "") + "\nVer en pipegames.com.co/equipo/", 3, ["moneybag"]);
   return { ok: true, informe, t };
 }
+
+/* ---------- Preguntas en la reunión: Felipe habla y Mati o Tomi responden con sus datos ---------- */
+async function preguntarEquipo(env, quien, pregunta) {
+  if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
+  pregunta = String(pregunta || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 400);
+  if (!pregunta) throw new Error("no escuché la pregunta");
+  quien = quien === "tomi" ? "tomi" : "mati";
+  const tk = await tokenServicio(env);
+  const bog = new Date(Date.now() - 5 * 3600000), hoy = bog.toISOString().slice(0, 10);
+  let contexto, persona;
+  if (quien === "mati") {
+    const cv = await contextoVentas(env, tk);
+    const stock = (await (await fetch("https://pipegames.com.co/stock.json?t=" + Date.now())).json()).productos || {};
+    const porProd = {};
+    for (const [m, k0, n, pl, u, v, g] of cv.filas) {
+      const k = (cv.conf[k0] && cv.conf[k0] !== "AGOTADO") ? cv.conf[k0] : unificarClave(k0);
+      const x = porProd[k] ||= { n, pl, m: {} }; const y = x.m[m] ||= [0, 0, 0]; y[0] += Number(u) || 0; y[1] += Number(v) || 0; y[2] += Number(g) || 0;
+    }
+    const ventas = Object.values(porProd).map(x => x.n + " · " + x.pl + ": " + Object.entries(x.m).sort().map(([m, y]) => m.slice(5) + "=" + y.join("/")).join(" ")).join("\n");
+    const cat = cv.catalogo.map(p => { const k = [].concat(p.k || []); let q = cantidadClaves(stock, k.length > 1 ? k : k[0]); if (q === undefined && p.e) q = 0;
+      return p.n + " · " + p.p + ": precio " + p.v + ", " + (q === undefined ? "sin dato" : q > 0 ? q + " en stock" : q < 0 ? "en importación" : "agotado"); }).join("\n");
+    const ult = await leerDocFS(env, tk, "privado/equipo_mati");
+    persona = "Eres Mati, el Analista de Inventario de Pipe Games (tienda virtual de videojuegos físicos en Bogotá de Felipe). Respondes preguntas sobre ventas, ganancias, stock y precios usando SOLO los datos de abajo.";
+    contexto = `Hoy es ${hoy}. VENTAS DE ${hoy.slice(0, 4)} por producto (mes=unidades/ventas en pesos/ganancia en pesos):\n${ventas}\n\nCATÁLOGO CON PRECIO Y STOCK:\n${cat}\n\nTU ÚLTIMO INFORME (resumen):\n${ult && ult.informe ? (JSON.parse(ult.informe).resumen || "") : "(sin informe)"}`;
+  } else {
+    const ult = await leerDocFS(env, tk, "privado/equipo_tomi");
+    const inf = ult && ult.informe ? JSON.parse(ult.informe) : {};
+    let web = "";
+    if (env.SERPER_API_KEY) {
+      const [a, b] = await Promise.all([serper(env, "search", { q: pregunta + " release date", gl: "us", hl: "en", num: 6 }).catch(() => ({})), serper(env, "news", { q: pregunta, gl: "us", hl: "en", num: 6 }).catch(() => ({}))]);
+      web = [...(a.organic || []), ...(b.news || [])].map(x => `${x.title} | ${x.date || ""} | ${x.snippet || ""}`).join("\n");
+    }
+    persona = "Eres Tomi, el Vigía de Lanzamientos de Pipe Games (tienda virtual de videojuegos físicos en Bogotá de Felipe; vende PS4, PS5, Switch y Switch 2, no Xbox). Respondes preguntas sobre lanzamientos, fechas y novedades usando SOLO tu último informe y los resultados de búsqueda de abajo.";
+    contexto = `Hoy es ${hoy}. TU ÚLTIMO INFORME:\n${JSON.stringify({ resumen: inf.resumen, lanzamientos: (inf.lanzamientos || []).map(x => [x.titulo, (x.consolas || []).join("/"), x.fecha, x.fecha_confirmada ? "confirmada" : "por confirmar"].join(" | ")) })}\n\nBÚSQUEDA EN INTERNET SOBRE LA PREGUNTA:\n${web || "(sin resultados)"}`;
+  }
+  const reglas = `\n\nCÓMO RESPONDER: te escuchan en voz alta durante una reunión. Responde en español, en 1 a 4 frases cortas, directo al punto, sin listas, sin viñetas, sin markdown ni emojis. Di los productos con su consola. Si te piden una cifra, calcúlala con los datos y dila clara (por ejemplo "vendiste 6 unidades por 1.380.000 pesos"). Si el dato no está, dilo con honestidad y sugiere cómo conseguirlo. No inventes.`;
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 500,
+      system: [{ type: "text", text: persona + reglas }, { type: "text", text: contexto, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: pregunta }] })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error("Claude " + r.status + ": " + ((j.error && j.error.message) || ""));
+  const respuesta = (j.content || []).filter(c => c.type === "text").map(c => c.text).join(" ").replace(/[*_#`]/g, "").trim();
+  return { ok: true, quien, respuesta: respuesta || "No tengo una respuesta para eso.", uso: j.usage || null };
+}
 async function borrarInforme(env, quien, t) {
   t = Number(t); if (!t) throw new Error("falta el informe");
   const tk = await tokenServicio(env);
@@ -1601,12 +1730,18 @@ async function confirmarMati(env, clave, destino) {
   return { ok: true };
 }
 // "Ya lo compré" / "Hecho" en una recomendación de Mati
-async function marcarMati(env, clave, hecho) {
+async function marcarMati(env, clave, hecho, cantidad) {
   const tk = await tokenServicio(env);
   const d = await leerDocFS(env, tk, "privado/equipo_mati_marcas");
   const mapa = JSON.parse((d && d.mapa) || "{}");
-  if (hecho) mapa[String(clave).slice(0, 200)] = Date.now(); else delete mapa[clave];
-  const claves = Object.keys(mapa).sort((a, b) => mapa[b] - mapa[a]).slice(0, 400);
+  if (hecho) {
+    // se guarda cuánto se había vendido hasta hoy, para saber en un mes si la compra se vendió
+    const [, producto = "", consola = ""] = String(clave).split("|");
+    const base = await contextoVentas(env, tk).then(cv => unidadesDe(cv, producto, consola)).catch(() => 0);
+    mapa[String(clave).slice(0, 200)] = { t: Date.now(), base, cant: Number(cantidad) || null };
+  } else delete mapa[clave];
+  const tt = v => typeof v === "number" ? v : (v && v.t) || 0;
+  const claves = Object.keys(mapa).sort((a, b) => tt(mapa[b]) - tt(mapa[a])).slice(0, 400);
   await escribirDocFS(env, tk, "privado/equipo_mati_marcas", { t: Date.now(), mapa: JSON.stringify(Object.fromEntries(claves.map(k => [k, mapa[k]]))) });
   return { ok: true };
 }
