@@ -80,6 +80,14 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 .duda .ops { display: grid; gap: 6px; }
 .duda .ops button { text-align: left; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
 .duda.lista { opacity: .6; border-style: dashed; background: none; }
+.lanz { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.lanz:first-child { border-top: 0; }
+.lanz .f { font-family: var(--display); font-weight: 700; color: var(--acc); font-size: 14px; line-height: 1.2; }
+.lanz .f small { display: block; color: var(--muted); font-weight: 400; font-family: inherit; font-size: 11px; }
+.lanz p { margin: 2px 0 0; font-size: 14px; line-height: 1.45; color: var(--muted); }
+.lanz .hacer { color: inherit; } .lanz .hacer::before { content: "→ "; font-weight: 700; }
+.lanz a { font-size: 12px; color: var(--muted); }
+.mesTit { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 14px 0 2px; }
 .top3 { display: grid; gap: 8px; }
 details.sec { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 0 14px; }
 details.sec > summary { cursor: pointer; list-style: none; padding: 12px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
@@ -133,11 +141,11 @@ const fechaHora = t => t ? new Date(t).toLocaleString("es-CO", { weekday: "long"
 
 const EQUIPO = [
   { id: "mati", nombre: "Mati", rol: "Analista de Inventario", lema: "Siempre un paso adelante · te dice qué recomprar", listo: true },
-  { id: "tomi", nombre: "Tomi", rol: "Vigía de Lanzamientos", lema: "Te dice QUÉ viene" },
+  { id: "tomi", nombre: "Tomi", rol: "Vigía de Lanzamientos", lema: "Te dice qué juegos vienen y qué preparar", listo: true },
   { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice CÓMO estás de precio" },
   { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
 ];
-let elegido = "mati", DATOS = null, verT = null, borrando = false;
+let elegido = "mati", DATOS = null, verT = null, borrando = false, verTomi = null, borrandoTomi = false;
 const respondidasAhora = new Set(); // dudas respondidas en esta visita (al recargar la página desaparecen) // verT: qué informe del historial se está viendo
 
 async function worker(metodo, extra) {
@@ -188,9 +196,35 @@ function pintarDudas(dudas) {
       <div class="ops">${(x.opciones || []).map(o => `<button type="button" data-conf="${esc(x.clave)}" data-dest="${esc(o.clave)}">Sí, es <b>${esc(o.nombre)}</b> · stock ${o.stock < 0 ? "en importación" : esc(o.stock)}</button>`).join("")}
       <button type="button" data-conf="${esc(x.clave)}" data-dest="AGOTADO">Ninguno de estos: ese producto está agotado (ya no lo tengo)</button></div></div>`; }).join("")}</div></div>`;
 }
+function pintarTomi(cab) {
+  const v = $("vInforme"), lista = (DATOS.tomi && DATOS.tomi.historial) || [];
+  const btn = `<div class="acciones"><button class="primary" type="button" id="generarTomi">Pedirle a Tomi un informe nuevo</button><span class="status" id="tEstado"></span></div>`;
+  const actual = lista.find(x => x.t === verTomi) || lista[0], inf = actual && actual.informe;
+  if (!inf) { v.innerHTML = cab + `<p class="vacio">Aún no hay informes. Tomi entrega uno cada jueves en la mañana, o puedes pedírselo ahora (tarda cerca de 1 minuto porque busca en internet).</p>` + btn; return; }
+  const hist = lista.length > 1 ? `<label class="hist">Ver informe: <select id="histTomi">${lista.map((x, i) => `<option value="${x.t}"${x === actual ? " selected" : ""}>${i === 0 ? "Último · " : ""}${esc(fechaHora(x.t))}</option>`).join("")}</select></label>` : "";
+  const lz = [...(inf.lanzamientos || [])].sort((a, b) => String(a.fecha_iso || "").localeCompare(String(b.fecha_iso || "")));
+  const urg = lz.filter(x => x.interes === "alta");
+  const mesDe = x => { const d = new Date((x.fecha_iso || "") + "T12:00:00"); return isNaN(d) ? "Sin fecha" : d.toLocaleDateString("es-CO", { month: "long", year: "numeric" }); };
+  const dia = x => { const d = new Date((x.fecha_iso || "") + "T12:00:00"); return isNaN(d) || !x.fecha_confirmada ? "Por confirmar" : d.toLocaleDateString("es-CO", { day: "numeric", month: "short" }); };
+  const fila = x => `<div class="lanz"><div class="f">${esc(dia(x))}<small>${esc((x.consolas || []).join(" · "))}</small></div><div><b>${esc(x.titulo)}</b><span class="prio ${esc(x.interes)}">${esc(x.interes || "")}</span>
+    ${x.por_que ? `<p>${esc(x.por_que)}</p>` : ""}${x.accion ? `<p class="hacer">${esc(x.accion)}</p>` : ""}${!x.fecha_confirmada && x.fecha ? `<p>Fecha anunciada: ${esc(x.fecha)}</p>` : ""}${/^https?:\/\//.test(x.fuente || "") ? `<a href="${esc(x.fuente)}" target="_blank" rel="noopener">Fuente</a>` : ""}</div></div>`;
+  let porMes = "", mesAnt = "";
+  for (const x of lz) { const mm = mesDe(x); if (mm !== mesAnt) { porMes += `<div class="mesTit">${esc(mm)}</div>`; mesAnt = mm; } porMes += fila(x); }
+  const chips = `<div class="chips"><span class="chip">Lanzamientos: ${lz.length}</span><span class="chip">Interés alto: ${urg.length}</span><span class="chip">Preventas sugeridas: ${(inf.preventas || []).length}</span><span class="chip">Avisar a clientes: ${(inf.avisar_clientes || []).length}</span></div>`;
+  v.innerHTML = cab + hist + `<p class="meta">${actual === lista[0] ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p><p class="resumen">${esc(inf.resumen)}</p>` +
+    pintarAlertas(inf.alertas) + chips +
+    (urg.length ? `<div><h3>Lo que más te interesa</h3><div>${urg.slice(0, 4).map(fila).join("")}</div></div>` : "") +
+    seccion("Preventas sugeridas", inf.preventas, x => item(`<b>${esc(x.titulo)}</b> ${esc(x.consola || "")}`, x.cantidad ? "×" + x.cantidad : "", x.por_que), false) +
+    seccion("Avisar a clientes en espera", inf.avisar_clientes, x => item(`<b>${esc(x.titulo)}</b>`, "", x.que_decir), false) +
+    `<details class="sec"><summary><span>Calendario completo <span class="num">(${lz.length})</span></span></summary>${porMes || `<p class="vacio">Nada por ahora.</p>`}</details>` +
+    btn + `<div class="acciones" style="margin-top:6px">${borrandoTomi
+      ? `<span class="status err">¿Eliminar el informe del ${esc(fechaHora(actual.t))}? No se puede recuperar.</span><button type="button" class="primary" id="borrarTomiSi" data-t="${actual.t}">Sí, eliminar</button><button type="button" class="ghost" id="borrarTomiNo">Cancelar</button>`
+      : `<button type="button" class="ghost" id="borrarTomi">Eliminar este informe</button>`}<span class="status" id="btEstado"></span></div>`;
+}
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
   const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=3" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
+  if (m.id === "tomi" && DATOS) return pintarTomi(cab);
   if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
   if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
   const ventas = DATOS.ventas, lista = informes(), marcas = DATOS.marcas || {};
@@ -221,6 +255,7 @@ function pintarInforme() {
       : `<button type="button" class="ghost" id="borrar">Eliminar este informe</button>`}<span class="status" id="bEstado"></span></div>`;
 }
 $("vInforme").addEventListener("change", async e => {
+  if (e.target.id === "histTomi") { verTomi = Number(e.target.value); borrandoTomi = false; pintarInforme(); return; }
   if (e.target.id === "histSel") { verT = Number(e.target.value); borrando = false; pintarInforme(); return; }
   const c = e.target.closest("input[data-k]"); if (!c) return;
   const k = c.dataset.k, hecho = c.checked;
@@ -240,6 +275,21 @@ $("vInforme").addEventListener("click", async e => {
     pintarInforme();
     try { await worker("MATI_CONFIRMAR", { clave, destino }); }
     catch (err) { if (antes) DATOS.alias[clave] = antes; else delete DATOS.alias[clave]; pintarInforme(); $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se guardó: ${esc(err.message)}</p>`); }
+    return;
+  }
+  if (e.target.closest("#borrarTomi")) { borrandoTomi = true; pintarInforme(); return; }
+  if (e.target.closest("#borrarTomiNo")) { borrandoTomi = false; pintarInforme(); return; }
+  const bt = e.target.closest("#borrarTomiSi");
+  if (bt) {
+    const t = Number(bt.dataset.t); bt.disabled = true;
+    try { await worker("TOMI_BORRAR", { t }); DATOS.tomi = { historial: ((DATOS.tomi && DATOS.tomi.historial) || []).filter(x => Number(x.t) !== t) }; verTomi = null; borrandoTomi = false; pintarInforme(); }
+    catch (err) { bt.disabled = false; $("btEstado").className = "status err"; $("btEstado").textContent = err.message; }
+    return;
+  }
+  if (e.target.closest("#generarTomi")) {
+    const b = $("generarTomi"); b.disabled = true; $("tEstado").className = "status"; $("tEstado").textContent = "Tomi está buscando lanzamientos en internet y cruzándolos con tus ventas (cerca de 1 minuto)…";
+    try { const r = await worker("TOMI_GENERAR"); DATOS.tomi = { historial: [{ t: r.t, informe: r.informe }, ...((DATOS.tomi && DATOS.tomi.historial) || [])].slice(0, 8) }; verTomi = null; pintarInforme(); }
+    catch (err) { $("tEstado").className = "status err"; $("tEstado").textContent = err.message; b.disabled = false; }
     return;
   }
   if (e.target.closest("#borrar")) { borrando = true; pintarInforme(); return; }

@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "1", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -119,6 +119,12 @@ const Manejador = {
     // Equipo Pipe Games: leer los informes y pedirle a Mati uno nuevo
     if (String(pedido.metodo || "").toUpperCase() === "EQUIPO_LEER") {
       try { return responder(await leerEquipo(env)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
+    }
+    if (String(pedido.metodo || "").toUpperCase() === "TOMI_GENERAR") {
+      try { return responder(await correrTomi(env, true)); } catch (e) { return responder({ error: "Tomi: " + (e.message || e) }, 500); }
+    }
+    if (String(pedido.metodo || "").toUpperCase() === "TOMI_BORRAR") {
+      try { return responder(await borrarInforme(env, "tomi", pedido.t)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_BORRAR") {
       try { return responder(await borrarMati(env, pedido.t)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
@@ -273,6 +279,8 @@ export default {
     ctx.waitUntil(revisarPanel(env).catch(e => alertaError(env, "Revisión del panel", String(e && e.message || e))));
     // Mati: informe semanal los lunes desde las 7 a. m. (hora Colombia)
     const bog = new Date(Date.now() - 5 * 3600000);
+    // Tomi: los jueves desde las 7 a. m. (antes del fin de semana y de los lanzamientos del viernes)
+    if (bog.getUTCDay() === 4 && bog.getUTCHours() >= 7) ctx.waitUntil(correrTomi(env, false).catch(e => alertaError(env, "Informe de Tomi", String(e && e.message || e))));
     if (bog.getUTCDay() === 1 && bog.getUTCHours() >= 7) ctx.waitUntil(correrMati(env, false).catch(e => alertaError(env, "Informe de Mati", String(e && e.message || e))));
   }
 };
@@ -1174,10 +1182,12 @@ async function datosMati(env, tk) {
   return { meses, tVentas, conMov, quietos, recienLlegados, espSinCatalogo, dudas: dudas.slice(0, 40), hayVentas: Object.keys(ventas).length > 0 };
 }
 async function correrMati(env, forzado) {
+  const QUIEN = "mati";
   if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
   const tk = await tokenServicio(env);
   const previo = await leerDocFS(env, tk, "privado/equipo_mati");
   if (!forzado && previo && Date.now() - Number(previo.t || 0) < 6 * 86400000) return { ok: true, omitido: "ya hay informe de esta semana" };
+  if (!forzado && !(await primerIntento(env, tk, QUIEN))) return { ok: true, omitido: "ya se intentó hace poco" };
   const d = await datosMati(env, tk);
   const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_en_el_anio, f.ganancia_promedio_unidad, f.clientes_en_espera, f.dias_desde_que_llego === null ? "" : f.dias_desde_que_llego].join(" | ")).join("\n");
   const prompt = `Eres Mati, el Analista de Inventario de Pipe Games, tienda virtual de videojuegos físicos en Bogotá (PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios). Felipe compra pocas unidades por producto (normalmente de 3 a 6) en Amazon o en comercio local, con importación que tarda días o semanas, así que cada peso invertido cuenta.
@@ -1254,7 +1264,151 @@ async function leerEquipo(env) {
   let historial = JSON.parse((h && h.lista) || "[]");
   if (!historial.length && mati && mati.informe) historial = [{ t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") }];
   return { mati: mati && mati.informe ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, historial,
+    tomi: await leerInformes(env, tk, "tomi"),
     marcas: JSON.parse((marcas && marcas.mapa) || "{}"), alias: JSON.parse((alias && alias.mapa) || "{}"), ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
+}
+
+/* ---------- Tomi · Vigía de Lanzamientos ----------
+   Busca en la web (Serper) qué juegos salen en los próximos 3 meses para PS4, PS5, Switch y Switch 2,
+   lo cruza con tus ventas de este año, tu catálogo y la lista de espera, y te dice qué preparar. */
+async function serper(env, ruta, cuerpo) {
+  const r = await fetch("https://google.serper.dev/" + ruta, { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify(cuerpo) });
+  if (!r.ok) throw new Error("búsqueda " + r.status);
+  return r.json();
+}
+const MESES_EN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MESES_ES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+async function datosTomi(env, tk) {
+  if (!env.SERPER_API_KEY) throw new Error("falta el secreto SERPER_API_KEY");
+  const bog = new Date(Date.now() - 5 * 3600000), anio = bog.getUTCFullYear(), m0 = bog.getUTCMonth();
+  const mes = i => ({ en: MESES_EN[(m0 + i) % 12], es: MESES_ES[(m0 + i) % 12], a: anio + Math.floor((m0 + i) / 12) });
+  const [a, b, c] = [mes(0), mes(1), mes(2)];
+  const consultas = [
+    ["search", `video game release dates ${a.en} ${a.a} PS5 Switch 2`], ["search", `video game release dates ${b.en} ${b.a}`], ["search", `upcoming video games ${c.en} ${c.a} release date`],
+    ["search", `Nintendo Switch 2 upcoming games release dates ${b.a}`], ["search", `PS5 upcoming games release dates ${b.a}`],
+    ["search", `lanzamientos videojuegos ${b.es} ${b.a} PS5 Nintendo Switch`],
+    ["news", "release date announced Nintendo Switch 2 game"], ["news", "release date announced PS5 game"], ["news", "game delayed new release date"]
+  ];
+  const vistos = new Set(), resultados = [];
+  const res = await Promise.all(consultas.map(([t, q]) => serper(env, t, { q, gl: "us", hl: "en", num: 10, ...(t === "news" ? { tbs: "qdr:m" } : {}) }).catch(() => ({}))));
+  res.forEach(j => (j.organic || j.news || []).forEach(x => {
+    if (!x.link || vistos.has(x.link)) return; vistos.add(x.link);
+    resultados.push({ titulo: x.title, url: x.link, fecha: x.date || "", texto: x.snippet || "" });
+  }));
+  // Páginas con listas de lanzamientos: se lee el texto de las 2 primeras de las búsquedas por mes
+  const listas = [];
+  for (const j of res.slice(0, 2)) {
+    const l = (j.organic || [])[0]; if (!l) continue;
+    const r = await fetch("https://scrape.serper.dev", { method: "POST", headers: { "X-API-KEY": env.SERPER_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ url: l.link, includeMarkdown: true }) }).then(r => r.ok ? r.json() : null).catch(() => null);
+    const txt = r && (r.markdown || r.text); if (txt) listas.push({ url: l.link, texto: String(txt).replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\n{3,}/g, "\n\n").slice(0, 14000) });
+  }
+  // Lo de Pipe Games: lo más vendido este año, catálogo y lista de espera
+  const v = await leerDocFS(env, tk, "privado/ventas_" + anio);
+  const porProd = {};
+  for (const [, , n, pl, u] of JSON.parse((v && v.filas) || "[]")) { const k = n + " · " + pl; porProd[k] = (porProd[k] || 0) + (Number(u) || 0); }
+  const masVendidos = Object.entries(porProd).sort((x, y) => y[1] - x[1]).slice(0, 40).map(([k, u]) => k + " (" + u + ")");
+  const txt = await (await fetch("https://pipegames.com.co/mensajeria/productos-catalogo.js?t=" + Date.now())).text();
+  const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1)).filter(p => /PS4|PS5|SWITCH/.test(p.p)).map(p => p.n + " · " + p.p);
+  const adm = await leerDocFS(env, tk, "usuarios/" + env.ADMIN_UID);
+  const espera = Object.values((adm && adm.espera) || {}).filter(x => x && x.estado !== "avisado").map(x => x.titulo + (x.consola && x.consola !== "OTRA" ? " (" + x.consola + ")" : ""));
+  return { hoy: bog.toISOString().slice(0, 10), meses: [a, b, c].map(x => x.es + " " + x.a), resultados: resultados.slice(0, 70), listas, masVendidos, catalogo, espera };
+}
+// El cron corre cada 5 minutos: si un informe automático falla, no se reintenta antes de 3 horas (cada intento cuesta)
+async function primerIntento(env, tk, quien) {
+  const d = await leerDocFS(env, tk, "privado/equipo_intento_" + quien).catch(() => null);
+  if (d && Date.now() - Number(d.t || 0) < 3 * 3600000) return false;
+  await escribirDocFS(env, tk, "privado/equipo_intento_" + quien, { t: Date.now() });
+  return true;
+}
+// Guardar / borrar informes de cualquier miembro del equipo (último + historial de 8)
+async function guardarInforme(env, tk, quien, informe) {
+  const ahora = Date.now();
+  await escribirDocFS(env, tk, "privado/equipo_" + quien, { t: ahora, informe: JSON.stringify(informe) });
+  const h = await leerDocFS(env, tk, "privado/equipo_" + quien + "_hist").catch(() => null);
+  const lista = [{ t: ahora, informe }, ...JSON.parse((h && h.lista) || "[]")].slice(0, 8);
+  await escribirDocFS(env, tk, "privado/equipo_" + quien + "_hist", { t: ahora, lista: JSON.stringify(lista) });
+  return ahora;
+}
+async function leerInformes(env, tk, quien) {
+  const ult = await leerDocFS(env, tk, "privado/equipo_" + quien);
+  const h = await leerDocFS(env, tk, "privado/equipo_" + quien + "_hist");
+  let historial = JSON.parse((h && h.lista) || "[]");
+  if (!historial.length && ult && ult.informe) historial = [{ t: Number(ult.t), informe: JSON.parse(ult.informe) }];
+  return { historial };
+}
+async function pedirJSON(env, prompt, extraReintento) {
+  const pedir = async extra => {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 8000, messages: [{ role: "user", content: prompt + extra }] })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error("Claude " + r.status + ": " + ((j.error && j.error.message) || ""));
+    const texto = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+    try { return { informe: JSON.parse(texto.slice(texto.indexOf("{"), texto.lastIndexOf("}") + 1)), j }; }
+    catch { return { error: (j.stop_reason === "max_tokens" ? "respuesta cortada" : "formato") + ": " + texto.slice(0, 120), j }; }
+  };
+  let res = await pedir("");
+  if (!res.informe) res = await pedir(extraReintento);
+  if (!res.informe) throw new Error("no devolvió un informe válido (" + res.error + ")");
+  return res;
+}
+async function correrTomi(env, forzado) {
+  const QUIEN = "tomi";
+  if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
+  const tk = await tokenServicio(env);
+  const previo = await leerDocFS(env, tk, "privado/equipo_tomi");
+  if (!forzado && previo && Date.now() - Number(previo.t || 0) < 6 * 86400000) return { ok: true, omitido: "ya hay informe de esta semana" };
+  if (!forzado && !(await primerIntento(env, tk, QUIEN))) return { ok: true, omitido: "ya se intentó hace poco" };
+  const d = await datosTomi(env, tk);
+  const prompt = `Eres Tomi, el Vigía de Lanzamientos de Pipe Games, tienda virtual de videojuegos físicos en Bogotá, Colombia. Felipe vende juegos físicos de PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios. NO vende Xbox ni juegos de PC. Compra pocas unidades (3 a 6 por juego) en Amazon o en comercio local; la importación tarda días o semanas, así que necesita saber con tiempo qué viene.
+
+Hoy es ${d.hoy}. TU TAREA: decirle a Felipe QUÉ JUEGOS SALEN en los próximos 3 meses (${d.meses.join(", ")}) para sus consolas, cuáles le conviene tener (preventa o pedido) y a qué clientes avisar.
+
+REGLAS:
+- Usa SOLO la información de los resultados de búsqueda de abajo. No inventes juegos ni fechas. Si una fecha no está confirmada (solo "2027", "invierno", rumor), dilo con fecha_confirmada=false.
+- Cada lanzamiento debe llevar en "fuente" la URL del resultado de donde sale el dato.
+- Solo juegos con edición FÍSICA probable para PS4, PS5, Switch o Switch 2. Ignora lo que sea solo de Xbox, PC o móvil, y lo exclusivamente digital.
+- Incluye también noticias importantes: retrasos, fechas nuevas anunciadas, ediciones especiales.
+- "interes" (alta|media|baja) según lo que se vende en Pipe Games: sagas o géneros parecidos a sus más vendidos de ${d.hoy.slice(0, 4)}, juegos muy esperados en Colombia, clientes en lista de espera. Lo de Nintendo y los deportes (FC, NBA) suele venderse bien.
+- Mira el catálogo: si el juego ya está en el catálogo, dilo en "accion" (por ejemplo "ya está en tu catálogo: confirma unidades").
+- "preventas": solo los que de verdad conviene pedir ya, con cantidad realista (1 a 6).
+- "avisar_clientes": juegos que coinciden con la lista de espera.
+
+CÓMO ESCRIBIR (Felipe lo lee rápido en el celular): español claro, frases completas, sin abreviaturas ni jerga. Fechas como "12 de diciembre de 2026".
+
+LO MÁS VENDIDO EN PIPE GAMES ESTE AÑO (producto · consola (unidades)):
+${d.masVendidos.join("\n") || "(sin datos de ventas)"}
+
+CATÁLOGO ACTUAL (lo que ya ofrece):
+${d.catalogo.join("; ")}
+
+LISTA DE ESPERA (clientes esperando):
+${d.espera.join("; ") || "(vacía)"}
+
+RESULTADOS DE BÚSQUEDA (título | fecha | url | texto):
+${d.resultados.map(r => [r.titulo, r.fecha, r.url, r.texto].join(" | ")).join("\n")}
+
+${d.listas.map(l => "PÁGINA CON LISTA DE LANZAMIENTOS (" + l.url + "):\n" + l.texto).join("\n\n")}
+
+RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
+{"resumen":"máximo 3 frases: lo más importante que viene y qué preparar","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
+Ordena "lanzamientos" por fecha. Máximo 20 lanzamientos, 8 preventas, 6 avisar_clientes, 4 alertas. Si no hay fecha exacta usa fecha_iso con el primer día del mes o del año. No uses bloques de código.`;
+  const { informe, j } = await pedirJSON(env, prompt, "\n\nIMPORTANTE: sé muy breve (máximo 12 lanzamientos, frases de máximo 12 palabras) y responde SOLO el JSON, sin ``` ni texto adicional.");
+  informe.datos = { resultados: d.resultados.length, paginas: d.listas.map(l => l.url), tokens: j.usage || null };
+  const t = await guardarInforme(env, tk, "tomi", informe);
+  const top = (informe.lanzamientos || []).filter(x => x.interes === "alta").slice(0, 3).map(x => x.titulo + " (" + x.fecha + ")").join(", ");
+  await notificar(env, "🎮 Tomi: lanzamientos de las próximas semanas", (informe.resumen || "") + (top ? "\nPara tener en cuenta: " + top : "") + "\nVer en pipegames.com.co/equipo/", 3, ["video_game"]);
+  return { ok: true, informe, t };
+}
+async function borrarInforme(env, quien, t) {
+  t = Number(t); if (!t) throw new Error("falta el informe");
+  const tk = await tokenServicio(env);
+  let lista = (await leerInformes(env, tk, quien)).historial.filter(x => Number(x.t) !== t);
+  await escribirDocFS(env, tk, "privado/equipo_" + quien + "_hist", { t: Date.now(), lista: JSON.stringify(lista) });
+  const actual = await leerDocFS(env, tk, "privado/equipo_" + quien);
+  if (actual && Number(actual.t) === t) { const sig = lista[0]; await escribirDocFS(env, tk, "privado/equipo_" + quien, sig ? { t: Number(sig.t), informe: JSON.stringify(sig.informe) } : { t: 0, informe: "" }); }
+  return { ok: true, quedan: lista.length };
 }
 // Eliminar un informe del historial (si era el último, queda como último el anterior)
 async function borrarMati(env, t) {
