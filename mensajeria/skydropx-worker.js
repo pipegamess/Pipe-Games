@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -57,6 +57,8 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/addi/ir") return irAddi(env, url);
     // Lista de espera desde el agente de Instagram (Pipe Bot): se valida con la clave compartida CLAVE_AGENTE
     if (req.method === "POST" && url.pathname === "/espera/instagram") return esperaInstagram(req, env, responder);
+    // Mercado Libre (OAuth): conectar la cuenta y ver el estado
+    if (req.method === "GET" && url.pathname.startsWith("/ml/")) return rutasML(req, env, url, responder);
     // Ventas del Excel (privadas): la macro las envía con la clave CLAVE_AGENTE y quedan solo en Firebase
     if (req.method === "POST" && url.pathname === "/equipo/ventas") {
       if (!env.CLAVE_AGENTE || req.headers.get("X-Clave") !== env.CLAVE_AGENTE) return responder({ ok: false, error: "No autorizado" }, 401);
@@ -1158,4 +1160,75 @@ async function leerEquipo(env) {
   const anio = new Date(Date.now() - 5 * 3600000).getUTCFullYear();
   const v = await leerDocFS(env, tk, "privado/ventas_" + anio);
   return { mati: mati ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
+}
+
+
+/* ---------- Mercado Libre: conexión OAuth (para Luca · Mercado Ads, y luego stock) ----------
+   Secretos en este Worker: ML_CLIENT_ID y ML_CLIENT_SECRET (de developers.mercadolibre.com.co → Mis aplicaciones).
+   En la aplicación de Mercado Libre, la URL de redireccionamiento debe ser exactamente ML_CALLBACK.
+   El token queda en Firebase (privado/ml) y se renueva solo. */
+const ML_CALLBACK = "https://skydropx-pipegames.pipe-games22.workers.dev/ml/callback";
+const paginaML = (titulo, texto, ok = true) => new Response(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${titulo}</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1115;color:#f2f2f2;font-family:system-ui,sans-serif;padding:16px"><div style="max-width:520px;background:#181b22;border-radius:14px;padding:26px"><h1 style="font-size:21px;margin:0 0 10px;color:${ok ? "#ffe600" : "#ff7b7b"}">${titulo}</h1><p style="color:#c8ccd4;line-height:1.5">${texto}</p></div></body></html>`, { status: ok ? 200 : 400, headers: { "Content-Type": "text/html; charset=utf-8" } });
+async function rutasML(req, env, url, responder) {
+  const ruta = url.pathname;
+  if (!env.ML_CLIENT_ID || !env.ML_CLIENT_SECRET) return paginaML("Falta configurar Mercado Libre", "Agrega los secretos ML_CLIENT_ID y ML_CLIENT_SECRET en el Worker de Cloudflare.", false);
+  const tk = await tokenServicio(env);
+  if (ruta === "/ml/conectar") {
+    if (!env.CLAVE_AGENTE || url.searchParams.get("clave") !== env.CLAVE_AGENTE) return paginaML("No autorizado", "Abre este enlace agregando ?clave= con tu CLAVE_AGENTE.", false);
+    const estado = crypto.randomUUID();
+    await escribirDocFS(env, tk, "privado/ml_estado", { estado, t: Date.now() });
+    const u = new URL("https://auth.mercadolibre.com.co/authorization");
+    u.searchParams.set("response_type", "code"); u.searchParams.set("client_id", env.ML_CLIENT_ID);
+    u.searchParams.set("redirect_uri", ML_CALLBACK); u.searchParams.set("state", estado);
+    return Response.redirect(u.toString(), 302);
+  }
+  if (ruta === "/ml/callback") {
+    if (url.searchParams.get("error")) return paginaML("Mercado Libre no autorizó", String(url.searchParams.get("error_description") || url.searchParams.get("error")).replace(/[<>&]/g, ""), false);
+    const st = await leerDocFS(env, tk, "privado/ml_estado");
+    if (!st || st.estado !== url.searchParams.get("state") || Date.now() - Number(st.t) > 15 * 60000) return paginaML("Enlace vencido", "Vuelve a abrir el enlace de conexión (/ml/conectar).", false);
+    const r = await fetch("https://api.mercadolibre.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "authorization_code", client_id: env.ML_CLIENT_ID, client_secret: env.ML_CLIENT_SECRET, code: url.searchParams.get("code") || "", redirect_uri: ML_CALLBACK }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) return paginaML("No se pudo conectar", "Mercado Libre respondió: " + String(j.message || j.error || r.status).replace(/[<>&]/g, ""), false);
+    await guardarTokenML(env, tk, j);
+    await escribirDocFS(env, tk, "privado/ml_estado", { estado: "usado", t: Date.now() });
+    const yo = await (await fetch("https://api.mercadolibre.com/users/me", { headers: { Authorization: "Bearer " + j.access_token } })).json().catch(() => ({}));
+    await notificar(env, "🟡 Mercado Libre conectado", `Cuenta ${yo.nickname || j.user_id} conectada a Pipe Games.`, 3, ["handshake"]);
+    return paginaML("¡Mercado Libre conectado!", `La cuenta <b>${String(yo.nickname || j.user_id).replace(/[<>&]/g, "")}</b> quedó conectada. Ya puedes cerrar esta página.`);
+  }
+  if (ruta === "/ml/estado") {
+    if (!env.CLAVE_AGENTE || url.searchParams.get("clave") !== env.CLAVE_AGENTE) return responder({ ok: false, error: "Agrega ?clave= con tu CLAVE_AGENTE" }, 401);
+    try { return responder(await estadoML(env)); } catch (e) { return responder({ ok: false, error: String(e.message || e) }, 500); }
+  }
+  return responder({ error: "Ruta no encontrada" }, 404);
+}
+async function guardarTokenML(env, tk, j) {
+  await escribirDocFS(env, tk, "privado/ml", { access_token: j.access_token, refresh_token: j.refresh_token || "", user_id: String(j.user_id || ""), expira: Date.now() + (Number(j.expires_in) || 21600) * 1000 - 300000, t: Date.now() });
+}
+// Token vigente de Mercado Libre (se renueva con el refresh_token cuando vence; Mercado Libre entrega uno nuevo cada vez)
+async function tokenML(env) {
+  const tk = await tokenServicio(env);
+  const d = await leerDocFS(env, tk, "privado/ml");
+  if (!d || !d.access_token) throw new Error("Mercado Libre no está conectado: abre /ml/conectar");
+  if (Date.now() < Number(d.expira)) return { token: d.access_token, userId: d.user_id };
+  const r = await fetch("https://api.mercadolibre.com/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: new URLSearchParams({ grant_type: "refresh_token", client_id: env.ML_CLIENT_ID, client_secret: env.ML_CLIENT_SECRET, refresh_token: d.refresh_token }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) { await alertaError(env, "Mercado Libre desconectado", "No se pudo renovar el acceso: " + (j.message || r.status) + ". Vuelve a abrir /ml/conectar."); throw new Error("Mercado Libre: hay que volver a conectar (" + (j.message || r.status) + ")"); }
+  await guardarTokenML(env, tk, j);
+  return { token: j.access_token, userId: String(j.user_id || d.user_id) };
+}
+async function apiML(env, ruta, extra = {}) {
+  const { token } = await tokenML(env);
+  const r = await fetch("https://api.mercadolibre.com" + ruta, { ...extra, headers: { Authorization: "Bearer " + token, Accept: "application/json", ...(extra.headers || {}) } });
+  const j = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, j };
+}
+async function estadoML(env) {
+  const yo = await apiML(env, "/users/me");
+  if (!yo.ok) return { ok: false, error: "users/me " + yo.status, detalle: yo.j };
+  // ¿Tiene Product Ads (Mercado Ads) habilitado? → anunciante
+  const ads = await apiML(env, "/advertising/advertisers?product_id=PADS", { headers: { "Api-Version": "1" } });
+  return { ok: true, cuenta: { id: yo.j.id, nickname: yo.j.nickname, sitio: yo.j.site_id, reputacion: yo.j.seller_reputation && yo.j.seller_reputation.power_seller_status },
+    mercadoAds: ads.ok ? (ads.j.advertisers || ads.j).slice ? (ads.j.advertisers || []).map(a => ({ id: a.advertiser_id, sitio: a.site_id, nombre: a.advertiser_name })) : ads.j : { error: ads.status, detalle: ads.j } };
 }
