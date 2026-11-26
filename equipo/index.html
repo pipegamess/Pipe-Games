@@ -53,6 +53,9 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 .informe-cab { display: grid; grid-template-columns: clamp(110px, 28vw, 180px) minmax(0, 1fr); gap: 16px; align-items: center; }
 .informe-cab img { width: 100%; height: auto; border-radius: 14px; border: 2px solid var(--acc); background: #fff; }
 .resumen { font-size: 16px; line-height: 1.55; margin: 0; max-width: 70ch; }
+ul.resumen { padding-left: 0; list-style: none; display: grid; gap: 8px; }
+ul.resumen li { padding-left: 16px; position: relative; }
+ul.resumen li::before { content: "-"; position: absolute; left: 0; top: 0; color: var(--acc); font-weight: 700; }
 .meta { color: var(--muted); font-size: 13px; }
 .lista { display: grid; gap: 8px; }
 .item { background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; }
@@ -196,6 +199,12 @@ function pintarDudas(dudas) {
       <div class="ops">${(x.opciones || []).map(o => `<button type="button" data-conf="${esc(x.clave)}" data-dest="${esc(o.clave)}">Sí, es <b>${esc(o.nombre)}</b> · stock ${o.stock < 0 ? "en importación" : esc(o.stock)}</button>`).join("")}
       <button type="button" data-conf="${esc(x.clave)}" data-dest="AGOTADO">Ninguno de estos: ese producto está agotado (ya no lo tengo)</button></div></div>`; }).join("")}</div></div>`;
 }
+// Resumen por líneas ("- ..."); los informes viejos en párrafo se muestran igual que antes
+function pintarResumen(txt) {
+  const lineas = String(txt || "").split(/\n+/).map(l => l.trim()).filter(Boolean);
+  if (lineas.length > 1 || /^[-•]/.test(lineas[0] || "")) return `<ul class="resumen">${lineas.map(l => `<li>${esc(l.replace(/^[-•]\s*/, ""))}</li>`).join("")}</ul>`;
+  return `<p class="resumen">${esc(txt)}</p>`;
+}
 function pintarTomi(cab) {
   const v = $("vInforme"), lista = (DATOS.tomi && DATOS.tomi.historial) || [];
   const btn = `<div class="acciones"><button class="primary" type="button" id="generarTomi">Pedirle a Tomi un informe nuevo</button><span class="status" id="tEstado"></span></div>`;
@@ -211,7 +220,7 @@ function pintarTomi(cab) {
   let porMes = "", mesAnt = "";
   for (const x of lz) { const mm = mesDe(x); if (mm !== mesAnt) { porMes += `<div class="mesTit">${esc(mm)}</div>`; mesAnt = mm; } porMes += fila(x); }
   const chips = `<div class="chips"><span class="chip">Lanzamientos: ${lz.length}</span><span class="chip">Interés alto: ${urg.length}</span><span class="chip">Preventas sugeridas: ${(inf.preventas || []).length}</span><span class="chip">Avisar a clientes: ${(inf.avisar_clientes || []).length}</span></div>`;
-  v.innerHTML = cab + hist + `<p class="meta">${actual === lista[0] ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p><p class="resumen">${esc(inf.resumen)}</p>` +
+  v.innerHTML = cab + hist + `<p class="meta">${actual === lista[0] ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p>` + pintarResumen(inf.resumen) +
     pintarAlertas(inf.alertas) + chips +
     (urg.length ? `<div><h3>Lo que más te interesa</h3><div>${urg.slice(0, 4).map(fila).join("")}</div></div>` : "") +
     seccion("Preventas sugeridas", inf.preventas, x => item(`<b>${esc(x.titulo)}</b> ${esc(x.consola || "")}`, x.cantidad ? "×" + x.cantidad : "", x.por_que), false) +
@@ -242,7 +251,7 @@ function pintarInforme() {
       `<label class="marca"><input type="checkbox" data-k="${esc(k)}"${h ? " checked" : ""}> Ya lo compré</label>`, h ? " hecho" : ""); };
   const top = pend.filter(x => x.prioridad === "alta").slice(0, 3);
   const chips = `<div class="chips"><span class="chip">Recomprar: ${pend.length} pendientes de ${rec.length}</span><span class="chip">No recomprar: ${(inf.no_recomprar || []).length}</span><span class="chip">Impulsar: ${(inf.impulsar || []).length}</span><span class="chip">Lo piden: ${(inf.pedir_nuevo || []).length}</span></div>`;
-  v.innerHTML = cab + hist + `<p class="meta">${esUltimo ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p><p class="resumen">${esc(inf.resumen)}</p>` +
+  v.innerHTML = cab + hist + `<p class="meta">${esUltimo ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p>` + pintarResumen(inf.resumen) +
     (esUltimo ? pintarDudas(inf.dudas) : "") + pintarAlertas(inf.alertas) + chips +
     (top.length ? `<div><h3>Lo más urgente</h3><div class="top3">${top.map(filaRec).join("")}</div></div>` : (rec.length ? `<p class="vacio">✓ Ya marcaste todo lo urgente de este informe.</p>` : "")) +
     seccion("Recomprar (todo)", rec, filaRec, false) +

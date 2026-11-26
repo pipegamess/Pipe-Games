@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "2", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "3", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1218,11 +1218,12 @@ ${tabla(d.recienLlegados) || "(ninguno)"}
 PEDIDOS EN LISTA DE ESPERA QUE NO ESTÁN EN EL CATÁLOGO: ${d.espSinCatalogo.join("; ") || "ninguno"}
 
 RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
-{"resumen":"2 o 3 frases con lo más importante de la semana","recomprar":[{"producto":"","consola":"","cantidad":0,"prioridad":"alta|media|baja","motivo":"frase corta con el dato que lo justifica"}],"no_recomprar":[{"producto":"","consola":"","motivo":""}],"impulsar":[{"producto":"","consola":"","idea":"promoción o acción concreta"}],"pedir_nuevo":[{"producto":"","motivo":""}],"alertas":[{"tipo":"revisar|oportunidad|evitar|ordenar","titulo":"","que_pasa":"","que_hacer":""}]}
+{"resumen":"3 a 5 líneas, cada una empieza con \"- \" y van separadas por \\n","recomprar":[{"producto":"","consola":"","cantidad":0,"prioridad":"alta|media|baja","motivo":"frase corta con el dato que lo justifica"}],"no_recomprar":[{"producto":"","consola":"","motivo":""}],"impulsar":[{"producto":"","consola":"","idea":"promoción o acción concreta"}],"pedir_nuevo":[{"producto":"","motivo":""}],"alertas":[{"tipo":"revisar|oportunidad|evitar|ordenar","titulo":"","que_pasa":"","que_hacer":""}]}
 Máximo 12 en recomprar, 6 en no_recomprar, 6 en impulsar, 5 en pedir_nuevo, 4 alertas. Cada "motivo" o "idea" de máximo 18 palabras.
 CÓMO ESCRIBIR (Felipe lo lee rápido en el celular):
 - Español claro y natural, frases completas, sin abreviaturas, sin siglas raras y sin jerga técnica. Nada de frases telegráficas tipo "X: 30 ventas y consola sin catálogo".
-- "resumen": máximo 3 frases cortas: qué se mueve, qué es lo más urgente y por qué.
+${ESTILO_RESUMEN}
+- En Mati, cada línea del resumen dice el dato que lo justifica, por ejemplo: "- EA Sports FC 26 (PS5): 6 vendidos este mes y 0 en stock; recompra 4." o "- Silent Hill Townfall (PS5): llegó el 24 de noviembre con 6 unidades; aún es pronto para juzgarlo."
 - Cada alerta: "tipo" = revisar (un dato que parece raro y conviene verificar), oportunidad (algo que se puede vender), evitar (un error de compra a no cometer) u ordenar (algo a corregir en el catálogo o el Excel). "titulo" = 3 a 6 palabras con el producto. "que_pasa" = una frase con el dato concreto. "que_hacer" = una frase que empiece con un verbo y diga la acción exacta.
 - Si citas un número, di de qué es (por ejemplo "78 unidades vendidas en 2026 según el Excel"). No uses bloques de código ni escribas nada fuera del JSON.`;
   // Se pide el informe; si llega cortado o con texto de más, se intenta una vez más pidiendo más brevedad
@@ -1320,6 +1321,9 @@ async function primerIntento(env, tk, quien) {
   await escribirDocFS(env, tk, "privado/equipo_intento_" + quien, { t: Date.now() });
   return true;
 }
+// Formato común del resumen para todo el equipo (Mati, Tomi, Anto, Luca)
+const ESTILO_RESUMEN = `- "resumen": de 3 a 5 líneas cortas separadas con salto de línea (\\n dentro del JSON). Cada línea empieza con "- " y trata UN solo tema. Empieza por lo más urgente.
+- Cada producto o juego que nombres (en el resumen y en las alertas) lleva entre paréntesis su consola o consolas, y la fecha exacta cuando aplique (llegada, lanzamiento o venta), por ejemplo "Mario Kart World (Switch 2)" o "Until Dawn 2 (PS5, 15 de enero de 2027)". Nunca digas "el juego" o "la consola" sin nombrarlos.`;
 // Guardar / borrar informes de cualquier miembro del equipo (último + historial de 8)
 async function guardarInforme(env, tk, quien, informe) {
   const ahora = Date.now();
@@ -1376,6 +1380,7 @@ REGLAS:
 - "avisar_clientes": juegos que coinciden con la lista de espera.
 
 CÓMO ESCRIBIR (Felipe lo lee rápido en el celular): español claro, frases completas, sin abreviaturas ni jerga. Fechas como "12 de diciembre de 2026".
+${ESTILO_RESUMEN}
 - En el "resumen" y en las alertas, CADA juego que nombres lleva entre paréntesis su consola o consolas y su fecha exacta si la tiene, por ejemplo: "Until Dawn 2 (PS5, 15 de enero de 2027)", "Professor Layton (Switch y Switch 2, 4 de diciembre de 2026)". Si la fecha no está confirmada escribe "fecha por confirmar" o el mes anunciado. Si un juego ya salió, di la fecha en que salió.
 
 LO MÁS VENDIDO EN PIPE GAMES ESTE AÑO (producto · consola (unidades)):
@@ -1393,7 +1398,7 @@ ${d.resultados.map(r => [r.titulo, r.fecha, r.url, r.texto].join(" | ")).join("\
 ${d.listas.map(l => "PÁGINA CON LISTA DE LANZAMIENTOS (" + l.url + "):\n" + l.texto).join("\n\n")}
 
 RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
-{"resumen":"máximo 4 frases: lo más importante que viene y qué preparar","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
+{"resumen":"3 a 5 líneas, cada una empieza con \"- \" y van separadas por \\n","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
 Ordena "lanzamientos" por fecha. Máximo 20 lanzamientos, 8 preventas, 6 avisar_clientes, 4 alertas. Si no hay fecha exacta usa fecha_iso con el primer día del mes o del año. No uses bloques de código.`;
   const { informe, j } = await pedirJSON(env, prompt, "\n\nIMPORTANTE: sé muy breve (máximo 12 lanzamientos, frases de máximo 12 palabras) y responde SOLO el JSON, sin ``` ni texto adicional.");
   informe.datos = { resultados: d.resultados.length, paginas: d.listas.map(l => l.url), tokens: j.usage || null };
