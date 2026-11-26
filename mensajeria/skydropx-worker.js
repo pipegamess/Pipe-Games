@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "9", versionAnto: "1", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "9", versionAnto: "2", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1461,6 +1461,7 @@ function precioCOP(t) {
   const n = Number(x.replace(/[.,]/g, ""));
   return n >= 10000 && n <= 20000000 ? n : null;
 }
+const PLATAFORMAS = /mercado ?libre|falabella|[eé]xito|linio|amazon|rappi|temu|aliexpress/i;
 const NO_SIRVE = /usad|reacondicion|seminuev|digital|c[oó]digo|key\b|cuenta|alquiler|renta|\bcase\b|funda|skin|poster|figura|amiibo|soundtrack|gu[ií]a/i;
 async function datosAnto(env, tk) {
   if (!env.SERPER_API_KEY) throw new Error("falta el secreto SERPER_API_KEY");
@@ -1489,7 +1490,9 @@ async function datosAnto(env, tk) {
     const j = await serper(env, "shopping", { q, gl: "co", hl: "es", num: 20 }).catch(() => ({}));
     f.ofertas = (j.shopping || []).map(o => ({ tienda: o.source, titulo: String(o.title || "").slice(0, 90), precio: precioCOP(o.price) }))
       .filter(o => o.precio && !NO_SIRVE.test(o.titulo) && !/pipe ?games/i.test(o.tienda || "")).slice(0, 10);
-    const ps = f.ofertas.map(o => o.precio).sort((a, b) => a - b);
+    // Plataformas (marketplaces): tus precios ahí son otros (los pones a mano), así que no se comparan con el catálogo
+    for (const o of f.ofertas) o.plataforma = PLATAFORMAS.test(o.tienda || "");
+    const ps = f.ofertas.filter(o => !o.plataforma).map(o => o.precio).sort((a, b) => a - b);
     f.competencia_min = ps[0] || null; f.competencia_mediana = ps.length ? ps[Math.floor(ps.length / 2)] : null;
   };
   for (let i = 0; i < elegidos.length; i += 6) await Promise.all(elegidos.slice(i, i + 6).map(buscar));
@@ -1503,14 +1506,18 @@ async function correrAnto(env, forzado) {
   if (!forzado && previo && Date.now() - Number(previo.t || 0) < 12 * 3600000) return { ok: true, omitido: "ya hay informe de hoy" };
   if (!forzado && !(await primerIntento(env, tk, QUIEN))) return { ok: true, omitido: "ya se intentó hace poco" };
   const d = await datosAnto(env, tk);
-  const tabla = d.productos.map(f => `${f.producto} · ${f.consola} | tu precio ${f.precio} | stock ${f.stock} | vendidas ${f.vendidas} | costo aprox ${f.costo ?? "?"} | competencia: ${f.ofertas.length ? f.ofertas.map(o => o.tienda + " " + o.precio + " (" + o.titulo + ")").join("; ") : "sin resultados"}`).join("\n");
+  const tabla = d.productos.map(f => `${f.producto} · ${f.consola} | tu precio ${f.precio} | stock ${f.stock} | vendidas ${f.vendidas} | costo aprox ${f.costo ?? "?"} | tiendas directas: ${f.ofertas.filter(o => !o.plataforma).map(o => o.tienda + " " + o.precio + " (" + o.titulo + ")").join("; ") || "sin resultados"} | plataformas (solo referencia): ${f.ofertas.filter(o => o.plataforma).map(o => o.tienda + " " + o.precio).join("; ") || "ninguna"}`).join("\n");
   const prompt = `Eres Anto, la Revisora de Precios de Pipe Games, tienda virtual de videojuegos físicos NUEVOS en Bogotá, Colombia (PS4, PS5, Switch, Switch 2, consolas y accesorios). Felipe vende por Instagram, WhatsApp, su página y Mercado Libre, con envío a todo el país.
 
-Hoy es ${d.hoy}. TU TAREA: comparar el precio de Felipe con el de otras tiendas en Colombia y decirle qué SUBIR, qué BAJAR y qué está BIEN. Tú no cambias precios: Felipe decide.
+Hoy es ${d.hoy}. TU TAREA: comparar el precio del CATÁLOGO de Felipe (pipegames.com.co, Instagram y WhatsApp) con el de otras tiendas en Colombia y decirle qué SUBIR, qué BAJAR y qué está BIEN. Tú no cambias precios: Felipe decide.
+
+MUY IMPORTANTE: los precios de Felipe en Mercado Libre, Falabella y Éxito son DISTINTOS a los del catálogo (los pone a mano porque esas plataformas cobran comisión) y tú todavía no los conoces. Por eso:
+- Compara el precio del catálogo SOLO contra "tiendas directas" (tiendas de videojuegos, Alkosto, Ktronix, Panamericana, tiendas con página propia).
+- Las ofertas de "plataformas" (Mercado Libre, Falabella, Éxito, Amazon…) son SOLO REFERENCIA: no las uses para decidir subir o bajar el catálogo, y nunca digas que el catálogo debe igualar el precio de una plataforma. Puedes mencionarlas en una alerta si una plataforma está muy por debajo de tu catálogo.
 
 REGLAS:
 - Usa SOLO las ofertas de abajo. Descarta las que no sean el mismo producto: otra consola, otra edición, usado, digital, accesorio o paquete con otra cosa. Si después de descartar no queda nada comparable, ponlo en "sin_datos".
-- Compara contra tiendas serias (Falabella, Éxito, Alkosto, Ktronix, Mercado Libre, tiendas de videojuegos). Un precio muy bajo y aislado puede ser error o usado: no lo tomes como referencia única.
+- Compara contra tiendas directas serias. Un precio muy bajo y aislado puede ser error o usado: no lo tomes como referencia única.
 - "bajar": tu precio está claramente por encima (más de 8 %) del precio típico de la competencia y el producto no se está vendiendo bien. Sugiere un precio concreto, redondeado a miles terminados en 000 o 900.
 - "subir": estás claramente por debajo (más de 8 %) y lo vendes bien, o estás por debajo de todas las tiendas. Sugiere un precio concreto.
 - NUNCA sugieras un precio por debajo del costo aproximado + 10 %. Si para competir tendrías que vender a pérdida, dilo en una alerta.
@@ -1519,9 +1526,9 @@ REGLAS:
 
 CÓMO ESCRIBIR (Felipe lo lee rápido en el celular): español claro, frases completas, sin abreviaturas. Precios como $189.900.
 ${ESTILO_RESUMEN}
-- Cada línea del resumen dice el producto (consola), tu precio, el precio de referencia y qué hacer, por ejemplo: "- Mario Kart World (Switch 2): tú $289.900 y Falabella $259.900; baja a $269.900."
+- Cada línea del resumen dice el producto (consola), tu precio, el precio de referencia y qué hacer, por ejemplo: "- Mario Kart World (Switch 2): tu catálogo $289.900 y Alkosto $259.900; baja a $269.900."
 
-PRODUCTOS (producto · consola | tu precio | stock | vendidas este año | costo aprox | ofertas de la competencia: tienda precio (título)):
+PRODUCTOS (producto · consola | tu precio de catálogo | stock | vendidas este año | costo aprox | tiendas directas: tienda precio (título) | plataformas, solo referencia):
 ${tabla}
 
 RESPONDE SOLO con JSON válido, sin texto antes ni después:

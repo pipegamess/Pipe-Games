@@ -255,7 +255,7 @@ function pintarAnto(cab) {
     seccion("Subir precio", inf.subir, x => filaP(x, true), false) +
     seccion("Precio bien", inf.bien, x => filaP(x, false), false) +
     seccion("Sin datos de otras tiendas", inf.sin_datos, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", ""), false) +
-    `<p class="meta">Anto solo sugiere: los precios se cambian en tu Excel (LISTADO) y se sincronizan con el catálogo.</p>`, "tarda cerca de 1 minuto porque busca precios en otras tiendas");
+    `<p class="meta">Anto compara tu precio del catálogo (página, Instagram y WhatsApp) solo con tiendas directas. Tus precios de Mercado Libre, Falabella y Éxito son otros y no se comparan aquí. Anto solo sugiere: los precios se cambian en tu Excel (LISTADO).</p>`, "tarda cerca de 1 minuto porque busca precios en otras tiendas");
 }
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
