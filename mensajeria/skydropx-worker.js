@@ -1067,6 +1067,16 @@ function cantidadClaves(prod, k) {
   const disp = vals.filter(v => v > 0).reduce((a, v) => a + v, 0);
   return disp > 0 ? disp : (vals.some(v => v < 0) ? -1 : 0);
 }
+// Nombres abreviados del Excel que son el mismo producto del catálogo (se suman juntos para Mati)
+const ALIAS_VENTAS = [
+  [/^(THE)?(LEGENDOF)?ZELDA(TOTK|TEARSOFTHEKINGDOM)/, "THELEGENDOFZELDATEARSOFTHEKINGDOM"],
+  [/^TOTK$/, "THELEGENDOFZELDATEARSOFTHEKINGDOM"],
+];
+function unificarClave(k) {
+  const [c, cons = ""] = String(k).split("|");
+  for (const [re, nuevo] of ALIAS_VENTAS) if (re.test(c)) return nuevo + c.replace(re, "") + "|" + cons;
+  return k;
+}
 async function datosMati(env, tk) {
   const bog = new Date(Date.now() - 5 * 3600000), anio = bog.getUTCFullYear(), mesN = bog.getUTCMonth() + 1;
   const mes = (a, m) => { while (m < 1) { m += 12; a--; } while (m > 12) { m -= 12; a++; } return a + "-" + String(m).padStart(2, "0"); };
@@ -1076,7 +1086,8 @@ async function datosMati(env, tk) {
     const d = await leerDocFS(env, tk, "privado/ventas_" + a);
     if (!d) continue;
     tVentas = Math.max(tVentas, Number(d.t) || 0);
-    for (const [m, k, n, pl, u, v, g] of JSON.parse(d.filas || "[]")) {
+    for (const [m, k0, n, pl, u, v, g] of JSON.parse(d.filas || "[]")) {
+      const k = unificarClave(k0);
       const x = ventas[k] ||= { n, pl, m: {} };
       const y = x.m[m] ||= { u: 0, v: 0, g: 0 }; y.u += u; y.v += v; y.g += g;
     }
