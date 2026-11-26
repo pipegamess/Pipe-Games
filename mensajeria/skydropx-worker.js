@@ -1070,9 +1070,9 @@ function cantidadClaves(prod, k) {
 async function datosMati(env, tk) {
   const bog = new Date(Date.now() - 5 * 3600000), anio = bog.getUTCFullYear(), mesN = bog.getUTCMonth() + 1;
   const mes = (a, m) => { while (m < 1) { m += 12; a--; } while (m > 12) { m -= 12; a++; } return a + "-" + String(m).padStart(2, "0"); };
-  // ventas de este año y del anterior
+  // SOLO ventas del año en curso (decisión de Felipe: las tendencias cambian, años anteriores no cuentan)
   const ventas = {}; let tVentas = 0;
-  for (const a of [anio - 1, anio]) {
+  for (const a of [anio]) {
     const d = await leerDocFS(env, tk, "privado/ventas_" + a);
     if (!d) continue;
     tVentas = Math.max(tVentas, Number(d.t) || 0);
@@ -1087,9 +1087,10 @@ async function datosMati(env, tk) {
   const adm = await leerDocFS(env, tk, "usuarios/" + env.ADMIN_UID);
   const espera = Object.values((adm && adm.espera) || {}).filter(x => x && x.estado !== "avisado");
   const llave = v => String(v || "").toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g, "");
-  const meses = { actual: mes(anio, mesN), ant1: mes(anio, mesN - 1), ant2: mes(anio, mesN - 2), ant3: mes(anio, mesN - 3), haceUnAnio: mes(anio - 1, mesN), siguienteHaceUnAnio: mes(anio - 1, mesN + 1) };
+  const meses = { actual: mes(anio, mesN), ant1: mes(anio, mesN - 1), ant2: mes(anio, mesN - 2), ant3: mes(anio, mesN - 3), anio: String(anio) };
   const usadas = new Set(), filas = [];
   const sumar = (claves, m) => claves.reduce((a, k) => a + ((ventas[k] && ventas[k].m[m] && ventas[k].m[m].u) || 0), 0);
+  const sumarAnio = claves => claves.reduce((a, k) => a + Object.entries((ventas[k] || {}).m || {}).reduce((b, [m, y]) => b + (m.startsWith(anio + "-") ? y.u : 0), 0), 0);
   const ganancia = claves => { let u = 0, g = 0; for (const k of claves) for (const y of Object.values((ventas[k] || {}).m || {})) { u += y.u; g += y.g; } return u ? Math.round(g / u) : null; };
   const enEspera = (claves, p) => espera.filter(x => (x.k && [].concat(x.k).some(k => claves.includes(k))) || (!x.k && llave(x.titulo) && llave(p.n).includes(llave(x.titulo)) && (x.consola === "OTRA" || llave(x.consola) === llave(p.p)))).length;
   const fila = (nombre, consola, claves, precio, p) => {
@@ -1099,14 +1100,14 @@ async function datosMati(env, tk) {
     return { producto: nombre, consola, stock: st === undefined ? null : st, precio: precio || null,
       ventas_mes_actual: sumar(claves, meses.actual), ventas_mes_pasado: sumar(claves, meses.ant1),
       ventas_ult_3_meses: sumar(claves, meses.ant1) + sumar(claves, meses.ant2) + sumar(claves, meses.ant3),
-      ventas_mismo_mes_anio_pasado: sumar(claves, meses.haceUnAnio), ventas_mes_siguiente_anio_pasado: sumar(claves, meses.siguienteHaceUnAnio),
+      ventas_en_el_anio: sumarAnio(claves),
       ganancia_promedio_unidad: ganancia(claves), clientes_en_espera: p ? enEspera(claves, p) : 0 };
   };
   for (const p of catalogo) filas.push(fila(p.n, p.p, [].concat(p.k || []), p.v, p));
   for (const [k, x] of Object.entries(ventas)) if (!usadas.has(k)) filas.push(fila(x.n, x.pl, [k], null, null));
   const espSinCatalogo = espera.filter(x => !filas.some(f => f.clientes_en_espera && llave(f.producto).includes(llave(x.titulo)))).map(x => x.titulo + (x.consola !== "OTRA" ? " (" + x.consola + ")" : ""));
   // solo lo relevante para que el análisis sea corto: con movimiento, con gente esperando o quieto con plata parada
-  const mov = f => f.ventas_mes_actual + f.ventas_mes_pasado + f.ventas_ult_3_meses + f.ventas_mismo_mes_anio_pasado + f.ventas_mes_siguiente_anio_pasado;
+  const mov = f => f.ventas_mes_actual * 3 + f.ventas_mes_pasado * 2 + f.ventas_ult_3_meses + f.ventas_en_el_anio * 0.25;
   const conMov = filas.filter(f => mov(f) > 0 || f.clientes_en_espera > 0).sort((a, b) => mov(b) + b.clientes_en_espera * 3 - mov(a) - a.clientes_en_espera * 3).slice(0, 90);
   const quietos = filas.filter(f => mov(f) === 0 && f.stock > 0).sort((a, b) => b.stock * (b.precio || 0) - a.stock * (a.precio || 0)).slice(0, 25);
   return { meses, tVentas, conMov, quietos, espSinCatalogo, hayVentas: Object.keys(ventas).length > 0 };
@@ -1117,13 +1118,14 @@ async function correrMati(env, forzado) {
   const previo = await leerDocFS(env, tk, "privado/equipo_mati");
   if (!forzado && previo && Date.now() - Number(previo.t || 0) < 6 * 86400000) return { ok: true, omitido: "ya hay informe de esta semana" };
   const d = await datosMati(env, tk);
-  const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_mismo_mes_anio_pasado, f.ventas_mes_siguiente_anio_pasado, f.ganancia_promedio_unidad, f.clientes_en_espera].join(" | ")).join("\n");
+  const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_en_el_anio, f.ganancia_promedio_unidad, f.clientes_en_espera].join(" | ")).join("\n");
   const prompt = `Eres Mati, el Analista de Inventario de Pipe Games, tienda virtual de videojuegos físicos en Bogotá (PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios). Felipe compra pocas unidades por producto (normalmente de 3 a 6) en Amazon o en comercio local, con importación que tarda días o semanas, así que cada peso invertido cuenta.
 
 TU TAREA: decirle a Felipe QUÉ RECOMPRAR esta semana, cuánto, y qué NO recomprar, usando SOLO los datos de abajo. No inventes datos ni lanzamientos.
 
 CÓMO DECIDIR:
-- Prioriza lo que se vende seguido y tiene poco o nada de stock, lo que tiene clientes en lista de espera y lo que el año pasado se vendió fuerte en este mes o el siguiente (temporada: diciembre, regalos, vacaciones).
+- Prioriza lo que se vende seguido y tiene poco o nada de stock, y lo que tiene clientes en lista de espera. Pesa más lo reciente (este mes y el pasado) que lo acumulado del año.
+- Analiza SOLO ${d.meses.anio}: no hay datos de años anteriores y no debes suponer ni mencionar comparaciones con otros años.
 - Ten en cuenta la ganancia por unidad: mejor recomprar lo que deja más.
 - Stock -1 = solo hay unidades en importación (vienen en camino). Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel.
 - Si un producto aparece con ventas pero nombre distinto al del catálogo, trátalo como el mismo juego (por ejemplo variantes de edición o consola escritas distinto).
@@ -1131,9 +1133,9 @@ CÓMO DECIDIR:
 - Sé concreto y breve. Cantidades sugeridas realistas (1 a 6).
 ${d.hayVentas ? "" : "\nATENCIÓN: todavía no llegaron las ventas del Excel; decide solo con stock y lista de espera y dilo en el resumen."}
 
-Meses: actual ${d.meses.actual}; pasado ${d.meses.ant1}; año pasado mismo mes ${d.meses.haceUnAnio} y siguiente ${d.meses.siguienteHaceUnAnio}.
+Año analizado: ${d.meses.anio}. Mes actual ${d.meses.actual} (va en curso); mes pasado ${d.meses.ant1}.
 
-PRODUCTOS CON MOVIMIENTO O DEMANDA (producto | consola | stock | precio venta | ventas mes actual | ventas mes pasado | ventas últimos 3 meses completos | ventas mismo mes año pasado | ventas mes siguiente año pasado | ganancia promedio por unidad | clientes en espera):
+PRODUCTOS CON MOVIMIENTO O DEMANDA (producto | consola | stock | precio venta | ventas mes actual | ventas mes pasado | ventas últimos 3 meses completos | ventas acumuladas en ${d.meses.anio} | ganancia promedio por unidad | clientes en espera):
 ${tabla(d.conMov) || "(sin datos)"}
 
 INVENTARIO QUIETO (sin ventas recientes, con stock):
