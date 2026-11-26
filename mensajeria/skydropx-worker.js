@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-llegada-manual", versionTomi: "9", versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-numeros", versionTomi: "9", versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1101,6 +1101,10 @@ function parecidos(k, stock) {
   for (const sk of Object.keys(stock)) {
     const [sc, scons = ""] = sk.split("|");
     if (scons !== cons && !(c + cons).includes(scons) && !(sc + scons).includes(cons)) continue;
+    // números distintos = otro juego (Little Nightmares 2 ≠ 3, FC 25 ≠ FC 26, 256GB ≠ 512GB)
+    const ROM = { II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
+    const nums = t => (t.replace(/(II|III|IV|VI|VII|VIII|IX)$/, m => String(ROM[m])).match(/\d+/g) || []).join(",");
+    if (nums(c) !== nums(sc)) continue;
     const b = pares(sc); let comun = 0;
     for (const [p, n] of a) comun += Math.min(n, b.get(p) || 0);
     const score = 2 * comun / (na + Math.max(1, sc.length - 1));
