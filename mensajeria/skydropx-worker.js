@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-borrar", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-llegadas", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1121,6 +1121,10 @@ async function datosMati(env, tk) {
     }
   }
   const stock = (await (await fetch("https://pipegames.com.co/stock.json?t=" + Date.now())).json()).productos || {};
+  // fecha en que llegó cada producto (o subieron sus unidades): lo recién llegado no es "stock quieto"
+  const llegadas = await fetch("https://pipegames.com.co/stock/llegadas.json?t=" + Date.now()).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  const hoyMs = Date.UTC(bog.getUTCFullYear(), bog.getUTCMonth(), bog.getUTCDate());
+  const diasLlegada = claves => { let d = null; for (const k of claves) { const x = llegadas[k]; if (x && x.d) { const n = Math.round((hoyMs - Date.parse(x.d)) / 86400000); d = d === null ? n : Math.min(d, n); } } return d; };
   const txt = await (await fetch("https://pipegames.com.co/mensajeria/productos-catalogo.js?t=" + Date.now())).text();
   const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1));
   const adm = await leerDocFS(env, tk, "usuarios/" + env.ADMIN_UID);
@@ -1139,7 +1143,7 @@ async function datosMati(env, tk) {
     return { producto: nombre, consola, stock: st === undefined ? null : st, precio: precio || null,
       ventas_mes_actual: sumar(claves, meses.actual), ventas_mes_pasado: sumar(claves, meses.ant1),
       ventas_ult_3_meses: sumar(claves, meses.ant1) + sumar(claves, meses.ant2) + sumar(claves, meses.ant3),
-      ventas_en_el_anio: sumarAnio(claves),
+      ventas_en_el_anio: sumarAnio(claves), dias_desde_que_llego: diasLlegada(claves),
       ganancia_promedio_unidad: ganancia(claves), clientes_en_espera: p ? enEspera(claves, p) : 0 };
   };
   for (const p of catalogo) filas.push(fila(p.n, p.p, [].concat(p.k || []), p.v, p));
@@ -1164,8 +1168,10 @@ async function datosMati(env, tk) {
   // solo lo relevante para que el análisis sea corto: con movimiento, con gente esperando o quieto con plata parada
   const mov = f => f.ventas_mes_actual * 3 + f.ventas_mes_pasado * 2 + f.ventas_ult_3_meses + f.ventas_en_el_anio * 0.25;
   const conMov = filas.filter(f => mov(f) > 0 || f.clientes_en_espera > 0).sort((a, b) => mov(b) + b.clientes_en_espera * 3 - mov(a) - a.clientes_en_espera * 3).slice(0, 90);
-  const quietos = filas.filter(f => mov(f) === 0 && f.stock > 0).sort((a, b) => b.stock * (b.precio || 0) - a.stock * (a.precio || 0)).slice(0, 25);
-  return { meses, tVentas, conMov, quietos, espSinCatalogo, dudas: dudas.slice(0, 12), hayVentas: Object.keys(ventas).length > 0 };
+  const nuevo = f => f.dias_desde_que_llego !== null && f.dias_desde_que_llego < 30;
+  const recienLlegados = filas.filter(f => mov(f) === 0 && f.stock > 0 && nuevo(f)).sort((a, b) => a.dias_desde_que_llego - b.dias_desde_que_llego).slice(0, 25);
+  const quietos = filas.filter(f => mov(f) === 0 && f.stock > 0 && !nuevo(f)).sort((a, b) => b.stock * (b.precio || 0) - a.stock * (a.precio || 0)).slice(0, 25);
+  return { meses, tVentas, conMov, quietos, recienLlegados, espSinCatalogo, dudas: dudas.slice(0, 12), hayVentas: Object.keys(ventas).length > 0 };
 }
 async function correrMati(env, forzado) {
   if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
@@ -1173,7 +1179,7 @@ async function correrMati(env, forzado) {
   const previo = await leerDocFS(env, tk, "privado/equipo_mati");
   if (!forzado && previo && Date.now() - Number(previo.t || 0) < 6 * 86400000) return { ok: true, omitido: "ya hay informe de esta semana" };
   const d = await datosMati(env, tk);
-  const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_en_el_anio, f.ganancia_promedio_unidad, f.clientes_en_espera].join(" | ")).join("\n");
+  const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_en_el_anio, f.ganancia_promedio_unidad, f.clientes_en_espera, f.dias_desde_que_llego === null ? "" : f.dias_desde_que_llego].join(" | ")).join("\n");
   const prompt = `Eres Mati, el Analista de Inventario de Pipe Games, tienda virtual de videojuegos físicos en Bogotá (PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios). Felipe compra pocas unidades por producto (normalmente de 3 a 6) en Amazon o en comercio local, con importación que tarda días o semanas, así que cada peso invertido cuenta.
 
 TU TAREA: decirle a Felipe QUÉ RECOMPRAR esta semana, cuánto, y qué NO recomprar, usando SOLO los datos de abajo. No inventes datos ni lanzamientos.
@@ -1184,17 +1190,20 @@ CÓMO DECIDIR:
 - Ten en cuenta la ganancia por unidad: mejor recomprar lo que deja más.
 - Stock -1 = solo hay unidades EN IMPORTACIÓN (vienen en camino; no las vuelvas a pedir). Los artículos en estado DEVUELTO no cuentan: no están en importación ni disponibles. Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel, o un nombre de ventas que no coincide exactamente con el inventario y Felipe todavía debe confirmar: en ese caso NO lo des por agotado, NO lo recomiendes recomprar y NO lo menciones en alertas (Felipe ya recibe esa pregunta aparte).
 - Si un producto aparece con ventas pero nombre distinto al del catálogo, trátalo como el mismo juego (por ejemplo variantes de edición o consola escritas distinto).
-- Señala el inventario quieto (stock sin ventas) que conviene impulsar con promoción en vez de recomprar.
+- Señala el inventario quieto (stock sin ventas por más de 30 días desde que llegó) que conviene impulsar con promoción en vez de recomprar. La columna "días desde que llegó" dice hace cuánto entró esa mercancía; vacía = desconocido (llegó antes del 14 de noviembre de 2026).
 - Sé concreto y breve. Cantidades sugeridas realistas (1 a 6).
 ${d.hayVentas ? "" : "\nATENCIÓN: todavía no llegaron las ventas del Excel; decide solo con stock y lista de espera y dilo en el resumen."}
 
 Año analizado: ${d.meses.anio}. Mes actual ${d.meses.actual} (va en curso); mes pasado ${d.meses.ant1}.
 
-PRODUCTOS CON MOVIMIENTO O DEMANDA (producto | consola | stock | precio venta | ventas mes actual | ventas mes pasado | ventas últimos 3 meses completos | ventas acumuladas en ${d.meses.anio} | ganancia promedio por unidad | clientes en espera):
+PRODUCTOS CON MOVIMIENTO O DEMANDA (producto | consola | stock | precio venta | ventas mes actual | ventas mes pasado | ventas últimos 3 meses completos | ventas acumuladas en ${d.meses.anio} | ganancia promedio por unidad | clientes en espera | días desde que llegó):
 ${tabla(d.conMov) || "(sin datos)"}
 
-INVENTARIO QUIETO (sin ventas recientes, con stock):
+INVENTARIO QUIETO (sin ventas recientes, con stock y con más de 30 días desde que llegó o fecha desconocida):
 ${tabla(d.quietos) || "(ninguno)"}
+
+RECIÉN LLEGADOS (menos de 30 días; es normal que aún no tengan ventas): NO los pongas en "impulsar" ni sugieras descuentos ni los llames stock quieto. Solo menciónalos si hay un dato útil (por ejemplo, clientes en espera a quienes avisar):
+${tabla(d.recienLlegados) || "(ninguno)"}
 
 PEDIDOS EN LISTA DE ESPERA QUE NO ESTÁN EN EL CATÁLOGO: ${d.espSinCatalogo.join("; ") || "ninguno"}
 
