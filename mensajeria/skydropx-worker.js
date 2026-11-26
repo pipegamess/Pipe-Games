@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-llegadas", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1085,7 +1085,7 @@ function parecidos(k, stock) {
     const b = pares(sc); let comun = 0;
     for (const [p, n] of a) comun += Math.min(n, b.get(p) || 0);
     const score = 2 * comun / (na + Math.max(1, sc.length - 1));
-    if (score >= 0.55) out.push({ k: sk, score });
+    if (score >= 0.6) out.push({ k: sk, score });
   }
   return out.sort((x, y) => y.score - x.score).slice(0, 3);
 }
@@ -1171,7 +1171,7 @@ async function datosMati(env, tk) {
   const nuevo = f => f.dias_desde_que_llego !== null && f.dias_desde_que_llego < 30;
   const recienLlegados = filas.filter(f => mov(f) === 0 && f.stock > 0 && nuevo(f)).sort((a, b) => a.dias_desde_que_llego - b.dias_desde_que_llego).slice(0, 25);
   const quietos = filas.filter(f => mov(f) === 0 && f.stock > 0 && !nuevo(f)).sort((a, b) => b.stock * (b.precio || 0) - a.stock * (a.precio || 0)).slice(0, 25);
-  return { meses, tVentas, conMov, quietos, recienLlegados, espSinCatalogo, dudas: dudas.slice(0, 12), hayVentas: Object.keys(ventas).length > 0 };
+  return { meses, tVentas, conMov, quietos, recienLlegados, espSinCatalogo, dudas: dudas.slice(0, 40), hayVentas: Object.keys(ventas).length > 0 };
 }
 async function correrMati(env, forzado) {
   if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");

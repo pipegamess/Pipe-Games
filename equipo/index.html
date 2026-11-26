@@ -186,7 +186,7 @@ function pintarDudas(dudas) {
       return `<div class="duda lista"><p>✓ <b>${esc(x.nombre)}</b> → ${r === "AGOTADO" ? "está agotado" : "es " + esc(op ? op.nombre : r)}.</p><button type="button" class="ghost" data-conf="${esc(x.clave)}" data-dest="">Deshacer</button></div>`; }
     return `<div class="duda"><p>En ventas aparece <b>${esc(x.nombre)}</b>${x.consola ? " (" + esc(x.consola) + ")" : ""}, con ${x.vendidas} vendidas en el año, pero no lo encuentro con ese nombre en el inventario. ¿Es alguno de estos?</p>
       <div class="ops">${(x.opciones || []).map(o => `<button type="button" data-conf="${esc(x.clave)}" data-dest="${esc(o.clave)}">Sí, es <b>${esc(o.nombre)}</b> · stock ${o.stock < 0 ? "en importación" : esc(o.stock)}</button>`).join("")}
-      <button type="button" data-conf="${esc(x.clave)}" data-dest="AGOTADO">No, ese producto sí está agotado</button></div></div>`; }).join("")}</div></div>`;
+      <button type="button" data-conf="${esc(x.clave)}" data-dest="AGOTADO">Ninguno de estos: ese producto está agotado (ya no lo tengo)</button></div></div>`; }).join("")}</div></div>`;
 }
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
