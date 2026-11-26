@@ -1092,7 +1092,7 @@ async function datosMati(env, tk) {
   const fila = (nombre, consola, claves, precio, p) => {
     claves.forEach(k => usadas.add(k));
     let st = cantidadClaves(stock, claves.length > 1 ? claves : claves[0]);
-    if (st === undefined && p && p.e) st = 0;   // enlazado al Excel y ya no está: agotado
+    if (st === undefined && (p ? p.e : true)) st = 0;   // enlazado al Excel (o solo en ventas) y ya no está: agotado
     return { producto: nombre, consola, stock: st === undefined ? null : st, precio: precio || null,
       ventas_mes_actual: sumar(claves, meses.actual), ventas_mes_pasado: sumar(claves, meses.ant1),
       ventas_ult_3_meses: sumar(claves, meses.ant1) + sumar(claves, meses.ant2) + sumar(claves, meses.ant3),
@@ -1122,7 +1122,8 @@ TU TAREA: decirle a Felipe QUÉ RECOMPRAR esta semana, cuánto, y qué NO recomp
 CÓMO DECIDIR:
 - Prioriza lo que se vende seguido y tiene poco o nada de stock, lo que tiene clientes en lista de espera y lo que el año pasado se vendió fuerte en este mes o el siguiente (temporada: diciembre, regalos, vacaciones).
 - Ten en cuenta la ganancia por unidad: mejor recomprar lo que deja más.
-- Stock -1 = solo hay unidades en importación (vienen en camino). Stock null = no aparece en el Excel.
+- Stock -1 = solo hay unidades en importación (vienen en camino). Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel.
+- Si un producto aparece con ventas pero nombre distinto al del catálogo, trátalo como el mismo juego (por ejemplo variantes de edición o consola escritas distinto).
 - Señala el inventario quieto (stock sin ventas) que conviene impulsar con promoción en vez de recomprar.
 - Sé concreto y breve. Cantidades sugeridas realistas (1 a 6).
 ${d.hayVentas ? "" : "\nATENCIÓN: todavía no llegaron las ventas del Excel; decide solo con stock y lista de espera y dilo en el resumen."}
