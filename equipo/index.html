@@ -91,6 +91,23 @@ ul.resumen li::before { content: "-"; position: absolute; left: 0; top: 0; color
 .lanz .hacer { color: inherit; } .lanz .hacer::before { content: "→ "; font-weight: 700; }
 .lanz a { font-size: 12px; color: var(--muted); }
 .mesTit { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 14px 0 2px; }
+.reunion-btn { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.reunion { position: fixed; inset: 0; z-index: 50; background: rgba(5,5,10,.92); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sala { width: min(560px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 14px; max-height: 100%; overflow: auto; }
+.sala h2 { margin: 0; text-transform: none; }
+.mesa { display: flex; justify-content: center; gap: 18px; }
+.silla { display: grid; justify-items: center; gap: 6px; opacity: .45; transition: opacity .3s, transform .3s; }
+.silla img { width: 92px; height: 92px; border-radius: 50%; object-fit: cover; border: 3px solid var(--line); }
+.silla.habla { opacity: 1; transform: scale(1.06); }
+.silla.habla img { border-color: var(--acc); box-shadow: 0 0 0 0 rgba(245,196,0,.6); animation: latido 1.4s infinite; }
+@keyframes latido { 0% { box-shadow: 0 0 0 0 rgba(245,196,0,.55); } 70% { box-shadow: 0 0 0 14px rgba(245,196,0,0); } 100% { box-shadow: 0 0 0 0 rgba(245,196,0,0); } }
+@media (prefers-reduced-motion: reduce) { .silla.habla img { animation: none; } }
+.subtitulo { min-height: 4.5em; font-size: 17px; line-height: 1.5; background: var(--surface2); border-radius: 12px; padding: 12px 14px; }
+.subtitulo b { color: var(--acc); }
+.mandos { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.ajustes { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+.ajustes select { font: inherit; padding: 6px 8px; border-radius: 8px; width: 100%; }
+.ajustes .fila { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; }
 .top3 { display: grid; gap: 8px; }
 details.sec { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 0 14px; }
 details.sec > summary { cursor: pointer; list-style: none; padding: 12px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
@@ -129,6 +146,27 @@ details.sec[open] { padding-bottom: 12px; }
   </header>
 
   <div class="equipo" id="equipo"></div>
+  <div class="reunion-btn"><button class="primary" type="button" id="abrirReunion">🎙️ Reunión con el equipo</button><span class="meta">Mati y Tomi te cuentan sus últimos informes en voz alta.</span></div>
+
+  <div class="reunion" id="reunion" hidden role="dialog" aria-label="Reunión con el equipo">
+    <div class="sala">
+      <h2>Reunión del equipo</h2>
+      <div class="mesa" id="mesa"></div>
+      <div class="subtitulo" id="subtitulo" aria-live="polite">Toca “Empezar” y Mati abre la reunión.</div>
+      <div class="mandos">
+        <button class="primary" type="button" id="rEmpezar">▶️ Empezar</button>
+        <button class="ghost" type="button" id="rPausa" disabled>⏸️ Pausar</button>
+        <button class="ghost" type="button" id="rSaltar" disabled>⏭️ Siguiente</button>
+        <button class="ghost" type="button" id="rCerrar">✕ Terminar</button>
+      </div>
+      <details class="ajustes"><summary>Voces y velocidad</summary>
+        <div class="fila"><span>Mati</span><select id="vozMati"></select></div>
+        <div class="fila"><span>Tomi</span><select id="vozTomi"></select></div>
+        <div class="fila"><span>Velocidad</span><select id="velocidad"><option value="0.9">Despacio</option><option value="1" selected>Normal</option><option value="1.15">Rápido</option><option value="1.3">Muy rápido</option></select></div>
+        <p style="margin:0">Las voces son las de tu iPhone o Mac (gratis). Para que suenen más naturales, en el iPhone ve a Ajustes → Accesibilidad → Contenido leído → Voces → Español y descarga una voz “mejorada”.</p>
+      </details>
+    </div>
+  </div>
 
   <section class="panel" id="vInforme"></section>
 </div>
@@ -386,6 +424,100 @@ async function esperarInforme(quien, antes) {
   }
   return false;
 }
+/* ---------- Reunión con voz (gratis: voces del navegador) ---------- */
+const VOZ = window.speechSynthesis;
+const leerLS = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const guardarLS = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+let voces = [], guion = [], paso = 0, enPausa = false, reunionViva = false, turno = 0;
+function cargarVoces() {
+  if (!VOZ) return;
+  voces = VOZ.getVoices().filter(v => /^es/i.test(v.lang));
+  const pref = (quien, nombres) => leerLS("voz_" + quien) || (voces.find(v => nombres.some(n => v.name.includes(n))) || voces[quien === "tomi" ? 1 : 0] || {}).name || "";
+  let deMati = "";
+  for (const [quien, id, nombres] of [["mati", "vozMati", ["Jorge", "Juan", "Diego", "Carlos"]], ["tomi", "vozTomi", ["Diego", "Juan", "Jorge", "Andrés"]]]) {
+    const el = $(id);
+    let elegido = pref(quien, nombres);
+    // Tomi con otra voz distinta a la de Mati, si hay más de una
+    if (quien === "tomi" && !leerLS("voz_tomi") && elegido === deMati) elegido = ((voces.find(v => v.name !== deMati && nombres.some(n => v.name.includes(n))) || voces.find(v => v.name !== deMati)) || {}).name || elegido;
+    if (quien === "mati") deMati = elegido;
+    el.innerHTML = voces.length ? voces.map(v => `<option value="${esc(v.name)}"${v.name === elegido ? " selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("") : `<option>Sin voces en español</option>`;
+  }
+}
+if (VOZ) { cargarVoces(); VOZ.onvoiceschanged = cargarVoces; }
+// Texto para hablar: consolas y precios como se dicen
+const hablado = t => String(t || "")
+  .replace(/\bPS5\b/gi, "Play 5").replace(/\bPS4\b/gi, "Play 4").replace(/\bSWITCH 2\b/gi, "Switch 2").replace(/\bSWITCH\b/g, "Switch")
+  .replace(/\$\s?([\d.]+)/g, (_, n) => n.replace(/\./g, "") + " pesos").replace(/×(\d+)/g, "$1 unidades")
+  .replace(/^[-•]\s*/gm, "").replace(/\s*\(([^)]*)\)/g, ", $1,").replace(/,\s*([:;.,])/g, "$1").replace(/\s+/g, " ").trim();
+const frases = t => hablado(t).split(/(?<=[.!?;])\s+/).filter(x => x.length > 1);
+function armarGuion() {
+  const g = [], dia = t => new Date(t).toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" });
+  const decir = (quien, texto) => frases(texto).forEach(f => g.push({ quien, texto: f }));
+  const mati = informes()[0], tomi = ((DATOS.tomi && DATOS.tomi.historial) || [])[0];
+  if (mati) {
+    const inf = mati.informe, marcas = DATOS.marcas || {};
+    decir("mati", `Hola Felipe, soy Mati, tu analista de inventario. Te cuento mi informe del ${dia(mati.t)}.`);
+    String(inf.resumen || "").split(/\n+/).forEach(l => decir("mati", l));
+    const urg = (inf.recomprar || []).filter(x => x.prioridad === "alta" && !marcas[claveMarca(mati.t, x)]).slice(0, 3);
+    if (urg.length) { decir("mati", "Lo más urgente para recomprar:"); urg.forEach(x => decir("mati", `${x.producto} de ${x.consola || ""}${x.cantidad ? ", " + x.cantidad + " unidades" : ""}. ${x.motivo || ""}`)); }
+    (inf.alertas || []).slice(0, 3).forEach(a => decir("mati", typeof a === "string" ? a : `${a.titulo}. ${a.que_hacer || a.que_pasa || ""}`));
+    const dudas = (inf.dudas || []).filter(x => !(DATOS.alias || {})[x.clave]).length;
+    if (dudas) decir("mati", `Además tengo ${dudas} ${dudas === 1 ? "pregunta" : "preguntas"} para que me confirmes en la página.`);
+    decir("mati", tomi ? "Eso es todo de mi parte. Te dejo con Tomi." : "Eso es todo de mi parte.");
+  } else decir("mati", "Hola Felipe, soy Mati. Todavía no tengo un informe para contarte.");
+  if (tomi) {
+    const inf = tomi.informe;
+    decir("tomi", `Hola Felipe, soy Tomi, tu vigía de lanzamientos. Esto es lo que viene, según mi informe del ${dia(tomi.t)}.`);
+    String(inf.resumen || "").split(/\n+/).forEach(l => decir("tomi", l));
+    const pre = (inf.preventas || []).slice(0, 3);
+    if (pre.length) { decir("tomi", "Te sugiero estas preventas:"); pre.forEach(x => decir("tomi", `${x.titulo} de ${x.consola || ""}${x.cantidad ? ", " + x.cantidad + " unidades" : ""}. ${x.por_que || ""}`)); }
+    (inf.alertas || []).slice(0, 2).forEach(a => decir("tomi", typeof a === "string" ? a : `${a.titulo}. ${a.que_hacer || a.que_pasa || ""}`));
+    decir("tomi", "Eso es todo. ¡Que tengas una buena semana de ventas!");
+  }
+  return g;
+}
+function pintarMesa(quien) {
+  $("mesa").innerHTML = ["mati", "tomi"].map(id => { const m = EQUIPO.find(x => x.id === id); return `<div class="silla${id === quien ? " habla" : ""}"><img src="${id}-avatar.jpg?v=3" alt="${m.nombre}"><b>${m.nombre}</b></div>`; }).join("");
+}
+function hablar() {
+  if (!reunionViva) return;
+  if (paso >= guion.length) { pintarMesa(null); $("subtitulo").textContent = "Fin de la reunión."; $("rPausa").disabled = $("rSaltar").disabled = true; $("rEmpezar").disabled = false; $("rEmpezar").textContent = "🔁 Repetir"; reunionViva = false; return; }
+  const p = guion[paso], m = EQUIPO.find(x => x.id === p.quien);
+  pintarMesa(p.quien); $("subtitulo").innerHTML = `<b>${m.nombre}:</b> ${esc(p.texto)}`;
+  const u = new SpeechSynthesisUtterance(p.texto), mio = ++turno; // al cancelar, los avisos de la frase vieja se ignoran
+  const nombre = $(p.quien === "tomi" ? "vozTomi" : "vozMati").value, v = voces.find(x => x.name === nombre);
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "es-CO";
+  u.rate = Number($("velocidad").value) || 1;
+  if (!v || $("vozMati").value === $("vozTomi").value) u.pitch = p.quien === "tomi" ? 1.15 : 0.9; // misma voz: se distinguen por el tono
+  u.onend = () => { if (mio === turno && reunionViva && !enPausa) { paso++; hablar(); } };
+  u.onerror = e => { if (mio === turno && e.error !== "interrupted" && e.error !== "canceled" && reunionViva && !enPausa) { paso++; hablar(); } };
+  VOZ.speak(u);
+}
+$("abrirReunion").onclick = () => {
+  if (!VOZ) { $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">Este navegador no tiene voces. Prueba en Safari o Chrome.</p>`); return; }
+  if (!DATOS) return;
+  cargarVoces(); pintarMesa(null); $("reunion").hidden = false;
+  $("subtitulo").textContent = "Toca “Empezar” y Mati abre la reunión."; $("rEmpezar").textContent = "▶️ Empezar"; $("rEmpezar").disabled = false;
+};
+$("rEmpezar").onclick = () => {
+  turno++; VOZ.cancel(); guion = armarGuion(); paso = 0; enPausa = false; reunionViva = true;
+  $("rEmpezar").disabled = true; $("rPausa").disabled = $("rSaltar").disabled = false; $("rPausa").textContent = "⏸️ Pausar";
+  hablar();
+};
+$("rPausa").onclick = () => {
+  if (!enPausa) { enPausa = true; turno++; VOZ.cancel(); $("rPausa").textContent = "▶️ Seguir"; }
+  else { enPausa = false; $("rPausa").textContent = "⏸️ Pausar"; hablar(); }
+};
+$("rSaltar").onclick = () => {
+  // salta al siguiente integrante del equipo
+  const actual = guion[paso] && guion[paso].quien; turno++; VOZ.cancel();
+  while (paso < guion.length && guion[paso].quien === actual) paso++;
+  enPausa = false; $("rPausa").textContent = "⏸️ Pausar"; hablar();
+};
+$("rCerrar").onclick = () => { reunionViva = false; VOZ && VOZ.cancel(); $("reunion").hidden = true; $("rPausa").disabled = $("rSaltar").disabled = true; };
+$("vozMati").onchange = e => guardarLS("voz_mati", e.target.value);
+$("vozTomi").onchange = e => guardarLS("voz_tomi", e.target.value);
+
 async function cargar() {
   try { DATOS = await worker("EQUIPO_LEER"); }
   catch (e) { DATOS = { mati: null, ventas: null, historial: [], marcas: {} }; $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se pudo leer el informe: ${esc(e.message)}</p>`); }
