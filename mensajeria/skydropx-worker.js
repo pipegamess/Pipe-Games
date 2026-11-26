@@ -120,6 +120,9 @@ const Manejador = {
     if (String(pedido.metodo || "").toUpperCase() === "EQUIPO_LEER") {
       try { return responder(await leerEquipo(env)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
+    if (String(pedido.metodo || "").toUpperCase() === "MATI_CONFIRMAR") {
+      try { return responder(await confirmarMati(env, pedido.clave, pedido.destino)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
+    }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_MARCAR") {
       try { return responder(await marcarMati(env, pedido.clave, !!pedido.hecho)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
@@ -1067,6 +1070,23 @@ function cantidadClaves(prod, k) {
   const disp = vals.filter(v => v > 0).reduce((a, v) => a + v, 0);
   return disp > 0 ? disp : (vals.some(v => v < 0) ? -1 : 0);
 }
+// Parecido entre dos claves del Excel (pares de letras en común), misma consola
+function parecidos(k, stock) {
+  const [c, cons = ""] = k.split("|");
+  const pares = t => { const m = new Map(); for (let i = 0; i < t.length - 1; i++) { const p = t.slice(i, i + 2); m.set(p, (m.get(p) || 0) + 1); } return m; };
+  const a = pares(c), na = Math.max(1, c.length - 1);
+  const out = [];
+  for (const sk of Object.keys(stock)) {
+    const [sc, scons = ""] = sk.split("|");
+    if (scons !== cons && !(c + cons).includes(scons) && !(sc + scons).includes(cons)) continue;
+    const b = pares(sc); let comun = 0;
+    for (const [p, n] of a) comun += Math.min(n, b.get(p) || 0);
+    const score = 2 * comun / (na + Math.max(1, sc.length - 1));
+    if (score >= 0.55) out.push({ k: sk, score });
+  }
+  return out.sort((x, y) => y.score - x.score).slice(0, 3);
+}
+const bonito = k => { const [c, cons] = String(k).split("|"); return c + (cons ? " · " + cons : ""); };
 // Nombres abreviados del Excel que son el mismo producto del catálogo (se suman juntos para Mati)
 const ALIAS_VENTAS = [
   [/^(THE)?(LEGENDOF)?ZELDA(TOTK|TEARSOFTHEKINGDOM)/, "THELEGENDOFZELDATEARSOFTHEKINGDOM"],
@@ -1085,12 +1105,14 @@ async function datosMati(env, tk) {
   const mes = (a, m) => { while (m < 1) { m += 12; a--; } while (m > 12) { m -= 12; a++; } return a + "-" + String(m).padStart(2, "0"); };
   // SOLO ventas del año en curso (decisión de Felipe: las tendencias cambian, años anteriores no cuentan)
   const ventas = {}; let tVentas = 0;
+  // respuestas de Felipe: "este nombre de ventas es tal producto del stock" o "sí está agotado"
+  const conf = JSON.parse(((await leerDocFS(env, tk, "privado/equipo_mati_alias")) || {}).mapa || "{}");
   for (const a of [anio]) {
     const d = await leerDocFS(env, tk, "privado/ventas_" + a);
     if (!d) continue;
     tVentas = Math.max(tVentas, Number(d.t) || 0);
     for (const [m, k0, n, pl, u, v, g] of JSON.parse(d.filas || "[]")) {
-      const k = unificarClave(k0);
+      const k = (conf[k0] && conf[k0] !== "AGOTADO") ? conf[k0] : unificarClave(k0);
       const x = ventas[k] ||= { n, pl, m: {} };
       const y = x.m[m] ||= { u: 0, v: 0, g: 0 }; y.u += u; y.v += v; y.g += g;
     }
@@ -1118,13 +1140,29 @@ async function datosMati(env, tk) {
       ganancia_promedio_unidad: ganancia(claves), clientes_en_espera: p ? enEspera(claves, p) : 0 };
   };
   for (const p of catalogo) filas.push(fila(p.n, p.p, [].concat(p.k || []), p.v, p));
-  for (const [k, x] of Object.entries(ventas)) if (!usadas.has(k)) filas.push(fila(x.n, x.pl, [k], null, null));
+  const dudas = [];
+  const nombreDe = {}; for (const p of catalogo) for (const k of [].concat(p.k || [])) nombreDe[k] ||= p.n + (p.p ? " · " + p.p : "");
+  for (const [k, x] of Object.entries(ventas)) {
+    if (usadas.has(k)) continue;
+    const f = fila(x.n, x.pl, [k], null, null);
+    if (stock[k] === undefined && conf[k] !== "AGOTADO") {
+      const cand = parecidos(k, stock);
+      if (cand.length) {
+        f.stock = null;   // no se sabe: Felipe lo confirma
+        const recientes = f.ventas_mes_actual + f.ventas_mes_pasado + f.ventas_ult_3_meses;
+        dudas.push({ clave: k, nombre: x.n, consola: x.pl, vendidas: f.ventas_en_el_anio, recientes,
+          opciones: cand.map(c => ({ clave: c.k, nombre: nombreDe[c.k] || bonito(c.k), stock: stock[c.k] })) });
+      }
+    }
+    filas.push(f);
+  }
+  dudas.sort((a, b) => b.recientes - a.recientes || b.vendidas - a.vendidas);
   const espSinCatalogo = espera.filter(x => !filas.some(f => f.clientes_en_espera && llave(f.producto).includes(llave(x.titulo)))).map(x => x.titulo + (x.consola !== "OTRA" ? " (" + x.consola + ")" : ""));
   // solo lo relevante para que el análisis sea corto: con movimiento, con gente esperando o quieto con plata parada
   const mov = f => f.ventas_mes_actual * 3 + f.ventas_mes_pasado * 2 + f.ventas_ult_3_meses + f.ventas_en_el_anio * 0.25;
   const conMov = filas.filter(f => mov(f) > 0 || f.clientes_en_espera > 0).sort((a, b) => mov(b) + b.clientes_en_espera * 3 - mov(a) - a.clientes_en_espera * 3).slice(0, 90);
   const quietos = filas.filter(f => mov(f) === 0 && f.stock > 0).sort((a, b) => b.stock * (b.precio || 0) - a.stock * (a.precio || 0)).slice(0, 25);
-  return { meses, tVentas, conMov, quietos, espSinCatalogo, hayVentas: Object.keys(ventas).length > 0 };
+  return { meses, tVentas, conMov, quietos, espSinCatalogo, dudas: dudas.slice(0, 12), hayVentas: Object.keys(ventas).length > 0 };
 }
 async function correrMati(env, forzado) {
   if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
@@ -1141,7 +1179,7 @@ CÓMO DECIDIR:
 - Prioriza lo que se vende seguido y tiene poco o nada de stock, y lo que tiene clientes en lista de espera. Pesa más lo reciente (este mes y el pasado) que lo acumulado del año.
 - Analiza SOLO ${d.meses.anio}: no hay datos de años anteriores y no debes suponer ni mencionar comparaciones con otros años.
 - Ten en cuenta la ganancia por unidad: mejor recomprar lo que deja más.
-- Stock -1 = solo hay unidades en importación (vienen en camino). Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel.
+- Stock -1 = solo hay unidades en importación (vienen en camino). Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel, o un nombre de ventas que no coincide exactamente con el inventario y Felipe todavía debe confirmar: en ese caso NO lo des por agotado, NO lo recomiendes recomprar y NO lo menciones en alertas (Felipe ya recibe esa pregunta aparte).
 - Si un producto aparece con ventas pero nombre distinto al del catálogo, trátalo como el mismo juego (por ejemplo variantes de edición o consola escritas distinto).
 - Señala el inventario quieto (stock sin ventas) que conviene impulsar con promoción en vez de recomprar.
 - Sé concreto y breve. Cantidades sugeridas realistas (1 a 6).
@@ -1181,6 +1219,7 @@ CÓMO ESCRIBIR (Felipe lo lee rápido en el celular):
   if (!res.informe) res = await pedir("\n\nIMPORTANTE: sé muy breve (motivos de máximo 12 palabras, máximo 8 en recomprar) y responde SOLO el JSON, sin ``` ni texto adicional.");
   if (!res.informe) throw new Error("Mati no devolvió un informe válido (" + res.error + ")");
   const informe = res.informe, j = res.j;
+  informe.dudas = d.dudas;
   informe.datos = { productosAnalizados: d.conMov.length + d.quietos.length, ventasDelExcel: d.hayVentas, ventasActualizadas: d.tVentas || null, tokens: j.usage || null };
   const ahora = Date.now();
   await escribirDocFS(env, tk, "privado/equipo_mati", { t: ahora, informe: JSON.stringify(informe) });
@@ -1199,10 +1238,22 @@ async function leerEquipo(env) {
   const v = await leerDocFS(env, tk, "privado/ventas_" + anio);
   const h = await leerDocFS(env, tk, "privado/equipo_mati_hist");
   const marcas = await leerDocFS(env, tk, "privado/equipo_mati_marcas");
+  const alias = await leerDocFS(env, tk, "privado/equipo_mati_alias");
   let historial = JSON.parse((h && h.lista) || "[]");
   if (!historial.length && mati) historial = [{ t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") }];
   return { mati: mati ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, historial,
-    marcas: JSON.parse((marcas && marcas.mapa) || "{}"), ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
+    marcas: JSON.parse((marcas && marcas.mapa) || "{}"), alias: JSON.parse((alias && alias.mapa) || "{}"), ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
+}
+// Felipe confirma una duda de Mati: el nombre de ventas es tal producto del stock, o sí está agotado ("AGOTADO"); vacío = deshacer
+async function confirmarMati(env, clave, destino) {
+  const tk = await tokenServicio(env);
+  const d = await leerDocFS(env, tk, "privado/equipo_mati_alias");
+  const mapa = JSON.parse((d && d.mapa) || "{}");
+  clave = String(clave || "").slice(0, 200); destino = String(destino || "").slice(0, 200);
+  if (!clave) throw new Error("falta la clave");
+  if (destino) mapa[clave] = destino; else delete mapa[clave];
+  await escribirDocFS(env, tk, "privado/equipo_mati_alias", { t: Date.now(), mapa: JSON.stringify(mapa) });
+  return { ok: true };
 }
 // "Ya lo compré" / "Hecho" en una recomendación de Mati
 async function marcarMati(env, clave, hecho) {

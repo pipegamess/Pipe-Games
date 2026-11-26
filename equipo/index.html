@@ -74,6 +74,12 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 .alerta .tipo { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .alerta b { font-size: 15px; } .alerta p { margin: 0; font-size: 14px; line-height: 1.45; }
 .alerta .hacer { color: var(--fg, inherit); } .alerta .hacer::before { content: "→ "; font-weight: 700; }
+.dudas { display: grid; gap: 10px; }
+.duda { border: 1px solid rgba(245,196,0,.35); background: rgba(245,196,0,.07); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
+.duda p { margin: 0; font-size: 14px; line-height: 1.45; }
+.duda .ops { display: grid; gap: 6px; }
+.duda .ops button { text-align: left; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: 10px; cursor: pointer; }
+.duda.lista { opacity: .6; border-style: dashed; background: none; }
 .top3 { display: grid; gap: 8px; }
 details.sec { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 0 14px; }
 details.sec > summary { cursor: pointer; list-style: none; padding: 12px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
@@ -166,6 +172,19 @@ function pintarAlertas(al) {
     ? `<div class="alerta"><p>${esc(x)}</p></div>`
     : `<div class="alerta ${esc(x.tipo)}"><span class="tipo">${TIPOS[x.tipo] || "Aviso"}</span><b>${esc(x.titulo)}</b>${x.que_pasa ? `<p>${esc(x.que_pasa)}</p>` : ""}${x.que_hacer ? `<p class="hacer">${esc(x.que_hacer)}</p>` : ""}</div>`).join("")}</div></div>`;
 }
+function pintarDudas(dudas) {
+  if (!dudas || !dudas.length) return "";
+  const alias = DATOS.alias || {};
+  const pend = dudas.filter(x => !alias[x.clave]);
+  return `<div><h3>Mati necesita que le confirmes${pend.length ? ` <span class="num">(${pend.length})</span>` : ""}</h3>
+  <p class="meta">Estos nombres aparecen en tus ventas pero no están igual en el inventario. Mati no los da por agotados hasta que le digas.</p>
+  <div class="dudas">${dudas.map(x => { const r = alias[x.clave];
+    if (r) { const op = (x.opciones || []).find(o => o.clave === r);
+      return `<div class="duda lista"><p>✓ <b>${esc(x.nombre)}</b> → ${r === "AGOTADO" ? "está agotado" : "es " + esc(op ? op.nombre : r)}.</p><button type="button" class="ghost" data-conf="${esc(x.clave)}" data-dest="">Deshacer</button></div>`; }
+    return `<div class="duda"><p>En ventas aparece <b>${esc(x.nombre)}</b>${x.consola ? " (" + esc(x.consola) + ")" : ""}, con ${x.vendidas} vendidas en el año, pero no lo encuentro con ese nombre en el inventario. ¿Es alguno de estos?</p>
+      <div class="ops">${(x.opciones || []).map(o => `<button type="button" data-conf="${esc(x.clave)}" data-dest="${esc(o.clave)}">Sí, es <b>${esc(o.nombre)}</b> · stock ${o.stock < 0 ? "en importación" : esc(o.stock)}</button>`).join("")}
+      <button type="button" data-conf="${esc(x.clave)}" data-dest="AGOTADO">No, ese producto sí está agotado</button></div></div>`; }).join("")}</div></div>`;
+}
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
   const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=3" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
@@ -187,7 +206,7 @@ function pintarInforme() {
   const top = pend.filter(x => x.prioridad === "alta").slice(0, 3);
   const chips = `<div class="chips"><span class="chip">Recomprar: ${pend.length} pendientes de ${rec.length}</span><span class="chip">No recomprar: ${(inf.no_recomprar || []).length}</span><span class="chip">Impulsar: ${(inf.impulsar || []).length}</span><span class="chip">Lo piden: ${(inf.pedir_nuevo || []).length}</span></div>`;
   v.innerHTML = cab + hist + `<p class="meta">${esUltimo ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p><p class="resumen">${esc(inf.resumen)}</p>` +
-    pintarAlertas(inf.alertas) + chips +
+    (esUltimo ? pintarDudas(inf.dudas) : "") + pintarAlertas(inf.alertas) + chips +
     (top.length ? `<div><h3>Lo más urgente</h3><div class="top3">${top.map(filaRec).join("")}</div></div>` : (rec.length ? `<p class="vacio">✓ Ya marcaste todo lo urgente de este informe.</p>` : "")) +
     seccion("Recomprar (todo)", rec, filaRec, false) +
     seccion("No recomprar", inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo), false) +
@@ -207,6 +226,15 @@ $("vInforme").addEventListener("change", async e => {
 });
 function alertaFallo(err) { $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se guardó la marca: ${esc(err.message)}</p>`); }
 $("vInforme").addEventListener("click", async e => {
+  const c = e.target.closest("[data-conf]");
+  if (c) {
+    const clave = c.dataset.conf, destino = c.dataset.dest, antes = (DATOS.alias || {})[clave];
+    DATOS.alias = DATOS.alias || {}; if (destino) DATOS.alias[clave] = destino; else delete DATOS.alias[clave];
+    pintarInforme();
+    try { await worker("MATI_CONFIRMAR", { clave, destino }); }
+    catch (err) { if (antes) DATOS.alias[clave] = antes; else delete DATOS.alias[clave]; pintarInforme(); $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se guardó: ${esc(err.message)}</p>`); }
+    return;
+  }
   if (!e.target.closest("#generar")) return;
   const b = $("generar"); b.disabled = true; $("gEstado").className = "status"; $("gEstado").textContent = "Mati está revisando ventas, stock y lista de espera (unos 30 segundos)…";
   try { const r = await worker("MATI_GENERAR"); const nuevo = { t: r.t, informe: r.informe };
