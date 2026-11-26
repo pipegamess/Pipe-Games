@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "9", versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-llegada-manual", versionTomi: "9", versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -134,6 +134,9 @@ const Manejador = {
     }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_BORRAR") {
       try { return responder(await borrarMati(env, pedido.t)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
+    }
+    if (String(pedido.metodo || "").toUpperCase() === "MATI_LLEGADA") {
+      try { return responder(await llegadaMati(env, pedido.producto, pedido.consola, !!pedido.hecho)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_CONFIRMAR") {
       try { return responder(await confirmarMati(env, pedido.clave, pedido.destino)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
@@ -1140,6 +1143,9 @@ async function datosMati(env, tk) {
   // fecha en que llegó cada producto (o subieron sus unidades): lo recién llegado no es "stock quieto"
   const llegadas = await fetch("https://pipegames.com.co/stock/llegadas.json?t=" + Date.now()).then(r => r.ok ? r.json() : {}).catch(() => ({}));
   const hoyMs = Date.UTC(bog.getUTCFullYear(), bog.getUTCMonth(), bog.getUTCDate());
+  // "Llegó hace poco" marcado por Felipe en la página (nombre|consola → fecha)
+  const llegManual = JSON.parse(((await leerDocFS(env, tk, "privado/equipo_mati_llegadas")) || {}).mapa || "{}");
+  const diasManual = (nombre, consola) => { const t = llegManual[claveNombre(nombre, consola)]; return t ? Math.round((Date.now() - t) / 86400000) : null; };
   const diasLlegada = claves => { let d = null; for (const k of claves) { const x = llegadas[k]; if (x && x.d) { const n = Math.round((hoyMs - Date.parse(x.d)) / 86400000); d = d === null ? n : Math.min(d, n); } } return d; };
   const txt = await (await fetch("https://pipegames.com.co/mensajeria/productos-catalogo.js?t=" + Date.now())).text();
   const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1));
@@ -1159,7 +1165,7 @@ async function datosMati(env, tk) {
     return { producto: nombre, consola, stock: st === undefined ? null : st, precio: precio || null,
       ventas_mes_actual: sumar(claves, meses.actual), ventas_mes_pasado: sumar(claves, meses.ant1),
       ventas_ult_3_meses: sumar(claves, meses.ant1) + sumar(claves, meses.ant2) + sumar(claves, meses.ant3),
-      ventas_en_el_anio: sumarAnio(claves), dias_desde_que_llego: diasLlegada(claves),
+      ventas_en_el_anio: sumarAnio(claves), dias_desde_que_llego: diasManual(nombre, consola) ?? diasLlegada(claves),
       ganancia_promedio_unidad: ganancia(claves), clientes_en_espera: p ? enEspera(claves, p) : 0 };
   };
   for (const p of catalogo) filas.push(fila(p.n, p.p, [].concat(p.k || []), p.v, p));
@@ -1274,6 +1280,7 @@ async function leerEquipo(env) {
   if (!historial.length && mati && mati.informe) historial = [{ t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") }];
   return { mati: mati && mati.informe ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, historial,
     tomi: await leerInformes(env, tk, "tomi"), anto: await leerInformes(env, tk, "anto"),
+    llegadas: JSON.parse(((await leerDocFS(env, tk, "privado/equipo_mati_llegadas")) || {}).mapa || "{}"),
     marcas: JSON.parse((marcas && marcas.mapa) || "{}"), alias: JSON.parse((alias && alias.mapa) || "{}"), ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
 }
 
@@ -1566,6 +1573,17 @@ async function borrarMati(env, t) {
     await escribirDocFS(env, tk, "privado/equipo_mati", sig ? { t: Number(sig.t), informe: JSON.stringify(sig.informe) } : { t: 0, informe: "" });
   }
   return { ok: true, quedan: lista.length };
+}
+const claveNombre = (n, c) => (String(n || "") + "|" + String(c || "")).toUpperCase().normalize("NFD").replace(/[^A-Z0-9|]/g, "");
+// Felipe marca que un producto llegó hace poco (no es stock quieto); vacío = deshacer
+async function llegadaMati(env, producto, consola, hecho) {
+  const tk = await tokenServicio(env);
+  const d = await leerDocFS(env, tk, "privado/equipo_mati_llegadas");
+  const mapa = JSON.parse((d && d.mapa) || "{}"), k = claveNombre(producto, consola).slice(0, 200);
+  if (hecho) mapa[k] = Date.now(); else delete mapa[k];
+  for (const [kk, t] of Object.entries(mapa)) if (Date.now() - t > 60 * 86400000) delete mapa[kk];   // a los 60 días ya no hace falta
+  await escribirDocFS(env, tk, "privado/equipo_mati_llegadas", { t: Date.now(), mapa: JSON.stringify(mapa) });
+  return { ok: true };
 }
 // Felipe confirma una duda de Mati: el nombre de ventas es tal producto del stock, o sí está agotado ("AGOTADO"); vacío = deshacer
 async function confirmarMati(env, clave, destino) {

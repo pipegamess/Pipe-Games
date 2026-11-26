@@ -207,6 +207,7 @@ $("equipo").addEventListener("click", e => { const b = e.target.closest("[data-m
 const item = (titulo, derecha, motivo, extra = "", cls = "") => `<div class="item${cls}"><span>${titulo}</span>${derecha ? `<span class="cant">${derecha}</span>` : "<span></span>"}${motivo ? `<span class="m">${esc(motivo)}</span>` : ""}${extra}</div>`;
 const claveMarca = (t, x) => t + "|" + String(x.producto || "").toLowerCase() + "|" + String(x.consola || "").toLowerCase();
 const RANGO = { alta: 0, media: 1, baja: 2 };
+const claveNombre = (n, c) => (String(n || "") + "|" + String(c || "")).toUpperCase().normalize("NFD").replace(/[^A-Z0-9|]/g, "");
 function informes() {
   const h = (DATOS && DATOS.historial) || [];
   return h.length ? h : (DATOS && DATOS.mati ? [DATOS.mati] : []);
@@ -322,7 +323,9 @@ function pintarInforme() {
     (top.length ? `<div><h3>Lo más urgente</h3><div class="top3">${top.map(filaRec).join("")}</div></div>` : (rec.length ? `<p class="vacio">✓ Ya marcaste todo lo urgente de este informe.</p>` : "")) +
     seccion("Recomprar (todo)", rec, filaRec, false) +
     seccion("No recomprar", inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo), false) +
-    seccion("Impulsar (stock quieto)", inf.impulsar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.idea), false) +
+    seccion("Impulsar (stock quieto)", inf.impulsar, x => { const k = claveNombre(x.producto, x.consola), h = !!(DATOS.llegadas || {})[k];
+      return item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", h ? "Marcado como recién llegado: Mati no lo tomará como stock quieto." : x.idea,
+        `<label class="marca"><input type="checkbox" data-lleg="${esc(k)}" data-p="${esc(x.producto)}" data-c="${esc(x.consola || "")}"${h ? " checked" : ""}> Llegó hace poco (no es stock quieto)</label>`, h ? " hecho" : ""); }, false) +
     seccion("Lo piden y no lo tienes", inf.pedir_nuevo, x => item(`<b>${esc(x.producto)}</b>`, "", x.motivo), false) +
     avisoVentas + btn +
     `<div class="acciones" style="margin-top:6px">${borrando
@@ -333,6 +336,16 @@ $("vInforme").addEventListener("change", async e => {
   if (e.target.dataset && e.target.dataset.hist) { VER[e.target.dataset.hist] = Number(e.target.value); BORRANDO[e.target.dataset.hist] = false; pintarInforme(); return; }
   if (e.target.id === "histTomi") { verTomi = Number(e.target.value); borrandoTomi = false; pintarInforme(); return; }
   if (e.target.id === "histSel") { verT = Number(e.target.value); borrando = false; pintarInforme(); return; }
+  const ll = e.target.closest("input[data-lleg]");
+  if (ll) {
+    const k = ll.dataset.lleg, hecho = ll.checked; DATOS.llegadas = DATOS.llegadas || {};
+    if (hecho) DATOS.llegadas[k] = Date.now(); else delete DATOS.llegadas[k];
+    const abiertas = [...document.querySelectorAll("details.sec")].map(d => d.open);
+    pintarInforme(); document.querySelectorAll("details.sec").forEach((d, i) => d.open = !!abiertas[i]);
+    try { await worker("MATI_LLEGADA", { producto: ll.dataset.p, consola: ll.dataset.c, hecho }); }
+    catch (err) { if (hecho) delete DATOS.llegadas[k]; else DATOS.llegadas[k] = 1; pintarInforme(); alertaFallo(err); }
+    return;
+  }
   const c = e.target.closest("input[data-k]"); if (!c) return;
   const k = c.dataset.k, hecho = c.checked;
   DATOS.marcas = DATOS.marcas || {}; if (hecho) DATOS.marcas[k] = Date.now(); else delete DATOS.marcas[k];
