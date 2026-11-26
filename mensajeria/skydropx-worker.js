@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "8", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "9", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1315,7 +1315,7 @@ async function datosTomi(env, tk) {
   const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1)).filter(p => /PS4|PS5|SWITCH/.test(p.p)).map(p => p.n + " · " + p.p + ": " + estado(p));
   const adm = await leerDocFS(env, tk, "usuarios/" + env.ADMIN_UID);
   const espera = Object.values((adm && adm.espera) || {}).filter(x => x && x.estado !== "avisado").map(x => x.titulo + (x.consola && x.consola !== "OTRA" ? " (" + x.consola + ")" : ""));
-  return { hoy: bog.toISOString().slice(0, 10), meses: [a, b, c].map(x => x.es + " " + x.a), resultados: resultados.slice(0, 70), listas, masVendidos, catalogo, espera };
+  return { hoy: bog.toISOString().slice(0, 10), meses: [a, b, c].map(x => x.es + " " + x.a), resultados: resultados.slice(0, 70), listas, masVendidos, catalogo, espera, yaVendidos: Object.keys(porProd).map(k => k.split(" · ")[0]) };
 }
 // El cron corre cada 5 minutos: si un informe automático falla, no se reintenta antes de 3 horas (cada intento cuesta)
 async function primerIntento(env, tk, quien) {
@@ -1395,6 +1395,7 @@ REGLAS:
 - "interes" (alta|media|baja) según lo que se vende en Pipe Games: sagas o géneros parecidos a sus más vendidos de ${d.hoy.slice(0, 4)}, juegos muy esperados en Colombia, clientes en lista de espera. Lo de Nintendo y los deportes (FC, NBA) suele venderse bien.
 - Mira el catálogo con su STOCK: "X en stock", "AGOTADO" o "en importación". Si un juego está AGOTADO, dilo así (nunca digas que lo tienes) y la acción es abrir preventa o pedirlo, no avisar ni promocionar (solo aplica a lanzamientos). Si tiene stock, dilo con la cantidad.
 - NUNCA sugieras publicar ofertas, descuentos o promociones de algo que está AGOTADO o en importación.
+- Si un juego YA APARECE en las ventas de Pipe Games de este año (lista de más vendidos), ya lo vendes: NO es un lanzamiento para ti y NO lo nombres en ninguna parte (eso es de Mati), aunque haya salido hace poco.
 - REPARTO DEL EQUIPO: recomprar juegos que ya salieron hace tiempo (como Mario Kart 8 Deluxe) es trabajo de MATI, no tuyo. Tú NUNCA recomiendas recomprar un juego viejo ni hablas de su stock. Solo hablas de juegos que salen en los próximos 3 meses o que salieron en las últimas 4 semanas, y de noticias de lanzamientos (fechas nuevas, retrasos, ediciones especiales). Si un cliente en espera pide un juego viejo, ignóralo: eso lo maneja Mati.
 - Tu trabajo son LANZAMIENTOS (juegos y ediciones nuevas, fechas, retrasos). IGNORA las ofertas y descuentos de tiendas o de fabricantes (Black Friday, Cyber Monday, rebajas de Nintendo o Sony): no son lanzamientos y no los menciones.
 - "avisar_clientes": solo cuando un cliente en espera pide un LANZAMIENTO de tu lista (un juego nuevo o próximo) y hay una novedad real: ya tiene fecha, ya salió o ya tienes stock.
@@ -1426,6 +1427,13 @@ RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
 {"resumen":"3 a 5 líneas, cada una empieza con \"- \" y van separadas por \\n","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
 Ordena "lanzamientos" por fecha. Máximo 15 lanzamientos, 6 preventas, 6 avisar_clientes, 4 alertas. Cada "por_que" y "accion" de máximo 20 palabras. Si no hay fecha exacta usa fecha_iso con el primer día del mes o del año. No uses bloques de código.`;
   const { informe, j } = await pedirJSON(env, prompt, "\n\nIMPORTANTE: sé muy breve (máximo 12 lanzamientos, frases de máximo 12 palabras) y responde SOLO el JSON, sin ``` ni texto adicional.");
+  // seguro: fuera lo que Pipe Games ya vende (tiene ventas este año); eso es trabajo de Mati
+  const norm = t => String(t || "").toUpperCase().normalize("NFD").replace(/\(.*?\)/g, "").replace(/[^A-Z0-9]/g, "").replace(/^THE/, "");
+  const vendidos = d.yaVendidos.map(norm).filter(x => x.length >= 6);
+  const yaLoVende = t => { const n = norm(t); return n.length >= 6 && vendidos.some(v => v === n || v.includes(n) || n.includes(v)); };
+  const quitados = (informe.lanzamientos || []).filter(x => yaLoVende(x.titulo)).map(x => x.titulo);
+  for (const campo of ["lanzamientos", "preventas", "avisar_clientes"]) if (Array.isArray(informe[campo])) informe[campo] = informe[campo].filter(x => !yaLoVende(x.titulo));
+  if (quitados.length) informe.quitados = quitados;
   // seguro: lo que ya salió queda marcado como salido y con fecha confirmada
   for (const x of informe.lanzamientos || []) if (x.fecha_iso && x.fecha_iso < d.hoy && x.fecha_confirmada !== false) x.ya_salio = true;
   informe.hoy = d.hoy;
