@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-seguimiento", versionTomi: "10", preguntas: true, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-sin-importacion", versionTomi: "10", preguntas: true, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1196,7 +1196,8 @@ async function datosMati(env, tk) {
   const espSinCatalogo = espera.filter(x => !filas.some(f => f.clientes_en_espera && llave(f.producto).includes(llave(x.titulo)))).map(x => x.titulo + (x.consola !== "OTRA" ? " (" + x.consola + ")" : ""));
   // solo lo relevante para que el análisis sea corto: con movimiento, con gente esperando o quieto con plata parada
   const mov = f => f.ventas_mes_actual * 3 + f.ventas_mes_pasado * 2 + f.ventas_ult_3_meses + f.ventas_en_el_anio * 0.25;
-  const conMov = filas.filter(f => mov(f) > 0 || f.clientes_en_espera > 0).sort((a, b) => mov(b) + b.clientes_en_espera * 3 - mov(a) - a.clientes_en_espera * 3).slice(0, 90);
+  // lo que ya viene en importación no se le muestra a Mati: no hay nada que decidir (Felipe ya lo pidió)
+  const conMov = filas.filter(f => !(f.stock < 0) && (mov(f) > 0 || f.clientes_en_espera > 0)).sort((a, b) => mov(b) + b.clientes_en_espera * 3 - mov(a) - a.clientes_en_espera * 3).slice(0, 90);
   const nuevo = f => f.dias_desde_que_llego !== null && f.dias_desde_que_llego < 30;
   const recienLlegados = filas.filter(f => mov(f) === 0 && f.stock > 0 && nuevo(f)).sort((a, b) => a.dias_desde_que_llego - b.dias_desde_que_llego).slice(0, 25);
   const quietos = filas.filter(f => mov(f) === 0 && f.stock > 0 && !nuevo(f)).sort((a, b) => b.stock * (b.precio || 0) - a.stock * (a.precio || 0)).slice(0, 25);
@@ -1285,7 +1286,7 @@ CÓMO DECIDIR:
 - Prioriza lo que se vende seguido y tiene poco o nada de stock, y lo que tiene clientes en lista de espera. Pesa más lo reciente (este mes y el pasado) que lo acumulado del año.
 - Analiza SOLO ${d.meses.anio}: no hay datos de años anteriores y no debes suponer ni mencionar comparaciones con otros años.
 - Ten en cuenta la ganancia por unidad: mejor recomprar lo que deja más.
-- Stock -1 = solo hay unidades EN IMPORTACIÓN (vienen en camino; no las vuelvas a pedir). Los artículos en estado DEVUELTO no cuentan: no están en importación ni disponibles. Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel, o un nombre de ventas que no coincide exactamente con el inventario y Felipe todavía debe confirmar: en ese caso NO lo des por agotado, NO lo recomiendes recomprar y NO lo menciones en alertas (Felipe ya recibe esa pregunta aparte).
+- Los productos que ya vienen EN IMPORTACIÓN no aparecen en tus datos: Felipe ya los pidió. NUNCA los menciones (ni en el resumen, ni en alertas, ni para decir "no los pidas otra vez"). Si sugieres comprar algo, es porque NO está en stock ni viene en camino. Los artículos en estado DEVUELTO no cuentan: no están en importación ni disponibles. Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel, o un nombre de ventas que no coincide exactamente con el inventario y Felipe todavía debe confirmar: en ese caso NO lo des por agotado, NO lo recomiendes recomprar y NO lo menciones en alertas (Felipe ya recibe esa pregunta aparte).
 - Si un producto aparece con ventas pero nombre distinto al del catálogo, trátalo como el mismo juego (por ejemplo variantes de edición o consola escritas distinto).
 - Señala el inventario quieto (stock sin ventas por más de 30 días desde que llegó) que conviene impulsar con promoción en vez de recomprar. La columna "días desde que llegó" dice hace cuánto entró esa mercancía; vacía = desconocido (llegó antes del 14 de noviembre de 2026).
 - Sé concreto y breve. Cantidades sugeridas realistas (1 a 6).
