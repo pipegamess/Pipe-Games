@@ -1139,15 +1139,23 @@ PEDIDOS EN LISTA DE ESPERA QUE NO ESTÁN EN EL CATÁLOGO: ${d.espSinCatalogo.joi
 
 RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
 {"resumen":"2 o 3 frases con lo más importante de la semana","recomprar":[{"producto":"","consola":"","cantidad":0,"prioridad":"alta|media|baja","motivo":"frase corta con el dato que lo justifica"}],"no_recomprar":[{"producto":"","consola":"","motivo":""}],"impulsar":[{"producto":"","consola":"","idea":"promoción o acción concreta"}],"pedir_nuevo":[{"producto":"","motivo":""}],"alertas":["frase corta"]}
-Máximo 12 en recomprar, 6 en no_recomprar, 6 en impulsar, 5 en pedir_nuevo, 4 alertas.`;
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 3000, messages: [{ role: "user", content: prompt }] })
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error("Claude " + r.status + ": " + ((j.error && j.error.message) || ""));
-  const texto = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
-  let informe; try { informe = JSON.parse(texto.slice(texto.indexOf("{"), texto.lastIndexOf("}") + 1)); } catch { throw new Error("Mati no devolvió un informe válido"); }
+Máximo 12 en recomprar, 6 en no_recomprar, 6 en impulsar, 5 en pedir_nuevo, 4 alertas. Cada "motivo" o "idea" de máximo 18 palabras. No uses bloques de código ni escribas nada fuera del JSON.`;
+  // Se pide el informe; si llega cortado o con texto de más, se intenta una vez más pidiendo más brevedad
+  const pedir = async extra => {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 8000, messages: [{ role: "user", content: prompt + extra }] })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error("Claude " + r.status + ": " + ((j.error && j.error.message) || ""));
+    const texto = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+    try { return { informe: JSON.parse(texto.slice(texto.indexOf("{"), texto.lastIndexOf("}") + 1)), j }; }
+    catch { return { error: (j.stop_reason === "max_tokens" ? "respuesta cortada" : "formato") + ": " + texto.slice(0, 120), j }; }
+  };
+  let res = await pedir("");
+  if (!res.informe) res = await pedir("\n\nIMPORTANTE: sé muy breve (motivos de máximo 12 palabras, máximo 8 en recomprar) y responde SOLO el JSON, sin ``` ni texto adicional.");
+  if (!res.informe) throw new Error("Mati no devolvió un informe válido (" + res.error + ")");
+  const informe = res.informe, j = res.j;
   informe.datos = { productosAnalizados: d.conMov.length + d.quietos.length, ventasDelExcel: d.hayVentas, ventasActualizadas: d.tVentas || null, tokens: j.usage || null };
   await escribirDocFS(env, tk, "privado/equipo_mati", { t: Date.now(), informe: JSON.stringify(informe) });
   const top = (informe.recomprar || []).filter(x => x.prioridad === "alta").slice(0, 3).map(x => `${x.producto}${x.consola ? " " + x.consola : ""} (${x.cantidad})`).join(", ");
