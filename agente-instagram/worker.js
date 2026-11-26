@@ -91,7 +91,12 @@ export default {
 
   // Renueva el token de Instagram (dura 60 días) y lo guarda en el KV
   async scheduled(evento, env, ctx) {
-    if (evento.cron !== "0 9 * * 1") { await revisarChats(env).catch(e => console.log("error revisando", e && e.stack || e)); return; }
+    if (evento.cron !== "0 9 * * 1") {
+      await revisarChats(env).catch(e => { console.log("error revisando", e && e.stack || e);
+        const msg = String(e && e.message || e);
+        return alertaError(env, "Pipe Bot dejó de revisar los chats", (/limit|KV/i.test(msg) ? "Se llegó al límite diario gratis de escrituras de Cloudflare KV; vuelve a funcionar a las 7 p. m. (hora Colombia). " : "") + msg); });
+      return;
+    }
     if (env.AGENTE && await env.AGENTE.get("fb_token")) return; // el token unificado no vence
     const actual = (env.AGENTE && await env.AGENTE.get("token")) || env.IG_TOKEN;
     if (!actual) return;
@@ -207,7 +212,12 @@ async function revisarChats(env) {
   const r = await fetch(`${GRAPH_FB}/${cuenta}/conversations?platform=instagram&fields=updated_time,participants,messages.limit(15){id,message,created_time,from,attachments{mime_type,name,image_data{url,preview_url},video_data{url,preview_url},file_url},shares{link,name},story}&limit=15`,
     { headers: { Authorization: "Bearer " + token } });
   const j = await r.json().catch(() => ({}));
-  if (!j.data) { console.log("revisar chats", r.status, JSON.stringify(j).slice(0, 300)); return; }
+  if (!j.data) {
+    console.log("revisar chats", r.status, JSON.stringify(j).slice(0, 300));
+    const err = (j.error && j.error.message) || ("HTTP " + r.status);
+    await alertaError(env, "Pipe Bot no puede leer los chats de Instagram", err + (/expired|session|token|permission|OAuth/i.test(err) ? " → Hay que volver a conectar: abre /conectar del agente." : ""));
+    return;
+  }
   for (const conv of j.data) {
     if (Date.parse(conv.updated_time) < ahora - 20 * 60000) continue; // solo chats con movimiento reciente
     const otro = ((conv.participants && conv.participants.data) || []).find(p => String(p.id) !== String(cuenta));
