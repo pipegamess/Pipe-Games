@@ -66,6 +66,14 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .vacio { color: var(--muted); font-size: 14px; margin: 0; }
 .aviso { background: rgba(245,196,0,.1); border: 1px solid rgba(245,196,0,.35); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.alertas { display: grid; gap: 10px; }
+.alerta { border-radius: 12px; padding: 12px 14px; border-left: 4px solid var(--warn); background: rgba(255,179,92,.08); display: grid; gap: 4px; }
+.alerta.oportunidad { border-color: var(--ok); background: rgba(62,207,142,.08); }
+.alerta.evitar { border-color: var(--err); background: rgba(255,123,123,.08); }
+.alerta.ordenar { border-color: var(--muted); background: rgba(255,255,255,.04); }
+.alerta .tipo { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.alerta b { font-size: 15px; } .alerta p { margin: 0; font-size: 14px; line-height: 1.45; }
+.alerta .hacer { color: var(--fg, inherit); } .alerta .hacer::before { content: "→ "; font-weight: 700; }
 .top3 { display: grid; gap: 8px; }
 details.sec { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 0 14px; }
 details.sec > summary { cursor: pointer; list-style: none; padding: 12px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
@@ -151,6 +159,13 @@ function seccion(titulo, arr, f, abierta) {
   const n = (arr || []).length;
   return `<details class="sec"${abierta ? " open" : ""}><summary><span>${titulo} <span class="num">(${n})</span></span></summary>${n ? `<div class="lista">${arr.map(f).join("")}</div>` : `<p class="vacio">Nada por ahora.</p>`}</details>`;
 }
+const TIPOS = { revisar: "🔍 Revisar", oportunidad: "💡 Oportunidad", evitar: "⛔ Evitar", ordenar: "🧹 Ordenar" };
+function pintarAlertas(al) {
+  if (!al || !al.length) return "";
+  return `<div><h3>Para tener en cuenta</h3><div class="alertas">${al.map(x => typeof x === "string"
+    ? `<div class="alerta"><p>${esc(x)}</p></div>`
+    : `<div class="alerta ${esc(x.tipo)}"><span class="tipo">${TIPOS[x.tipo] || "Aviso"}</span><b>${esc(x.titulo)}</b>${x.que_pasa ? `<p>${esc(x.que_pasa)}</p>` : ""}${x.que_hacer ? `<p class="hacer">${esc(x.que_hacer)}</p>` : ""}</div>`).join("")}</div></div>`;
+}
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
   const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=3" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
@@ -172,7 +187,7 @@ function pintarInforme() {
   const top = pend.filter(x => x.prioridad === "alta").slice(0, 3);
   const chips = `<div class="chips"><span class="chip">Recomprar: ${pend.length} pendientes de ${rec.length}</span><span class="chip">No recomprar: ${(inf.no_recomprar || []).length}</span><span class="chip">Impulsar: ${(inf.impulsar || []).length}</span><span class="chip">Lo piden: ${(inf.pedir_nuevo || []).length}</span></div>`;
   v.innerHTML = cab + hist + `<p class="meta">${esUltimo ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p><p class="resumen">${esc(inf.resumen)}</p>` +
-    (inf.alertas?.length ? `<div class="aviso">${inf.alertas.map(esc).join("<br>")}</div>` : "") + chips +
+    pintarAlertas(inf.alertas) + chips +
     (top.length ? `<div><h3>Lo más urgente</h3><div class="top3">${top.map(filaRec).join("")}</div></div>` : (rec.length ? `<p class="vacio">✓ Ya marcaste todo lo urgente de este informe.</p>` : "")) +
     seccion("Recomprar (todo)", rec, filaRec, false) +
     seccion("No recomprar", inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo), false) +

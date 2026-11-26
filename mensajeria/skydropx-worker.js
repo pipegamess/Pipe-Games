@@ -1144,8 +1144,13 @@ ${tabla(d.quietos) || "(ninguno)"}
 PEDIDOS EN LISTA DE ESPERA QUE NO ESTÁN EN EL CATÁLOGO: ${d.espSinCatalogo.join("; ") || "ninguno"}
 
 RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
-{"resumen":"2 o 3 frases con lo más importante de la semana","recomprar":[{"producto":"","consola":"","cantidad":0,"prioridad":"alta|media|baja","motivo":"frase corta con el dato que lo justifica"}],"no_recomprar":[{"producto":"","consola":"","motivo":""}],"impulsar":[{"producto":"","consola":"","idea":"promoción o acción concreta"}],"pedir_nuevo":[{"producto":"","motivo":""}],"alertas":["frase corta"]}
-Máximo 12 en recomprar, 6 en no_recomprar, 6 en impulsar, 5 en pedir_nuevo, 4 alertas. Cada "motivo" o "idea" de máximo 18 palabras. No uses bloques de código ni escribas nada fuera del JSON.`;
+{"resumen":"2 o 3 frases con lo más importante de la semana","recomprar":[{"producto":"","consola":"","cantidad":0,"prioridad":"alta|media|baja","motivo":"frase corta con el dato que lo justifica"}],"no_recomprar":[{"producto":"","consola":"","motivo":""}],"impulsar":[{"producto":"","consola":"","idea":"promoción o acción concreta"}],"pedir_nuevo":[{"producto":"","motivo":""}],"alertas":[{"tipo":"revisar|oportunidad|evitar|ordenar","titulo":"","que_pasa":"","que_hacer":""}]}
+Máximo 12 en recomprar, 6 en no_recomprar, 6 en impulsar, 5 en pedir_nuevo, 4 alertas. Cada "motivo" o "idea" de máximo 18 palabras.
+CÓMO ESCRIBIR (Felipe lo lee rápido en el celular):
+- Español claro y natural, frases completas, sin abreviaturas, sin siglas raras y sin jerga técnica. Nada de frases telegráficas tipo "X: 30 ventas y consola sin catálogo".
+- "resumen": máximo 3 frases cortas: qué se mueve, qué es lo más urgente y por qué.
+- Cada alerta: "tipo" = revisar (un dato que parece raro y conviene verificar), oportunidad (algo que se puede vender), evitar (un error de compra a no cometer) u ordenar (algo a corregir en el catálogo o el Excel). "titulo" = 3 a 6 palabras con el producto. "que_pasa" = una frase con el dato concreto. "que_hacer" = una frase que empiece con un verbo y diga la acción exacta.
+- Si citas un número, di de qué es (por ejemplo "78 unidades vendidas en 2026 según el Excel"). No uses bloques de código ni escribas nada fuera del JSON.`;
   // Se pide el informe; si llega cortado o con texto de más, se intenta una vez más pidiendo más brevedad
   const pedir = async extra => {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
