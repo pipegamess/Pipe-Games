@@ -137,7 +137,8 @@ const EQUIPO = [
   { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice CÓMO estás de precio" },
   { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
 ];
-let elegido = "mati", DATOS = null, verT = null, borrando = false; // verT: qué informe del historial se está viendo
+let elegido = "mati", DATOS = null, verT = null, borrando = false;
+const respondidasAhora = new Set(); // dudas respondidas en esta visita (al recargar la página desaparecen) // verT: qué informe del historial se está viendo
 
 async function worker(metodo, extra) {
   const token = await auth.currentUser.getIdToken();
@@ -175,6 +176,8 @@ function pintarAlertas(al) {
 function pintarDudas(dudas) {
   if (!dudas || !dudas.length) return "";
   const alias = DATOS.alias || {};
+  dudas = dudas.filter(x => !alias[x.clave] || respondidasAhora.has(x.clave));
+  if (!dudas.length) return "";
   const pend = dudas.filter(x => !alias[x.clave]);
   return `<div><h3>Mati necesita que le confirmes${pend.length ? ` <span class="num">(${pend.length})</span>` : ""}</h3>
   <p class="meta">Estos nombres aparecen en tus ventas pero no están igual en el inventario. Mati no los da por agotados hasta que le digas.</p>
@@ -232,6 +235,7 @@ $("vInforme").addEventListener("click", async e => {
   const c = e.target.closest("[data-conf]");
   if (c) {
     const clave = c.dataset.conf, destino = c.dataset.dest, antes = (DATOS.alias || {})[clave];
+    respondidasAhora.add(clave);
     DATOS.alias = DATOS.alias || {}; if (destino) DATOS.alias[clave] = destino; else delete DATOS.alias[clave];
     pintarInforme();
     try { await worker("MATI_CONFIRMAR", { clave, destino }); }
