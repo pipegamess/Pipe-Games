@@ -1071,10 +1071,13 @@ function cantidadClaves(prod, k) {
 const ALIAS_VENTAS = [
   [/^(THE)?(LEGENDOF)?ZELDA(TOTK|TEARSOFTHEKINGDOM)/, "THELEGENDOFZELDATEARSOFTHEKINGDOM"],
   [/^TOTK$/, "THELEGENDOFZELDATEARSOFTHEKINGDOM"],
+  // MicroSD Express 256GB (Samsung) de Switch 2: en el Excel se llama distinto que en el stock
+  [/^(MEMORIA)?(SAMSUNG)?MICROSDEXPRESS(CARD)?(SAMSUNG)?256GB/, "MICROSDEXPRESSSAMSUNG256GB|SWITCH2", true],
 ];
 function unificarClave(k) {
   const [c, cons = ""] = String(k).split("|");
-  for (const [re, nuevo] of ALIAS_VENTAS) if (re.test(c)) return nuevo + c.replace(re, "") + "|" + cons;
+  for (const [re, nuevo, entero] of ALIAS_VENTAS) if (entero && re.test(c) && /SWITCH2/.test(c + cons)) return nuevo;
+  for (const [re, nuevo, entero] of ALIAS_VENTAS) if (!entero && re.test(c)) return nuevo + c.replace(re, "") + "|" + cons;
   return k;
 }
 async function datosMati(env, tk) {
