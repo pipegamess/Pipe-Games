@@ -120,6 +120,9 @@ const Manejador = {
     if (String(pedido.metodo || "").toUpperCase() === "EQUIPO_LEER") {
       try { return responder(await leerEquipo(env)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
+    if (String(pedido.metodo || "").toUpperCase() === "MATI_MARCAR") {
+      try { return responder(await marcarMati(env, pedido.clave, !!pedido.hecho)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
+    }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_GENERAR") {
       try { return responder(await correrMati(env, true)); } catch (e) { return responder({ error: "Mati: " + (e.message || e) }, 500); }
     }
@@ -1158,17 +1161,37 @@ Máximo 12 en recomprar, 6 en no_recomprar, 6 en impulsar, 5 en pedir_nuevo, 4 a
   if (!res.informe) throw new Error("Mati no devolvió un informe válido (" + res.error + ")");
   const informe = res.informe, j = res.j;
   informe.datos = { productosAnalizados: d.conMov.length + d.quietos.length, ventasDelExcel: d.hayVentas, ventasActualizadas: d.tVentas || null, tokens: j.usage || null };
-  await escribirDocFS(env, tk, "privado/equipo_mati", { t: Date.now(), informe: JSON.stringify(informe) });
+  const ahora = Date.now();
+  await escribirDocFS(env, tk, "privado/equipo_mati", { t: ahora, informe: JSON.stringify(informe) });
+  // historial: los últimos 8 informes
+  const h = await leerDocFS(env, tk, "privado/equipo_mati_hist").catch(() => null);
+  const lista = [{ t: ahora, informe }, ...JSON.parse((h && h.lista) || "[]")].slice(0, 8);
+  await escribirDocFS(env, tk, "privado/equipo_mati_hist", { t: ahora, lista: JSON.stringify(lista) });
   const top = (informe.recomprar || []).filter(x => x.prioridad === "alta").slice(0, 3).map(x => `${x.producto}${x.consola ? " " + x.consola : ""} (${x.cantidad})`).join(", ");
   await notificar(env, "📦 Mati: informe de inventario listo", (informe.resumen || "") + (top ? "\nPrioridad alta: " + top : "") + "\nVer en pipegames.com.co/equipo/", 3, ["package"]);
-  return { ok: true, informe, t: Date.now() };
+  return { ok: true, informe, t: ahora };
 }
 async function leerEquipo(env) {
   const tk = await tokenServicio(env);
   const mati = await leerDocFS(env, tk, "privado/equipo_mati");
   const anio = new Date(Date.now() - 5 * 3600000).getUTCFullYear();
   const v = await leerDocFS(env, tk, "privado/ventas_" + anio);
-  return { mati: mati ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
+  const h = await leerDocFS(env, tk, "privado/equipo_mati_hist");
+  const marcas = await leerDocFS(env, tk, "privado/equipo_mati_marcas");
+  let historial = JSON.parse((h && h.lista) || "[]");
+  if (!historial.length && mati) historial = [{ t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") }];
+  return { mati: mati ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, historial,
+    marcas: JSON.parse((marcas && marcas.mapa) || "{}"), ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
+}
+// "Ya lo compré" / "Hecho" en una recomendación de Mati
+async function marcarMati(env, clave, hecho) {
+  const tk = await tokenServicio(env);
+  const d = await leerDocFS(env, tk, "privado/equipo_mati_marcas");
+  const mapa = JSON.parse((d && d.mapa) || "{}");
+  if (hecho) mapa[String(clave).slice(0, 200)] = Date.now(); else delete mapa[clave];
+  const claves = Object.keys(mapa).sort((a, b) => mapa[b] - mapa[a]).slice(0, 400);
+  await escribirDocFS(env, tk, "privado/equipo_mati_marcas", { t: Date.now(), mapa: JSON.stringify(Object.fromEntries(claves.map(k => [k, mapa[k]]))) });
+  return { ok: true };
 }
 
 

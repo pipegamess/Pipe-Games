@@ -66,6 +66,20 @@ button.primary:disabled { opacity: .55; cursor: wait; }
 .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .vacio { color: var(--muted); font-size: 14px; margin: 0; }
 .aviso { background: rgba(245,196,0,.1); border: 1px solid rgba(245,196,0,.35); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.top3 { display: grid; gap: 8px; }
+details.sec { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 0 14px; }
+details.sec > summary { cursor: pointer; list-style: none; padding: 12px 0; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary::after { content: "▸"; color: var(--muted); }
+details.sec[open] > summary::after { content: "▾"; }
+details.sec[open] { padding-bottom: 12px; }
+.num { color: var(--muted); font-weight: 400; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font-size: 13px; border-radius: 999px; padding: 3px 10px; background: rgba(255,255,255,.06); }
+.item.hecho { opacity: .45; } .item.hecho b { text-decoration: line-through; }
+.marca { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); grid-column: 1 / -1; cursor: pointer; }
+.hist { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.hist select { font: inherit; padding: 6px 8px; border-radius: 8px; }
 .acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 </style>
 </head>
@@ -109,11 +123,11 @@ const EQUIPO = [
   { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice CÓMO estás de precio" },
   { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
 ];
-let elegido = "mati", DATOS = null;
+let elegido = "mati", DATOS = null, verT = null; // verT: qué informe del historial se está viendo
 
-async function worker(metodo) {
+async function worker(metodo, extra) {
   const token = await auth.currentUser.getIdToken();
-  const r = await fetch(SKYDROPX_URL.replace(/\/+$/, ""), { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo }) });
+  const r = await fetch(SKYDROPX_URL.replace(/\/+$/, ""), { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo, ...(extra || {}) }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw new Error(j.error || ("Error " + r.status));
   return j;
@@ -126,36 +140,67 @@ function pintarEquipo() {
 }
 $("equipo").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (!b) return; elegido = b.dataset.m; pintarEquipo(); pintarInforme(); });
 
-const item = (titulo, derecha, motivo) => `<div class="item"><span>${titulo}</span>${derecha ? `<span class="cant">${derecha}</span>` : "<span></span>"}${motivo ? `<span class="m">${esc(motivo)}</span>` : ""}</div>`;
+const item = (titulo, derecha, motivo, extra = "", cls = "") => `<div class="item${cls}"><span>${titulo}</span>${derecha ? `<span class="cant">${derecha}</span>` : "<span></span>"}${motivo ? `<span class="m">${esc(motivo)}</span>` : ""}${extra}</div>`;
+const claveMarca = (t, x) => t + "|" + String(x.producto || "").toLowerCase() + "|" + String(x.consola || "").toLowerCase();
+const RANGO = { alta: 0, media: 1, baja: 2 };
+function informes() {
+  const h = (DATOS && DATOS.historial) || [];
+  return h.length ? h : (DATOS && DATOS.mati ? [DATOS.mati] : []);
+}
+function seccion(titulo, arr, f, abierta) {
+  const n = (arr || []).length;
+  return `<details class="sec"${abierta ? " open" : ""}><summary><span>${titulo} <span class="num">(${n})</span></span></summary>${n ? `<div class="lista">${arr.map(f).join("")}</div>` : `<p class="vacio">Nada por ahora.</p>`}</details>`;
+}
 function pintarInforme() {
   const m = EQUIPO.find(x => x.id === elegido), v = $("vInforme");
   const cab = `<div class="informe-cab"><img src="${m.id}.jpg?v=3" alt="${m.nombre}" width="600" height="750"><div><h2>${m.nombre} · ${m.rol}</h2><p class="meta">${m.lema}</p></div></div>`;
   if (!m.listo) { v.innerHTML = cab + `<p class="vacio">${m.nombre} se suma al equipo pronto. Primero dejamos a Mati funcionando con tus datos.</p>`; return; }
   if (!DATOS) { v.innerHTML = cab + `<p class="vacio">Cargando el informe…</p>`; return; }
-  const inf = DATOS.mati?.informe, ventas = DATOS.ventas;
+  const ventas = DATOS.ventas, lista = informes(), marcas = DATOS.marcas || {};
+  const actual = lista.find(x => x.t === verT) || lista[0], inf = actual && actual.informe;
   const avisoVentas = !ventas ? `<div class="aviso">Mati todavía no tiene tus ventas del Excel. Mientras tanto decide solo con el stock y la lista de espera. Las ventas llegan solas (en privado) cada vez que abres el Excel.</div>`
-    : `<p class="meta">Ventas del Excel recibidas el ${fechaHora(ventas.t)} · ${ventas.filas} registros (producto por mes).</p>`;
+    : `<p class="meta">Ventas del Excel recibidas el ${fechaHora(ventas.t)} · ${ventas.filas} registros.</p>`;
   const btn = `<div class="acciones"><button class="primary" type="button" id="generar">Pedirle a Mati un informe nuevo</button><span class="status" id="gEstado"></span></div>`;
   if (!inf) { v.innerHTML = cab + avisoVentas + `<p class="vacio">Aún no hay informes. Mati entrega uno cada lunes en la mañana, o puedes pedírselo ahora.</p>` + btn; return; }
-  const lista = (arr, f) => arr && arr.length ? `<div class="lista">${arr.map(f).join("")}</div>` : `<p class="vacio">Nada por ahora.</p>`;
-  v.innerHTML = cab + `<p class="resumen">${esc(inf.resumen)}</p><p class="meta">Informe del ${fechaHora(DATOS.mati.t)}</p>` + avisoVentas +
-    (inf.alertas?.length ? `<div class="aviso">${inf.alertas.map(esc).join("<br>")}</div>` : "") +
-    `<div><h3>Recomprar</h3>${lista(inf.recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}<span class="prio ${esc(x.prioridad)}">${esc(x.prioridad || "")}</span>`, x.cantidad ? "×" + x.cantidad : "", x.motivo))}</div>
-     <div class="cols">
-       <div><h3>No recomprar</h3>${lista(inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo))}</div>
-       <div><h3>Impulsar (stock quieto)</h3>${lista(inf.impulsar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.idea))}</div>
-     </div>
-     <div><h3>Lo piden y no lo tienes</h3>${lista(inf.pedir_nuevo, x => item(`<b>${esc(x.producto)}</b>`, "", x.motivo))}</div>` + btn;
+  const esUltimo = actual === lista[0];
+  const hist = lista.length > 1 ? `<label class="hist">Ver informe: <select id="histSel">${lista.map((x, i) => `<option value="${x.t}"${x === actual ? " selected" : ""}>${i === 0 ? "Último · " : ""}${esc(fechaHora(x.t))}</option>`).join("")}</select></label>` : "";
+  const rec = [...(inf.recomprar || [])].sort((a, b) => (RANGO[a.prioridad] ?? 3) - (RANGO[b.prioridad] ?? 3));
+  const pend = rec.filter(x => !marcas[claveMarca(actual.t, x)]);
+  const filaRec = x => { const k = claveMarca(actual.t, x), h = !!marcas[k];
+    return item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}<span class="prio ${esc(x.prioridad)}">${esc(x.prioridad || "")}</span>`, x.cantidad ? "×" + x.cantidad : "", x.motivo,
+      `<label class="marca"><input type="checkbox" data-k="${esc(k)}"${h ? " checked" : ""}> Ya lo compré</label>`, h ? " hecho" : ""); };
+  const top = pend.filter(x => x.prioridad === "alta").slice(0, 3);
+  const chips = `<div class="chips"><span class="chip">Recomprar: ${pend.length} pendientes de ${rec.length}</span><span class="chip">No recomprar: ${(inf.no_recomprar || []).length}</span><span class="chip">Impulsar: ${(inf.impulsar || []).length}</span><span class="chip">Lo piden: ${(inf.pedir_nuevo || []).length}</span></div>`;
+  v.innerHTML = cab + hist + `<p class="meta">${esUltimo ? "Informe más reciente" : "Informe anterior"} · ${fechaHora(actual.t)}</p><p class="resumen">${esc(inf.resumen)}</p>` +
+    (inf.alertas?.length ? `<div class="aviso">${inf.alertas.map(esc).join("<br>")}</div>` : "") + chips +
+    (top.length ? `<div><h3>Lo más urgente</h3><div class="top3">${top.map(filaRec).join("")}</div></div>` : (rec.length ? `<p class="vacio">✓ Ya marcaste todo lo urgente de este informe.</p>` : "")) +
+    seccion("Recomprar (todo)", rec, filaRec, false) +
+    seccion("No recomprar", inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo), false) +
+    seccion("Impulsar (stock quieto)", inf.impulsar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.idea), false) +
+    seccion("Lo piden y no lo tienes", inf.pedir_nuevo, x => item(`<b>${esc(x.producto)}</b>`, "", x.motivo), false) +
+    avisoVentas + btn;
 }
+$("vInforme").addEventListener("change", async e => {
+  if (e.target.id === "histSel") { verT = Number(e.target.value); pintarInforme(); return; }
+  const c = e.target.closest("input[data-k]"); if (!c) return;
+  const k = c.dataset.k, hecho = c.checked;
+  DATOS.marcas = DATOS.marcas || {}; if (hecho) DATOS.marcas[k] = Date.now(); else delete DATOS.marcas[k];
+  const abiertas = [...document.querySelectorAll("details.sec")].map(d => d.open);
+  pintarInforme(); document.querySelectorAll("details.sec").forEach((d, i) => d.open = !!abiertas[i]);
+  try { await worker("MATI_MARCAR", { clave: k, hecho }); }
+  catch (err) { if (hecho) delete DATOS.marcas[k]; else DATOS.marcas[k] = 1; pintarInforme(); alertaFallo(err); }
+});
+function alertaFallo(err) { $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se guardó la marca: ${esc(err.message)}</p>`); }
 $("vInforme").addEventListener("click", async e => {
   if (!e.target.closest("#generar")) return;
   const b = $("generar"); b.disabled = true; $("gEstado").className = "status"; $("gEstado").textContent = "Mati está revisando ventas, stock y lista de espera (unos 30 segundos)…";
-  try { const r = await worker("MATI_GENERAR"); DATOS = { ...DATOS, mati: { t: r.t, informe: r.informe } }; pintarInforme(); }
+  try { const r = await worker("MATI_GENERAR"); const nuevo = { t: r.t, informe: r.informe };
+    DATOS = { ...DATOS, mati: nuevo, historial: [nuevo, ...informes()].slice(0, 8) }; verT = null; pintarInforme(); }
   catch (err) { $("gEstado").className = "status err"; $("gEstado").textContent = err.message; b.disabled = false; }
 });
 async function cargar() {
   try { DATOS = await worker("EQUIPO_LEER"); }
-  catch (e) { DATOS = { mati: null, ventas: null }; $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se pudo leer el informe: ${esc(e.message)}</p>`); }
+  catch (e) { DATOS = { mati: null, ventas: null, historial: [], marcas: {} }; $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se pudo leer el informe: ${esc(e.message)}</p>`); }
   pintarInforme();
 }
 
