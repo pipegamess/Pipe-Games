@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "1", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "2", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1376,6 +1376,7 @@ REGLAS:
 - "avisar_clientes": juegos que coinciden con la lista de espera.
 
 CÓMO ESCRIBIR (Felipe lo lee rápido en el celular): español claro, frases completas, sin abreviaturas ni jerga. Fechas como "12 de diciembre de 2026".
+- En el "resumen" y en las alertas, CADA juego que nombres lleva entre paréntesis su consola o consolas y su fecha exacta si la tiene, por ejemplo: "Until Dawn 2 (PS5, 15 de enero de 2027)", "Professor Layton (Switch y Switch 2, 4 de diciembre de 2026)". Si la fecha no está confirmada escribe "fecha por confirmar" o el mes anunciado. Si un juego ya salió, di la fecha en que salió.
 
 LO MÁS VENDIDO EN PIPE GAMES ESTE AÑO (producto · consola (unidades)):
 ${d.masVendidos.join("\n") || "(sin datos de ventas)"}
@@ -1392,7 +1393,7 @@ ${d.resultados.map(r => [r.titulo, r.fecha, r.url, r.texto].join(" | ")).join("\
 ${d.listas.map(l => "PÁGINA CON LISTA DE LANZAMIENTOS (" + l.url + "):\n" + l.texto).join("\n\n")}
 
 RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
-{"resumen":"máximo 3 frases: lo más importante que viene y qué preparar","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
+{"resumen":"máximo 4 frases: lo más importante que viene y qué preparar","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
 Ordena "lanzamientos" por fecha. Máximo 20 lanzamientos, 8 preventas, 6 avisar_clientes, 4 alertas. Si no hay fecha exacta usa fecha_iso con el primer día del mes o del año. No uses bloques de código.`;
   const { informe, j } = await pedirJSON(env, prompt, "\n\nIMPORTANTE: sé muy breve (máximo 12 lanzamientos, frases de máximo 12 palabras) y responde SOLO el JSON, sin ``` ni texto adicional.");
   informe.datos = { resultados: d.resultados.length, paginas: d.listas.map(l => l.url), tokens: j.usage || null };
