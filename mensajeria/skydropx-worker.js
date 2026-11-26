@@ -1179,7 +1179,7 @@ CÓMO DECIDIR:
 - Prioriza lo que se vende seguido y tiene poco o nada de stock, y lo que tiene clientes en lista de espera. Pesa más lo reciente (este mes y el pasado) que lo acumulado del año.
 - Analiza SOLO ${d.meses.anio}: no hay datos de años anteriores y no debes suponer ni mencionar comparaciones con otros años.
 - Ten en cuenta la ganancia por unidad: mejor recomprar lo que deja más.
-- Stock -1 = solo hay unidades en importación (vienen en camino). Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel, o un nombre de ventas que no coincide exactamente con el inventario y Felipe todavía debe confirmar: en ese caso NO lo des por agotado, NO lo recomiendes recomprar y NO lo menciones en alertas (Felipe ya recibe esa pregunta aparte).
+- Stock -1 = solo hay unidades EN IMPORTACIÓN (vienen en camino; no las vuelvas a pedir). Los artículos en estado DEVUELTO no cuentan: no están en importación ni disponibles. Stock 0 = agotado (incluye lo que ya salió del inventario del Excel). Stock vacío = producto del catálogo web que no está enlazado al Excel, o un nombre de ventas que no coincide exactamente con el inventario y Felipe todavía debe confirmar: en ese caso NO lo des por agotado, NO lo recomiendes recomprar y NO lo menciones en alertas (Felipe ya recibe esa pregunta aparte).
 - Si un producto aparece con ventas pero nombre distinto al del catálogo, trátalo como el mismo juego (por ejemplo variantes de edición o consola escritas distinto).
 - Señala el inventario quieto (stock sin ventas) que conviene impulsar con promoción en vez de recomprar.
 - Sé concreto y breve. Cantidades sugeridas realistas (1 a 6).
