@@ -298,8 +298,11 @@ $("vInforme").addEventListener("click", async e => {
   }
   if (e.target.closest("#generarTomi")) {
     const b = $("generarTomi"); b.disabled = true; $("tEstado").className = "status"; $("tEstado").textContent = "Tomi está buscando lanzamientos en internet y cruzándolos con tus ventas (cerca de 1 minuto)…";
+    const antes = Date.now();
     try { const r = await worker("TOMI_GENERAR"); DATOS.tomi = { historial: [{ t: r.t, informe: r.informe }, ...((DATOS.tomi && DATOS.tomi.historial) || [])].slice(0, 8) }; verTomi = null; pintarInforme(); }
-    catch (err) { $("tEstado").className = "status err"; $("tEstado").textContent = err.message; b.disabled = false; }
+    catch (err) {
+      if (/fetch|network|load failed|conexi/i.test(err.message)) { $("tEstado").textContent = "Se cortó la conexión; sigo esperando el informe de Tomi…"; if (await esperarInforme("tomi", antes)) return; }
+      $("tEstado").className = "status err"; $("tEstado").textContent = err.message; b.disabled = false; }
     return;
   }
   if (e.target.closest("#borrar")) { borrando = true; pintarInforme(); return; }
@@ -316,10 +319,26 @@ $("vInforme").addEventListener("click", async e => {
   }
   if (!e.target.closest("#generar")) return;
   const b = $("generar"); b.disabled = true; $("gEstado").className = "status"; $("gEstado").textContent = "Mati está revisando ventas, stock y lista de espera (unos 30 segundos)…";
+  const antes = Date.now();
   try { const r = await worker("MATI_GENERAR"); const nuevo = { t: r.t, informe: r.informe };
     DATOS = { ...DATOS, mati: nuevo, historial: [nuevo, ...informes()].slice(0, 8) }; verT = null; pintarInforme(); }
-  catch (err) { $("gEstado").className = "status err"; $("gEstado").textContent = err.message; b.disabled = false; }
+  catch (err) {
+    if (/fetch|network|load failed|conexi/i.test(err.message)) { $("gEstado").textContent = "Se cortó la conexión; sigo esperando el informe de Mati…"; if (await esperarInforme("mati", antes)) return; }
+    $("gEstado").className = "status err"; $("gEstado").textContent = err.message; b.disabled = false; }
 });
+// Si la conexión se corta mientras se genera un informe (cambiaste de app en el celular), al volver se busca el resultado
+let generando = null;
+async function esperarInforme(quien, antes) {
+  for (let i = 0; i < 12; i++) {
+    await new Promise(r => setTimeout(r, 10000));
+    try {
+      const d = await worker("EQUIPO_LEER");
+      const ult = quien === "tomi" ? (d.tomi && d.tomi.historial[0]) : (d.historial && d.historial[0]);
+      if (ult && Number(ult.t) > antes) { DATOS = d; verT = null; verTomi = null; pintarInforme(); return true; }
+    } catch {}
+  }
+  return false;
+}
 async function cargar() {
   try { DATOS = await worker("EQUIPO_LEER"); }
   catch (e) { DATOS = { mati: null, ventas: null, historial: [], marcas: {} }; $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se pudo leer el informe: ${esc(e.message)}</p>`); }

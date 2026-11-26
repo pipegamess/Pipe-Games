@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "4", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "5", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -121,7 +121,7 @@ const Manejador = {
       try { return responder(await leerEquipo(env)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "TOMI_GENERAR") {
-      try { return responder(await correrTomi(env, true)); } catch (e) { return responder({ error: "Tomi: " + (e.message || e) }, 500); }
+      try { const tarea = correrTomi(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Tomi: " + (e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "TOMI_BORRAR") {
       try { return responder(await borrarInforme(env, "tomi", pedido.t)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
@@ -136,7 +136,7 @@ const Manejador = {
       try { return responder(await marcarMati(env, pedido.clave, !!pedido.hecho)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_GENERAR") {
-      try { return responder(await correrMati(env, true)); } catch (e) { return responder({ error: "Mati: " + (e.message || e) }, 500); }
+      try { const tarea = correrMati(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Mati: " + (e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "ADDI_CREAR") {
       try { return responder(await crearAddi(pedido.pedido || {}, env, url)); }
