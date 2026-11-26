@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-devueltos", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-borrar", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -119,6 +119,9 @@ const Manejador = {
     // Equipo Pipe Games: leer los informes y pedirle a Mati uno nuevo
     if (String(pedido.metodo || "").toUpperCase() === "EQUIPO_LEER") {
       try { return responder(await leerEquipo(env)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
+    }
+    if (String(pedido.metodo || "").toUpperCase() === "MATI_BORRAR") {
+      try { return responder(await borrarMati(env, pedido.t)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "MATI_CONFIRMAR") {
       try { return responder(await confirmarMati(env, pedido.clave, pedido.destino)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
@@ -1240,9 +1243,26 @@ async function leerEquipo(env) {
   const marcas = await leerDocFS(env, tk, "privado/equipo_mati_marcas");
   const alias = await leerDocFS(env, tk, "privado/equipo_mati_alias");
   let historial = JSON.parse((h && h.lista) || "[]");
-  if (!historial.length && mati) historial = [{ t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") }];
-  return { mati: mati ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, historial,
+  if (!historial.length && mati && mati.informe) historial = [{ t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") }];
+  return { mati: mati && mati.informe ? { t: Number(mati.t), informe: JSON.parse(mati.informe || "{}") } : null, historial,
     marcas: JSON.parse((marcas && marcas.mapa) || "{}"), alias: JSON.parse((alias && alias.mapa) || "{}"), ventas: v ? { t: Number(v.t), filas: JSON.parse(v.filas || "[]").length } : null };
+}
+// Eliminar un informe del historial (si era el último, queda como último el anterior)
+async function borrarMati(env, t) {
+  t = Number(t); if (!t) throw new Error("falta el informe");
+  const tk = await tokenServicio(env);
+  const h = await leerDocFS(env, tk, "privado/equipo_mati_hist");
+  let lista = JSON.parse((h && h.lista) || "[]");
+  const actual = await leerDocFS(env, tk, "privado/equipo_mati");
+  if (!lista.length && actual) lista = [{ t: Number(actual.t), informe: JSON.parse(actual.informe || "{}") }];
+  lista = lista.filter(x => Number(x.t) !== t);
+  await escribirDocFS(env, tk, "privado/equipo_mati_hist", { t: Date.now(), lista: JSON.stringify(lista) });
+  if (actual && Number(actual.t) === t) {
+    // t viejo = el lunes siguiente igual genera uno nuevo
+    const sig = lista[0];
+    await escribirDocFS(env, tk, "privado/equipo_mati", sig ? { t: Number(sig.t), informe: JSON.stringify(sig.informe) } : { t: 0, informe: "" });
+  }
+  return { ok: true, quedan: lista.length };
 }
 // Felipe confirma una duda de Mati: el nombre de ventas es tal producto del stock, o sí está agotado ("AGOTADO"); vacío = deshacer
 async function confirmarMati(env, clave, destino) {

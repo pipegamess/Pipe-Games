@@ -137,7 +137,7 @@ const EQUIPO = [
   { id: "anto", nombre: "Anto", rol: "Revisora de Precios", lema: "Te dice CÓMO estás de precio" },
   { id: "luca", nombre: "Luca", rol: "Optimizador de Mercado Ads", lema: "Te dice DÓNDE pierdes plata" }
 ];
-let elegido = "mati", DATOS = null, verT = null; // verT: qué informe del historial se está viendo
+let elegido = "mati", DATOS = null, verT = null, borrando = false; // verT: qué informe del historial se está viendo
 
 async function worker(metodo, extra) {
   const token = await auth.currentUser.getIdToken();
@@ -212,10 +212,13 @@ function pintarInforme() {
     seccion("No recomprar", inf.no_recomprar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.motivo), false) +
     seccion("Impulsar (stock quieto)", inf.impulsar, x => item(`<b>${esc(x.producto)}</b> ${esc(x.consola || "")}`, "", x.idea), false) +
     seccion("Lo piden y no lo tienes", inf.pedir_nuevo, x => item(`<b>${esc(x.producto)}</b>`, "", x.motivo), false) +
-    avisoVentas + btn;
+    avisoVentas + btn +
+    `<div class="acciones" style="margin-top:6px">${borrando
+      ? `<span class="status err">¿Eliminar el informe del ${esc(fechaHora(actual.t))}? No se puede recuperar.</span><button type="button" class="primary" id="borrarSi" data-t="${actual.t}">Sí, eliminar</button><button type="button" class="ghost" id="borrarNo">Cancelar</button>`
+      : `<button type="button" class="ghost" id="borrar">Eliminar este informe</button>`}<span class="status" id="bEstado"></span></div>`;
 }
 $("vInforme").addEventListener("change", async e => {
-  if (e.target.id === "histSel") { verT = Number(e.target.value); pintarInforme(); return; }
+  if (e.target.id === "histSel") { verT = Number(e.target.value); borrando = false; pintarInforme(); return; }
   const c = e.target.closest("input[data-k]"); if (!c) return;
   const k = c.dataset.k, hecho = c.checked;
   DATOS.marcas = DATOS.marcas || {}; if (hecho) DATOS.marcas[k] = Date.now(); else delete DATOS.marcas[k];
@@ -233,6 +236,18 @@ $("vInforme").addEventListener("click", async e => {
     pintarInforme();
     try { await worker("MATI_CONFIRMAR", { clave, destino }); }
     catch (err) { if (antes) DATOS.alias[clave] = antes; else delete DATOS.alias[clave]; pintarInforme(); $("vInforme").insertAdjacentHTML("afterbegin", `<p class="status err">No se guardó: ${esc(err.message)}</p>`); }
+    return;
+  }
+  if (e.target.closest("#borrar")) { borrando = true; pintarInforme(); return; }
+  if (e.target.closest("#borrarNo")) { borrando = false; pintarInforme(); return; }
+  const bs = e.target.closest("#borrarSi");
+  if (bs) {
+    const t = Number(bs.dataset.t); bs.disabled = true;
+    try {
+      await worker("MATI_BORRAR", { t });
+      const resto = informes().filter(x => Number(x.t) !== t);
+      DATOS = { ...DATOS, historial: resto, mati: resto[0] || null }; verT = null; borrando = false; pintarInforme();
+    } catch (err) { bs.disabled = false; $("bEstado").className = "status err"; $("bEstado").textContent = err.message; }
     return;
   }
   if (!e.target.closest("#generar")) return;
