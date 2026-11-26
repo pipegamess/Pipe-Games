@@ -200,7 +200,7 @@ function pintarTomi(cab) {
   const v = $("vInforme"), lista = (DATOS.tomi && DATOS.tomi.historial) || [];
   const btn = `<div class="acciones"><button class="primary" type="button" id="generarTomi">Pedirle a Tomi un informe nuevo</button><span class="status" id="tEstado"></span></div>`;
   const actual = lista.find(x => x.t === verTomi) || lista[0], inf = actual && actual.informe;
-  if (!inf) { v.innerHTML = cab + `<p class="vacio">Aún no hay informes. Tomi entrega uno cada jueves en la mañana, o puedes pedírselo ahora (tarda cerca de 1 minuto porque busca en internet).</p>` + btn; return; }
+  if (!inf) { v.innerHTML = cab + `<p class="vacio">Aún no hay informes. Tomi entrega uno cada sábado a las 5:30 p. m., o puedes pedírselo ahora (tarda cerca de 1 minuto porque busca en internet).</p>` + btn; return; }
   const hist = lista.length > 1 ? `<label class="hist">Ver informe: <select id="histTomi">${lista.map((x, i) => `<option value="${x.t}"${x === actual ? " selected" : ""}>${i === 0 ? "Último · " : ""}${esc(fechaHora(x.t))}</option>`).join("")}</select></label>` : "";
   const lz = [...(inf.lanzamientos || [])].sort((a, b) => String(a.fecha_iso || "").localeCompare(String(b.fecha_iso || "")));
   const urg = lz.filter(x => x.interes === "alta");
@@ -232,7 +232,7 @@ function pintarInforme() {
   const avisoVentas = !ventas ? `<div class="aviso">Mati todavía no tiene tus ventas del Excel. Mientras tanto decide solo con el stock y la lista de espera. Las ventas llegan solas (en privado) cada vez que abres el Excel.</div>`
     : `<p class="meta">Ventas del Excel recibidas el ${fechaHora(ventas.t)} · ${ventas.filas} registros.</p>`;
   const btn = `<div class="acciones"><button class="primary" type="button" id="generar">Pedirle a Mati un informe nuevo</button><span class="status" id="gEstado"></span></div>`;
-  if (!inf) { v.innerHTML = cab + avisoVentas + `<p class="vacio">Aún no hay informes. Mati entrega uno cada lunes en la mañana, o puedes pedírselo ahora.</p>` + btn; return; }
+  if (!inf) { v.innerHTML = cab + avisoVentas + `<p class="vacio">Aún no hay informes. Mati entrega uno cada sábado a las 5:30 p. m., o puedes pedírselo ahora.</p>` + btn; return; }
   const esUltimo = actual === lista[0];
   const hist = lista.length > 1 ? `<label class="hist">Ver informe: <select id="histSel">${lista.map((x, i) => `<option value="${x.t}"${x === actual ? " selected" : ""}>${i === 0 ? "Último · " : ""}${esc(fechaHora(x.t))}</option>`).join("")}</select></label>` : "";
   const rec = [...(inf.recomprar || [])].sort((a, b) => (RANGO[a.prioridad] ?? 3) - (RANGO[b.prioridad] ?? 3));

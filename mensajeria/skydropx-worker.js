@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "1", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "1", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -277,11 +277,11 @@ export default {
   },
   async scheduled(evento, env, ctx) {
     ctx.waitUntil(revisarPanel(env).catch(e => alertaError(env, "Revisión del panel", String(e && e.message || e))));
-    // Mati: informe semanal los lunes desde las 7 a. m. (hora Colombia)
     const bog = new Date(Date.now() - 5 * 3600000);
-    // Tomi: los jueves desde las 7 a. m. (antes del fin de semana y de los lanzamientos del viernes)
-    if (bog.getUTCDay() === 4 && bog.getUTCHours() >= 7) ctx.waitUntil(correrTomi(env, false).catch(e => alertaError(env, "Informe de Tomi", String(e && e.message || e))));
-    if (bog.getUTCDay() === 1 && bog.getUTCHours() >= 7) ctx.waitUntil(correrMati(env, false).catch(e => alertaError(env, "Informe de Mati", String(e && e.message || e))));
+    // Equipo: todos los informes los sábados desde las 5:30 p. m. (hora Colombia)
+    const sabadoTarde = bog.getUTCDay() === 6 && bog.getUTCHours() * 60 + bog.getUTCMinutes() >= 17 * 60 + 30;
+    if (sabadoTarde) ctx.waitUntil(correrTomi(env, false).catch(e => alertaError(env, "Informe de Tomi", String(e && e.message || e))));
+    if (sabadoTarde) ctx.waitUntil(correrMati(env, false).catch(e => alertaError(env, "Informe de Mati", String(e && e.message || e))));
   }
 };
 
@@ -1186,7 +1186,7 @@ async function correrMati(env, forzado) {
   if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
   const tk = await tokenServicio(env);
   const previo = await leerDocFS(env, tk, "privado/equipo_mati");
-  if (!forzado && previo && Date.now() - Number(previo.t || 0) < 6 * 86400000) return { ok: true, omitido: "ya hay informe de esta semana" };
+  if (!forzado && previo && Date.now() - Number(previo.t || 0) < 12 * 3600000) return { ok: true, omitido: "ya hay informe de hoy" };
   if (!forzado && !(await primerIntento(env, tk, QUIEN))) return { ok: true, omitido: "ya se intentó hace poco" };
   const d = await datosMati(env, tk);
   const tabla = x => x.map(f => [f.producto, f.consola, f.stock, f.precio, f.ventas_mes_actual, f.ventas_mes_pasado, f.ventas_ult_3_meses, f.ventas_en_el_anio, f.ganancia_promedio_unidad, f.clientes_en_espera, f.dias_desde_que_llego === null ? "" : f.dias_desde_que_llego].join(" | ")).join("\n");
@@ -1358,7 +1358,7 @@ async function correrTomi(env, forzado) {
   if (!env.FIREBASE_SA || !env.ANTHROPIC_API_KEY) throw new Error("faltan FIREBASE_SA o ANTHROPIC_API_KEY");
   const tk = await tokenServicio(env);
   const previo = await leerDocFS(env, tk, "privado/equipo_tomi");
-  if (!forzado && previo && Date.now() - Number(previo.t || 0) < 6 * 86400000) return { ok: true, omitido: "ya hay informe de esta semana" };
+  if (!forzado && previo && Date.now() - Number(previo.t || 0) < 12 * 3600000) return { ok: true, omitido: "ya hay informe de hoy" };
   if (!forzado && !(await primerIntento(env, tk, QUIEN))) return { ok: true, omitido: "ya se intentó hace poco" };
   const d = await datosTomi(env, tk);
   const prompt = `Eres Tomi, el Vigía de Lanzamientos de Pipe Games, tienda virtual de videojuegos físicos en Bogotá, Colombia. Felipe vende juegos físicos de PS4, PS5, Nintendo Switch y Switch 2, consolas y accesorios. NO vende Xbox ni juegos de PC. Compra pocas unidades (3 a 6 por juego) en Amazon o en comercio local; la importación tarda días o semanas, así que necesita saber con tiempo qué viene.
