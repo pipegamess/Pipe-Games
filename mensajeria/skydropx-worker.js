@@ -1322,7 +1322,7 @@ async function primerIntento(env, tk, quien) {
   return true;
 }
 // Formato común del resumen para todo el equipo (Mati, Tomi, Anto, Luca)
-const ESTILO_RESUMEN = `- "resumen": de 3 a 5 líneas cortas separadas con salto de línea (\\n dentro del JSON). Cada línea empieza con "- " y trata UN solo tema. Empieza por lo más urgente.
+const ESTILO_RESUMEN = `- "resumen": de 3 a 5 líneas cortas separadas con salto de línea (\\n dentro del JSON). Cada línea empieza con "- ", trata UN solo tema y termina en punto (punto y aparte: nunca juntes dos temas en la misma línea). Empieza por lo más urgente.
 - Cada producto o juego que nombres (en el resumen y en las alertas) lleva entre paréntesis su consola o consolas, y la fecha exacta cuando aplique (llegada, lanzamiento o venta), por ejemplo "Mario Kart World (Switch 2)" o "Until Dawn 2 (PS5, 15 de enero de 2027)". Nunca digas "el juego" o "la consola" sin nombrarlos.`;
 // Guardar / borrar informes de cualquier miembro del equipo (último + historial de 8)
 async function guardarInforme(env, tk, quien, informe) {
