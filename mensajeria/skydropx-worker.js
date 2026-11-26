@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-dudas40", versionTomi: "5", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-dudas40", versionTomi: "6", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -1230,13 +1230,13 @@ ${ESTILO_RESUMEN}
   const pedir = async extra => {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 8000, messages: [{ role: "user", content: prompt + extra }] })
+      body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 16000, messages: [{ role: "user", content: prompt + extra }] })
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error("Claude " + r.status + ": " + ((j.error && j.error.message) || ""));
     const texto = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
-    try { return { informe: JSON.parse(texto.slice(texto.indexOf("{"), texto.lastIndexOf("}") + 1)), j }; }
-    catch { return { error: (j.stop_reason === "max_tokens" ? "respuesta cortada" : "formato") + ": " + texto.slice(0, 120), j }; }
+    try { return { informe: leerJSONFlexible(texto), j }; }
+    catch { return { error: (j.stop_reason === "max_tokens" ? "respuesta cortada en " + ((j.usage && j.usage.output_tokens) || "?") + " tokens" : "formato") + ": " + texto.slice(0, 80) + " … " + texto.slice(-80), j }; }
   };
   let res = await pedir("");
   if (!res.informe) res = await pedir("\n\nIMPORTANTE: sé muy breve (motivos de máximo 12 palabras, máximo 8 en recomprar) y responde SOLO el JSON, sin ``` ni texto adicional.");
@@ -1321,6 +1321,21 @@ async function primerIntento(env, tk, quien) {
   await escribirDocFS(env, tk, "privado/equipo_intento_" + quien, { t: Date.now() });
   return true;
 }
+// JSON del modelo: tolera saltos de línea reales dentro de los textos (el resumen va por líneas)
+function leerJSONFlexible(texto) {
+  const crudo = texto.slice(texto.indexOf("{"), texto.lastIndexOf("}") + 1);
+  try { return JSON.parse(crudo); } catch {}
+  let out = "", enTexto = false, esc = false;
+  for (const ch of crudo) {
+    if (enTexto) {
+      if (esc) { esc = false; out += ch; continue; }
+      if (ch === "\\") { esc = true; out += ch; continue; }
+      if (ch === '"') enTexto = false;
+      out += ch === "\n" ? "\\n" : ch === "\r" ? "" : ch === "\t" ? " " : ch;
+    } else { if (ch === '"') enTexto = true; out += ch; }
+  }
+  return JSON.parse(out);
+}
 // Formato común del resumen para todo el equipo (Mati, Tomi, Anto, Luca)
 const ESTILO_RESUMEN = `- "resumen": de 3 a 5 líneas cortas separadas con salto de línea (\\n dentro del JSON). Cada línea empieza con "- ", trata UN solo tema y termina en punto (punto y aparte: nunca juntes dos temas en la misma línea). Empieza por lo más urgente.
 - Cada producto o juego que nombres (en el resumen y en las alertas) lleva entre paréntesis su consola o consolas, y la fecha exacta cuando aplique (llegada, lanzamiento o venta), por ejemplo "Mario Kart World (Switch 2)" o "Until Dawn 2 (PS5, 15 de enero de 2027)". Nunca digas "el juego" o "la consola" sin nombrarlos.`;
@@ -1344,13 +1359,13 @@ async function pedirJSON(env, prompt, extraReintento) {
   const pedir = async extra => {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 8000, messages: [{ role: "user", content: prompt + extra }] })
+      body: JSON.stringify({ model: env.ANTHROPIC_MODEL || "claude-sonnet-5-5", max_tokens: 16000, messages: [{ role: "user", content: prompt + extra }] })
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error("Claude " + r.status + ": " + ((j.error && j.error.message) || ""));
     const texto = (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
-    try { return { informe: JSON.parse(texto.slice(texto.indexOf("{"), texto.lastIndexOf("}") + 1)), j }; }
-    catch { return { error: (j.stop_reason === "max_tokens" ? "respuesta cortada" : "formato") + ": " + texto.slice(0, 120), j }; }
+    try { return { informe: leerJSONFlexible(texto), j }; }
+    catch { return { error: (j.stop_reason === "max_tokens" ? "respuesta cortada en " + ((j.usage && j.usage.output_tokens) || "?") + " tokens" : "formato") + ": " + texto.slice(0, 80) + " … " + texto.slice(-80), j }; }
   };
   let res = await pedir("");
   if (!res.informe) res = await pedir(extraReintento);
@@ -1401,7 +1416,7 @@ ${d.listas.map(l => "PÁGINA CON LISTA DE LANZAMIENTOS (" + l.url + "):\n" + l.t
 
 RESPONDE SOLO con JSON válido, sin texto antes ni después, con esta forma:
 {"resumen":"3 a 5 líneas, cada una empieza con \"- \" y van separadas por \\n","lanzamientos":[{"titulo":"","consolas":["PS5"],"fecha":"12 de diciembre de 2026","fecha_iso":"2026-12-12","fecha_confirmada":true,"interes":"alta|media|baja","por_que":"una frase","accion":"una frase que empiece con un verbo","fuente":"url"}],"preventas":[{"titulo":"","consola":"","cantidad":0,"por_que":""}],"avisar_clientes":[{"titulo":"","que_decir":"mensaje corto para el cliente"}],"alertas":[{"tipo":"oportunidad|evitar|revisar","titulo":"","que_pasa":"","que_hacer":""}]}
-Ordena "lanzamientos" por fecha. Máximo 20 lanzamientos, 8 preventas, 6 avisar_clientes, 4 alertas. Si no hay fecha exacta usa fecha_iso con el primer día del mes o del año. No uses bloques de código.`;
+Ordena "lanzamientos" por fecha. Máximo 15 lanzamientos, 6 preventas, 6 avisar_clientes, 4 alertas. Cada "por_que" y "accion" de máximo 20 palabras. Si no hay fecha exacta usa fecha_iso con el primer día del mes o del año. No uses bloques de código.`;
   const { informe, j } = await pedirJSON(env, prompt, "\n\nIMPORTANTE: sé muy breve (máximo 12 lanzamientos, frases de máximo 12 palabras) y responde SOLO el JSON, sin ``` ni texto adicional.");
   // seguro: lo que ya salió queda marcado como salido y con fecha confirmada
   for (const x of informe.lanzamientos || []) if (x.fecha_iso && x.fecha_iso < d.hoy && x.fecha_confirmada !== false) x.ya_salio = true;
