@@ -10,10 +10,7 @@ export const CIERRE_BASE = () => [
   "🕹 Videojuegos, consolas, libros de arte y accesorios.",
   "🚚 Compra fácil y recibe en cualquier parte del país.",
   "📍 Tienda virtual en Bogotá ✌🏻",
-  "💳 Pagos por transferencia con Llave Bre-B.",
-  "💳 Tarjeta de crédito (3.59% + $900).",
-  "🔵 Addi (+7.7%).",
-  "🟢 Sistecrédito (+5%).",
+  "💳 Pagos por transferencia con Llave Bre-B, pagos con Tarjeta de crédito (3.59% + $900), con Addi🔵(+7.7%), con Sistecrédito🟢(+5%).",
   "📲 WhatsApp 311 8836995",
   "👉🏻 Catálogo actualizado en pipegames.com.co"
 ].join("\n");
