@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-sin-importacion", versionTomi: "10", preguntas: true, esperaWeb: true, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-sin-importacion", versionTomi: "10", preguntas: true, esperaWeb: 2, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -836,7 +836,13 @@ async function esperaWeb(req, env, responder) {
   // el producto tiene que estar en el catálogo
   const txt = await (await fetch("https://pipegames.com.co/mensajeria/productos-catalogo.js?t=" + Date.now())).text();
   const catalogo = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1));
-  const prod = catalogo.find(p => claveNombre(p.n, p.p) === claveNombre(b.titulo, b.consola));
+  let prod = catalogo.find(p => claveNombre(p.n, p.p) === claveNombre(b.titulo, b.consola));
+  if (!prod && b.libre) {
+    // producto que no está en el catálogo (lo pide el cliente o lo anota Felipe): se anota con el nombre escrito
+    const t = limpio(b.titulo, 80).toUpperCase();
+    if (t.length < 3) return responder({ ok: false, error: "Escribe el nombre del juego o producto." }, 400);
+    prod = { n: t, p: String(b.consola || "OTRA").toUpperCase(), k: "" };
+  }
   if (!prod) return responder({ ok: false, error: "No encontré ese producto en el catálogo." }, 400);
   const consola = ["PS5", "PS4", "SWITCH 2", "SWITCH"].includes(String(prod.p).toUpperCase()) ? String(prod.p).toUpperCase() : "OTRA";
   const titulo = String(prod.n).toUpperCase(), origen = b.origen === "centro" ? "Centro de Mando" : "catálogo";

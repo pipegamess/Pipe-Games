@@ -189,7 +189,7 @@ function pasoEspera(q) {
   const texto = q.replace(INTENCION_ESPERA, " ").replace(/\b(un|una|el|la|al|a|en|de|del|cliente|clientes|por favor|quiero|necesito|puedes|podr[ií]as|me|le|para)\b/gi, " ").trim();
   const prods = texto.length >= 2 ? buscar(texto, 6) : [];
   if (!prods.length) {
-    if (busca) { poner(`<p>No encontré ese producto en el catálogo. Escribe el nombre como aparece en el catálogo (por ejemplo <i>Pikmin 4</i> o <i>FC 26 PS5</i>).</p>`, "bot"); esperaBuscando = true; return true; }
+    if (busca) { pedirEspera(texto.toUpperCase().slice(0, 80) + "|", true); return true; }
     esperaBuscando = true;
     poner(`<p>${CLI ? "¡Claro! ¿Qué juego o producto quieres que te avisemos cuando llegue?" : "Listo. ¿De qué producto? Escribe el nombre (por ejemplo <i>Pikmin 4</i> o <i>FC 26 PS5</i>)."}</p>`, "bot");
     return true;
@@ -200,11 +200,15 @@ function pasoEspera(q) {
 
 /* ══ Lista de espera: producto agotado → nombre, apellido y WhatsApp → queda anotado y Felipe le avisa cuando llegue ══ */
 const ESPERA_URL = "https://skydropx-pipegames.pipe-games22.workers.dev/espera/web";
-function pedirEspera(dato) {
+function pedirEspera(dato, libre) {
   const [n, p] = dato.split("|");
-  poner(esc((CLI ? "Avísame cuando llegue " : "Anotar cliente: ") + n + " · " + p), "yo");
-  const caja = poner(`<p>${CLI ? "¡Listo! Déjanos tus datos y te escribimos por WhatsApp apenas llegue" : "Datos del cliente para avisarle cuando llegue"} <b>${esc(n)} · ${esc(p)}</b>:</p>
-    <form class="pb-espera" data-producto="${esc(dato)}" style="display:grid;gap:6px">
+  if (!libre) poner(esc((CLI ? "Avísame cuando llegue " : "Anotar cliente: ") + n + " · " + p), "yo");
+  const caja = poner((libre
+      ? `<p>No lo tenemos en el catálogo, pero ${CLI ? "te anotamos y te avisamos por WhatsApp si lo conseguimos" : "igual lo anotas en la lista de espera"}. Revisa el nombre y elige la consola:</p>`
+      : `<p>${CLI ? "¡Listo! Déjanos tus datos y te escribimos por WhatsApp apenas llegue" : "Datos del cliente para avisarle cuando llegue"} <b>${esc(n)} · ${esc(p)}</b>:</p>`) + `
+    <form class="pb-espera" data-producto="${esc(dato)}"${libre ? ' data-libre="1"' : ""} style="display:grid;gap:6px">
+      ${libre ? `<input name="titulo" value="${esc(n)}" placeholder="Juego o producto" required maxlength="80" style="font-size:16px;padding:8px;border-radius:8px">
+      <select name="consola" style="font-size:16px;padding:8px;border-radius:8px"><option value="PS5">PS5</option><option value="PS4">PS4</option><option value="SWITCH 2">Switch 2</option><option value="SWITCH">Switch</option><option value="OTRA">Otro (accesorio, consola…)</option></select>` : ""}
       <input name="nombre" placeholder="Nombre" autocomplete="given-name" required maxlength="60" style="font-size:16px;padding:8px;border-radius:8px">
       <input name="apellido" placeholder="Apellido" autocomplete="family-name" maxlength="60" style="font-size:16px;padding:8px;border-radius:8px">
       <input name="celular" placeholder="WhatsApp (ej: 3001234567)" inputmode="tel" autocomplete="tel" required maxlength="16" style="font-size:16px;padding:8px;border-radius:8px">
@@ -217,14 +221,18 @@ function pedirEspera(dato) {
 chat.addEventListener("submit", async e => {
   const f = e.target.closest("form.pb-espera"); if (!f) return;
   e.preventDefault();
-  const [n, p] = f.dataset.producto.split("|"), est = f.querySelector(".pb-espera-estado"), bt = f.querySelector("button");
+  const libre = !!f.dataset.libre;
+  let [n, p] = f.dataset.producto.split("|");
+  if (libre) { n = f.titulo.value.trim().toUpperCase(); p = f.consola.value; }
+  const est = f.querySelector(".pb-espera-estado"), bt = f.querySelector("button");
+  if (libre && n.length < 3) { est.textContent = "Escribe el nombre del juego o producto."; return; }
   const cel = f.celular.value.replace(/\D/g, "").replace(/^57(?=3\d{9}$)/, "");
   if (f.nombre.value.trim().length < 2) { est.textContent = "Escribe el nombre."; return; }
   if (!/^3\d{9}$/.test(cel)) { est.textContent = "El WhatsApp debe tener 10 dígitos y empezar por 3."; return; }
   bt.disabled = true; est.textContent = "Anotando…";
   try {
     const r = await fetch(ESPERA_URL, { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ titulo: n, consola: p, nombre: f.nombre.value, apellido: f.apellido.value, celular: cel, website: f.website.value, origen: CLI ? "catalogo" : "centro" }) });
+      body: JSON.stringify({ titulo: n, consola: p, libre, nombre: f.nombre.value, apellido: f.apellido.value, celular: cel, website: f.website.value, origen: CLI ? "catalogo" : "centro" }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(j.error || "No se pudo anotar.");
     f.replaceWith(Object.assign(document.createElement("p"), { innerHTML: j.repetido
