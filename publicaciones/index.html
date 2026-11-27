@@ -928,7 +928,9 @@ async function generar(ev) {
     setStatus("Buscando en internet la información de esta edición (contenido, DLC, mejoras)…");
     const contexto = await investigar();
     setStatus(contexto ? "Encontré información de la edición. Claude está escribiendo las publicaciones…" : "Claude está escribiendo las publicaciones…");
-    const r = await redactar(prompt(contexto), ctl.signal);
+    // Solo Instagram: se pide solo ese texto (la descripción para marketplaces no hace falta) y sale más rápido
+    const soloIg = !plats.some(p => p !== "Instagram");
+    const r = await redactar(prompt(contexto) + (soloIg ? '\n\nIMPORTANTE: esta vez Felipe SOLO necesita el texto de "instagram". En "descripcion" escribe únicamente una frase corta y en "hashtags" máximo 10. Dedica el esfuerzo al texto de Instagram.' : ""), ctl.signal);
     if (!r || typeof r !== "object" || !r.descripcion || !r.instagram) throw { code: "invalid_json" };
     estadoGen = {
       descripcion: String(r.descripcion),
