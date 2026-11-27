@@ -1,6 +1,6 @@
 // Pipe Bot: asistente flotante (abajo a la derecha). Se carga con <script type="module" src="../asistente/widget.js"></script>
 // Usa el motor de asistente/motor.js: catálogo con stock en vivo, tarifas de envío y fórmulas de pago y plataformas.
-import { cargar, responder, verProducto, desactualizado, disponibles, ciudadCliente, envioCliente, METODOS, TOPE_CUOTAS, formatoPesos as cop } from "./motor.js";
+import { cargar, responder, verProducto, desactualizado, disponibles, ciudadCliente, envioCliente, METODOS, TOPE_CUOTAS, formatoPesos as cop, buscar } from "./motor.js";
 
 const BASE = new URL(".", import.meta.url).href; // carpeta asistente/
 // ?modo=cliente: versión del catálogo (solo precios, disponibilidad, envíos, pagos, horario y contacto)
@@ -145,6 +145,7 @@ async function preguntar(q) {
   if (CLI && compra.paso) { poner(esc(q), "yo"); return responderPaso(q); }
   poner(esc(q).replace(/\n/g, "<br>"), "yo");
   try { if (desactualizado()) await cargar(); } catch {}
+  if (pasoEspera(q)) return;
   if (!CLI) {
     let m = null; try { m = await acciones(); } catch {}
     if (m && m.manejar(q, poner)) return;
@@ -178,6 +179,24 @@ chat.addEventListener("click", e => {
   const ac = e.target.closest("[data-accion]"); if (ac && CLI) return accion(ac.dataset.accion, ac);
   const sc = e.target.closest("[data-seccion]"); if (sc && typeof window.pbIrSeccion === "function") { cerrar(); window.pbIrSeccion(sc.dataset.seccion); }
 });
+
+/* ══ Lista de espera por texto: "anotar a un cliente en la lista de espera de Pikmin 4", "avísame cuando llegue FC 26" ══ */
+let esperaBuscando = false;
+const INTENCION_ESPERA = /\b(lista de espera|anot(a|ar|e|alo|ala|ame)|av[ií]s(a|e)(me|le|nos)?\s+cuando\s+(llegue|lleguen|haya)|reserv(a|ar)(me|le)?\s+cuando)\b/i;
+function pasoEspera(q) {
+  const busca = esperaBuscando; esperaBuscando = false;
+  if (!busca && !INTENCION_ESPERA.test(q)) return false;
+  const texto = q.replace(INTENCION_ESPERA, " ").replace(/\b(un|una|el|la|al|a|en|de|del|cliente|clientes|por favor|quiero|necesito|puedes|podr[ií]as|me|le|para)\b/gi, " ").trim();
+  const prods = texto.length >= 2 ? buscar(texto, 6) : [];
+  if (!prods.length) {
+    if (busca) { poner(`<p>No encontré ese producto en el catálogo. Escribe el nombre como aparece en el catálogo (por ejemplo <i>Pikmin 4</i> o <i>FC 26 PS5</i>).</p>`, "bot"); esperaBuscando = true; return true; }
+    esperaBuscando = true;
+    poner(`<p>${CLI ? "¡Claro! ¿Qué juego o producto quieres que te avisemos cuando llegue?" : "Listo. ¿De qué producto? Escribe el nombre (por ejemplo <i>Pikmin 4</i> o <i>FC 26 PS5</i>)."}</p>`, "bot");
+    return true;
+  }
+  poner(`<p>${prods.length === 1 ? "Este es el producto:" : "Elige el producto:"}</p>` + prods.map(p => `<div class="prod"><b>${esc(p.n)} · ${esc(p.p)}<span class="chip ${p.disp ? "ok" : "no"}">${p.disp ? "DISPONIBLE" : "AGOTADO"}</span></b>${p.disp && CLI ? `<span class="sub">Está disponible: puedes pedirlo ya.</span><button type="button" class="pb-cta" data-pedir="${esc(p.n)}|${esc(p.p)}">🛒 Agregar al pedido</button>` : `<button type="button" class="pb-cta" data-espera="${esc(p.n)}|${esc(p.p)}">🔔 ${CLI ? "Avísame cuando llegue" : "Anotar en la lista de espera"}</button>`}</div>`).join(""), "bot");
+  return true;
+}
 
 /* ══ Lista de espera: producto agotado → nombre, apellido y WhatsApp → queda anotado y Felipe le avisa cuando llegue ══ */
 const ESPERA_URL = "https://skydropx-pipegames.pipe-games22.workers.dev/espera/web";
