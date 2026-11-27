@@ -374,6 +374,12 @@ function dibujarPlats() {
   $("tagMk").textContent = mk.join(" · ");
   $("boxIg").hidden = !plats.includes("Instagram");
   $("precio").closest("label").style.opacity = plats.includes("Instagram") ? "" : "0.45";
+  // Con Instagram seleccionado no se buscan imágenes (ni automáticas ni con los botones); subir o pegar fotos sigue disponible
+  const sinBusqueda = plats.includes("Instagram");
+  ["imgAmazon", "imgBuscar", "imgAuto"].forEach(id => { const el = $(id); if (el) el.disabled = sinBusqueda; });
+  const ac = $("imgAuto") && $("imgAuto").closest("label"); if (ac) ac.style.opacity = sinBusqueda ? "0.45" : "";
+  const nota = $("imgBuscarNota");
+  if (nota) { nota.dataset.orig = nota.dataset.orig || nota.textContent; nota.textContent = sinBusqueda ? "Con Instagram seleccionado la búsqueda de imágenes está desactivada. Puedes subir o pegar tus fotos." : nota.dataset.orig; }
 }
 
 // Historial (solo en este navegador)
@@ -748,7 +754,7 @@ $("imgAuto").addEventListener("change", () => { try { localStorage.setItem("pg_i
 // Se busca cada vez que cambia el juego o la consola (no se repite si es el mismo artículo)
 let ultimaAuto = "";
 async function imagenesAutomaticas() {
-  if (!$("imgAuto").checked || !auth.currentUser) return;
+  if (!$("imgAuto").checked || !auth.currentUser || plats.includes("Instagram")) return;
   const ver = $("version").value && $("version").value !== "ESTANDAR" ? " " + $("version").value : "";
   const q = ENLACE_AMZ || `${$("juego").value.trim()}${ver} ${consolaNombre()}`.trim();
   if (q.toLowerCase() === ultimaAuto) return;
