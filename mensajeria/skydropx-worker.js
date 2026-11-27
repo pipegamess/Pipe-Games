@@ -47,7 +47,7 @@ const Manejador = {
     if (req.method === "GET" && url.pathname === "/salud") {
       return responder({ ok: true, base, credenciales: !!(env.SKYDROPX_CLIENT_ID && env.SKYDROPX_CLIENT_SECRET), firebase: !!env.FIREBASE_PROJECT, admin: !!env.ADMIN_UID,
         addi: !!(env.ADDI_CLIENT_ID && env.ADDI_CLIENT_SECRET), addiAvisos: !!(env.ADDI_NOTI_USER && env.ADDI_NOTI_PASS), cuentaServicio: !!env.FIREBASE_SA,
-        versionMati: "26-nov-sin-importacion", versionTomi: "10", preguntas: true, esperaWeb: 2, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
+        versionMati: "26-nov-sin-importacion", versionTomi: "10", preguntas: true, esperaWeb: 2, marketplace: true, versionAnto: "2-en-pausa", informesEquipo: "sábados 5:30 p. m.", esperaInstagram: !!env.CLAVE_AGENTE, alertas: !!env.NTFY_TEMA, mercadoLibre: !!(env.ML_CLIENT_ID && env.ML_CLIENT_SECRET), sistecredito: scConfig(env) ? scConfig(env).modo + " · " + scConfig(env).origen : false });
     }
     // Aviso de Addi con el resultado del crédito (no lleva token de Firebase: se valida con Basic Auth)
     if (req.method === "POST" && url.pathname === "/addi/aviso") return avisoAddi(req, env, url);
@@ -124,6 +124,9 @@ const Manejador = {
     }
     if (String(pedido.metodo || "").toUpperCase() === "TOMI_GENERAR") {
       try { const tarea = correrTomi(env, true); ctx.waitUntil(tarea.catch(() => {})); return responder(await tarea); } catch (e) { return responder({ error: "Tomi: " + (e.message || e) }, 500); }
+    }
+    if (/^MKT_/.test(String(pedido.metodo || "").toUpperCase())) {
+      try { return responder(await marketplace(env, pedido)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
     }
     if (String(pedido.metodo || "").toUpperCase() === "EQUIPO_PREGUNTAR") {
       try { return responder(await preguntarEquipo(env, pedido.quien, pedido.pregunta)); } catch (e) { return responder({ error: String(e.message || e) }, 500); }
@@ -1141,6 +1144,41 @@ async function escribirDocFS(env, tk, ruta, campos) {
   const fields = Object.fromEntries(Object.entries(campos).map(([k, v]) => [k, typeof v === "number" ? { integerValue: String(Math.round(v)) } : { stringValue: String(v) }]));
   const r = await fetch(docFS(env, ruta), { method: "PATCH", headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json" }, body: JSON.stringify({ fields }) });
   if (!r.ok) throw new Error("Firebase " + r.status + ": " + (await r.text()).slice(0, 150));
+}
+/* ---------- Kit de Facebook Marketplace: tus fotos de cada juego, en privado (Firebase, vía este Worker) ----------
+   privado/mkt_indice = { mapa: { pid: { fotos: [id, …], pub: fecha en que lo publicaste o 0 } } }
+   privado/mkt_foto_<id> = { pid, datos (JPEG en base64, ya reducido en el teléfono) } */
+async function borrarDocFS(env, tk, ruta) { await fetch(docFS(env, ruta), { method: "DELETE", headers: { Authorization: "Bearer " + tk } }); }
+async function marketplace(env, pedido) {
+  const tk = await tokenServicio(env), m = String(pedido.metodo).toUpperCase();
+  const leerIndice = async () => JSON.parse(((await leerDocFS(env, tk, "privado/mkt_indice")) || {}).mapa || "{}");
+  const guardarIndice = mapa => escribirDocFS(env, tk, "privado/mkt_indice", { t: Date.now(), mapa: JSON.stringify(mapa) });
+  const pid = String(pedido.pid || "").slice(0, 160);
+  if (m === "MKT_LEER") return { ok: true, indice: await leerIndice() };
+  if (m === "MKT_FOTO") {
+    const d = await leerDocFS(env, tk, "privado/mkt_foto_" + String(pedido.id || "").replace(/[^a-z0-9]/gi, ""));
+    if (!d) throw new Error("foto no encontrada");
+    return { ok: true, datos: d.datos };
+  }
+  if (!pid) throw new Error("falta el producto");
+  const mapa = await leerIndice(), x = mapa[pid] ||= { fotos: [], pub: 0 };
+  if (m === "MKT_FOTO_SUBIR") {
+    const datos = String(pedido.datos || "");
+    if (!/^[A-Za-z0-9+/=]+$/.test(datos) || datos.length > 950000) throw new Error("la foto es muy grande o no es válida");
+    if (x.fotos.length >= 10) throw new Error("máximo 10 fotos por producto");
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    await escribirDocFS(env, tk, "privado/mkt_foto_" + id, { pid, datos });
+    x.fotos.push(id); await guardarIndice(mapa);
+    return { ok: true, id };
+  }
+  if (m === "MKT_FOTO_BORRAR") {
+    const id = String(pedido.id || "").replace(/[^a-z0-9]/gi, "");
+    x.fotos = x.fotos.filter(f => f !== id);
+    await borrarDocFS(env, tk, "privado/mkt_foto_" + id);
+    await guardarIndice(mapa); return { ok: true };
+  }
+  if (m === "MKT_MARCAR") { x.pub = pedido.publicado ? Date.now() : 0; await guardarIndice(mapa); return { ok: true }; }
+  throw new Error("método desconocido");
 }
 async function guardarVentas(env, b) {
   const anio = Number(b.anio), filas = Array.isArray(b.ventas) ? b.ventas : [];

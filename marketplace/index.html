@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Kit Marketplace · Pipe Games</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<style>
+/* Kit para publicar a mano en Facebook Marketplace: textos listos para copiar y TUS fotos de cada juego.
+   Las fotos se guardan en privado (Firebase, a través del Worker), nunca en este repositorio público. */
+:root {
+  --bg: #0a0a0f; --surface: #12121a; --surface2: #1a1a26; --line: rgba(255,255,255,0.09);
+  --text: #e8e8f0; --muted: #8a8aa8; --acc: #f5c400; --acc-ink: #141000; --ok: #3ecf8e; --warn: #ffb35c; --err: #ff7b7b; --fb: #4b8cff;
+  --display: 'Rajdhani', 'Arial Narrow', Arial, sans-serif; --body: 'Barlow', 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.5; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 60px; }
+.wrap { max-width: 900px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 6vw, 34px); margin: 0; line-height: 1.05; }
+h1 span { color: var(--fb); }
+h2 { font-family: var(--display); font-size: 21px; margin: 0; }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 14px; max-width: 64ch; }
+.top { display: flex; gap: 8px; flex-wrap: wrap; }
+.top a, button.ghost { font: 600 13px/1 var(--body); color: var(--text); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; text-decoration: none; }
+button.primary { font: 700 14px/1 var(--body); color: var(--acc-ink); background: var(--acc); border: 0; border-radius: 10px; padding: 11px 14px; cursor: pointer; }
+button.fb { font: 700 14px/1 var(--body); color: #fff; background: var(--fb); border: 0; border-radius: 10px; padding: 11px 14px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; }
+.login { max-width: 400px; margin: 10vh auto 0; }
+label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+input[type=email], input[type=password], input[type=search] { font: 500 16px var(--body); color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; width: 100%; }
+.status { font-size: 13px; color: var(--muted); } .status.err { color: var(--err); } .status.ok { color: var(--ok); }
+.filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+.filtros button { font: 600 13px/1 var(--body); border-radius: 999px; padding: 8px 12px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
+.filtros button[aria-pressed=true] { background: var(--fb); border-color: var(--fb); color: #fff; }
+.filtros .n { opacity: .75; font-weight: 500; }
+.lista { display: grid; gap: 8px; }
+.prod { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; text-align: left; width: 100%; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+.prod b { font-size: 15px; min-width: 0; }
+.prod .precio { font-family: var(--display); font-weight: 700; font-size: 17px; color: var(--acc); }
+.prod .chips { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: 12px; border-radius: 999px; padding: 2px 9px; background: rgba(255,255,255,.07); color: var(--muted); }
+.chip.ok { background: rgba(62,207,142,.14); color: var(--ok); }
+.chip.err { background: rgba(255,123,123,.14); color: var(--err); }
+.chip.fb { background: rgba(75,140,255,.16); color: var(--fb); }
+.prod.alerta { border-color: rgba(255,123,123,.55); }
+.ficha { position: fixed; inset: 0; z-index: 40; background: rgba(5,5,10,.88); overflow: auto; padding: max(14px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) max(30px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); }
+.ficha .panel { max-width: 620px; margin: 0 auto; }
+.campo { display: grid; gap: 4px; background: var(--surface2); border-radius: 10px; padding: 10px 12px; }
+.campo .t { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.campo .v { white-space: pre-wrap; word-break: break-word; font-size: 15px; }
+.copiar { font: 700 12px/1 var(--body); color: var(--acc-ink); background: var(--acc); border: 0; border-radius: 7px; padding: 7px 10px; cursor: pointer; }
+.fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.foto { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--surface2); display: grid; place-items: center; color: var(--muted); font-size: 12px; max-width: 100%; }
+.foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.foto button { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; font-size: 13px; }
+.acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pasos { margin: 0; padding-left: 20px; color: var(--muted); font-size: 14px; display: grid; gap: 4px; }
+</style>
+</head>
+<body>
+
+<form class="panel login" id="vLogin" hidden>
+  <h2>Kit Marketplace · Pipe Games</h2>
+  <p class="sub">Entra con tu correo y contraseña de administrador de Pipe Games.</p>
+  <label>Correo<input id="lCorreo" type="email" autocomplete="username" required></label>
+  <label>Contraseña<input id="lClave" type="password" autocomplete="current-password" required></label>
+  <button class="primary" type="submit" id="lEntrar">Entrar</button>
+  <div class="status err" id="lError" role="alert"></div>
+</form>
+
+<div class="wrap" id="vApp" hidden>
+  <header>
+    <div>
+      <h1>Kit <span>Marketplace</span></h1>
+      <p class="sub">Tus productos disponibles con el texto listo para copiar y tus propias fotos de cada juego, para publicarlos a mano en Facebook Marketplace.</p>
+    </div>
+    <div class="top"><a href="../inicio/">Centro de Mando</a><button class="ghost" type="button" id="salir">Salir</button></div>
+  </header>
+
+  <details class="panel">
+    <summary style="cursor:pointer;font-weight:700">Cómo se usa</summary>
+    <ol class="pasos">
+      <li>Toca un producto y súbele tus fotos con <b>“Agregar mis fotos”</b> (quedan guardadas en privado para la próxima vez).</li>
+      <li>Toca <b>“Guardar fotos en el iPhone”</b> para tenerlas a mano en tu galería.</li>
+      <li>En Facebook: <b>Marketplace → Vender → Artículos</b>. Elige las fotos y pega el título, el precio y la descripción con los botones Copiar.</li>
+      <li>Vuelve aquí y toca <b>“Ya lo publiqué”</b>.</li>
+      <li>Si un producto publicado se agota, aparece en rojo en <b>“Agotados: quitar”</b> para que lo borres de Marketplace.</li>
+    </ol>
+  </details>
+
+  <input type="search" id="buscar" placeholder="Buscar producto…" aria-label="Buscar producto">
+  <div class="filtros" id="filtros"></div>
+  <div class="status" id="estado">Cargando productos…</div>
+  <div class="lista" id="lista"></div>
+</div>
+
+<div class="ficha" id="ficha" hidden role="dialog" aria-modal="true" aria-labelledby="fTitulo">
+  <div class="panel" id="fichaCuerpo"></div>
+</div>
+
+<input type="file" id="archivos" accept="image/*" multiple hidden>
+
+<script type="module">
+import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js?v=40261118a";
+import { CIERRE_BASE } from "../publicaciones/redactor.js?v=20261126b";
+const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
+const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
+const auth = getAuth(initializeApp(firebaseConfig));
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pesos = n => "$" + Math.round(n || 0).toLocaleString("es-CO");
+const clave = (n, p) => (String(n || "") + "|" + String(p || "")).toUpperCase().normalize("NFD").replace(/[^A-Z0-9|]/g, "");
+
+async function worker(metodo, extra) {
+  const token = await auth.currentUser.getIdToken();
+  const r = await fetch(SKYDROPX_URL.replace(/\/+$/, ""), { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ metodo, ...(extra || {}) }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || ("Error " + r.status));
+  return j;
+}
+
+let PRODS = [], INDICE = {}, filtro = "publicar", abierto = null;
+const FOTOS = new Map();   // id → dataURL (en memoria mientras la página está abierta)
+
+// Texto para Marketplace
+const NOMBRE_CONSOLA = { "PS5": "PS5", "PS4": "PS4", "SWITCH": "Nintendo Switch", "SWITCH 2": "Nintendo Switch 2" };
+const titulo = p => {
+  const nom = p.n.toLowerCase().replace(/(^|[\s:(\-/])([a-záéíóúñü])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b(Ps[45]|Fc|Nba|Gta|Dlc|Ssd|Usb|Tb|Gb|Hd|Ii|Iii|Iv|Vi|Vii|Viii|Ix|Xl)\b/g, w => w.toUpperCase());
+  const cons = NOMBRE_CONSOLA[p.p] ? " " + NOMBRE_CONSOLA[p.p] : "";
+  return (nom.replace(/\s*\(?open\s*box\)?/i, "") + cons + (esOB(p) ? " - Open Box" : " - Nuevo")).slice(0, 99);
+};
+const esOB = p => /OPEN\s*BOX/i.test(p.n);
+const esJuego = p => !!NOMBRE_CONSOLA[p.p];
+const descripcion = p => `${titulo(p).replace(/ - (Nuevo|Open Box)$/, "")}, ${esOB(p) ? "Open Box (caja abierta, en perfecto estado)" : "nuevo y sellado"}.${esJuego(p) ? " Juego físico original." : ""}
+
+🚚 Entrega el mismo día en Bogotá, Chía y Soacha (pedidos antes de las 3:00 p. m.) y envíos a todo el país.
+
+${CIERRE_BASE()}`;
+const categoria = p => esJuego(p) ? "Videojuegos" : "Electrónica / Videojuegos";
+
+async function cargar() {
+  $("estado").textContent = "Cargando productos…";
+  try {
+    const [txt, stock, idx] = await Promise.all([
+      fetch("../mensajeria/productos-catalogo.js?t=" + Date.now()).then(r => r.text()),
+      fetch("../stock.json?t=" + Date.now()).then(r => r.json()),
+      worker("MKT_LEER")
+    ]);
+    const cat = JSON.parse(txt.slice(txt.indexOf("["), txt.lastIndexOf("]") + 1));
+    const st = stock.productos || {};
+    INDICE = idx.indice || {};
+    PRODS = cat.filter(p => p.a !== false && p.v > 0).map(p => {
+      const ks = [].concat(p.k || []);
+      let q; for (const k of ks) if (st[k] !== undefined) q = (q || 0) + Math.max(0, Number(st[k]) || 0);
+      if (q === undefined && p.e) q = 0;
+      return { ...p, id: clave(p.n, p.p), q, disp: q === undefined ? true : q > 0 };
+    });
+    $("estado").textContent = "";
+    pintar();
+  } catch (e) { $("estado").className = "status err"; $("estado").textContent = "No se pudieron cargar los productos: " + e.message; }
+}
+
+const info = p => INDICE[p.id] || { fotos: [], pub: 0 };
+const GRUPOS = {
+  publicar: { t: "Por publicar", f: p => p.disp && !info(p).pub },
+  publicados: { t: "Publicados", f: p => !!info(p).pub && p.disp },
+  quitar: { t: "Agotados: quitar", f: p => !!info(p).pub && !p.disp },
+  sinfotos: { t: "Disponibles sin fotos", f: p => p.disp && !info(p).fotos.length }
+};
+function pintar() {
+  $("filtros").innerHTML = Object.entries(GRUPOS).map(([k, g]) => `<button type="button" data-f="${k}" aria-pressed="${k === filtro}">${g.t} <span class="n">${PRODS.filter(g.f).length}</span></button>`).join("");
+  const q = $("buscar").value.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const lista = PRODS.filter(GRUPOS[filtro].f).filter(p => !q || (p.n + " " + p.p).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").includes(q));
+  $("lista").innerHTML = lista.length ? lista.map(p => { const x = info(p);
+    return `<button type="button" class="prod${x.pub && !p.disp ? " alerta" : ""}" data-p="${esc(p.id)}"><b>${esc(p.n)} · ${esc(p.p)}</b><span class="precio">${pesos(p.v)}</span>
+      <span class="chips">${x.pub ? (p.disp ? `<span class="chip fb">Publicado</span>` : `<span class="chip err">Agotado: quítalo de Marketplace</span>`) : ""}<span class="chip${x.fotos.length ? " ok" : ""}">${x.fotos.length ? "📷 " + x.fotos.length + " foto" + (x.fotos.length > 1 ? "s" : "") : "Sin fotos"}</span>${p.q > 0 ? `<span class="chip">${p.q} en stock</span>` : ""}</span></button>`; }).join("")
+    : `<p class="status">${filtro === "quitar" ? "Nada que quitar: todo lo que publicaste sigue disponible." : "No hay productos aquí."}</p>`;
+}
+
+async function verFoto(id) {
+  if (FOTOS.has(id)) return FOTOS.get(id);
+  const j = await worker("MKT_FOTO", { id });
+  const u = "data:image/jpeg;base64," + j.datos; FOTOS.set(id, u); return u;
+}
+function campo(t, v, k) { return `<div class="campo"><span class="t">${t}<button type="button" class="copiar" data-copiar="${k}">Copiar</button></span><span class="v">${esc(v)}</span></div>`; }
+function abrir(id) {
+  const p = PRODS.find(x => x.id === id); if (!p) return;
+  abierto = p; const x = info(p);
+  $("fichaCuerpo").innerHTML = `<div class="acciones" style="justify-content:space-between"><h2 id="fTitulo">${esc(p.n)} · ${esc(p.p)}</h2><button type="button" class="ghost" id="cerrar">✕ Cerrar</button></div>
+    ${!p.disp ? `<p class="status err">Este producto está agotado.${x.pub ? " Quítalo de Marketplace y luego toca “Ya no está publicado”." : ""}</p>` : ""}
+    <h2 style="font-size:17px">Tus fotos</h2>
+    <div class="fotos" id="fotos">${x.fotos.map(f => `<div class="foto" data-foto="${f}">Cargando…</div>`).join("") || `<p class="status" style="grid-column:1/-1">Aún no hay fotos de este producto.</p>`}</div>
+    <div class="acciones"><button type="button" class="primary" id="subir">📷 Agregar mis fotos</button>${x.fotos.length ? `<button type="button" class="ghost" id="guardarFotos">Guardar fotos en el iPhone</button>` : ""}<span class="status" id="fEstado"></span></div>
+    <h2 style="font-size:17px">Texto para Marketplace</h2>
+    ${campo("Título", titulo(p), "titulo")}
+    ${campo("Precio", String(Math.round(p.v)), "precio")}
+    <div class="campo"><span class="t">Categoría y estado</span><span class="v">${esc(categoria(p))} · ${esOB(p) ? "Usado: como nuevo" : "Nuevo"}</span></div>
+    ${campo("Descripción", descripcion(p), "descripcion")}
+    <div class="acciones">${x.pub ? `<span class="chip fb">Publicado el ${new Date(x.pub).toLocaleDateString("es-CO", { day: "numeric", month: "long" })}</span><button type="button" class="ghost" id="despublicar">Ya no está publicado</button>` : `<button type="button" class="fb" id="publicado">✓ Ya lo publiqué</button>`}</div>`;
+  $("ficha").hidden = false; document.body.style.overflow = "hidden";
+  x.fotos.forEach(async f => { try { const u = await verFoto(f); const el = document.querySelector(`[data-foto="${f}"]`); if (el) el.innerHTML = `<img src="${u}" alt="Foto de ${esc(p.n)}"><button type="button" data-borrar="${f}" aria-label="Borrar foto">✕</button>`; } catch { const el = document.querySelector(`[data-foto="${f}"]`); if (el) el.textContent = "No cargó"; } });
+}
+function cerrar() { $("ficha").hidden = true; document.body.style.overflow = ""; abierto = null; pintar(); }
+
+// Reduce la foto en el teléfono antes de subirla (máx. 1600 px, JPEG): se ve bien en Marketplace y pesa poco
+function reducir(file) {
+  return new Promise((ok, mal) => {
+    const u = URL.createObjectURL(file), im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+      const c = document.createElement("canvas"); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+      let q = 0.85, d = c.toDataURL("image/jpeg", q);
+      while (d.length > 900000 && q > 0.4) { q -= 0.1; d = c.toDataURL("image/jpeg", q); }
+      ok(d);
+    };
+    im.onerror = () => { URL.revokeObjectURL(u); mal(new Error("no se pudo leer " + file.name)); };
+    im.src = u;
+  });
+}
+$("archivos").addEventListener("change", async e => {
+  const p = abierto, files = [...e.target.files]; e.target.value = "";
+  if (!p || !files.length) return;
+  const est = $("fEstado"); let n = 0;
+  for (const f of files) {
+    est.className = "status"; est.textContent = `Subiendo ${++n} de ${files.length}…`;
+    try {
+      const d = await reducir(f);
+      const r = await worker("MKT_FOTO_SUBIR", { pid: p.id, datos: d.split(",")[1] });
+      FOTOS.set(r.id, d); (INDICE[p.id] ||= { fotos: [], pub: 0 }).fotos.push(r.id);
+    } catch (err) { est.className = "status err"; est.textContent = err.message; abrir(p.id); return; }
+  }
+  abrir(p.id); $("fEstado").className = "status ok"; $("fEstado").textContent = "✓ Fotos guardadas.";
+});
+
+$("fichaCuerpo").addEventListener("click", async e => {
+  const p = abierto; if (!p) return;
+  if (e.target.closest("#cerrar")) return cerrar();
+  if (e.target.closest("#subir")) return $("archivos").click();
+  const cp = e.target.closest("[data-copiar]");
+  if (cp) {
+    const txt = { titulo: titulo(p), precio: String(Math.round(p.v)), descripcion: descripcion(p) }[cp.dataset.copiar];
+    try { await navigator.clipboard.writeText(txt); cp.textContent = "Copiado ✓"; setTimeout(() => cp.textContent = "Copiar", 1500); } catch { cp.textContent = "No se pudo"; }
+    return;
+  }
+  const br = e.target.closest("[data-borrar]");
+  if (br) {
+    if (!confirm("¿Borrar esta foto?")) return;
+    try { await worker("MKT_FOTO_BORRAR", { pid: p.id, id: br.dataset.borrar }); INDICE[p.id].fotos = INDICE[p.id].fotos.filter(f => f !== br.dataset.borrar); abrir(p.id); }
+    catch (err) { $("fEstado").className = "status err"; $("fEstado").textContent = err.message; }
+    return;
+  }
+  if (e.target.closest("#guardarFotos")) {
+    const est = $("fEstado"); est.className = "status"; est.textContent = "Preparando fotos…";
+    try {
+      const archivos = await Promise.all(info(p).fotos.map(async (f, i) => { const u = await verFoto(f); const b = await (await fetch(u)).blob(); return new File([b], `${p.id.split("|")[0].slice(0, 30)}-${i + 1}.jpg`, { type: "image/jpeg" }); }));
+      if (navigator.canShare && navigator.canShare({ files: archivos })) { await navigator.share({ files: archivos }); est.textContent = "Elige “Guardar imágenes” para pasarlas a tu galería."; }
+      else { archivos.forEach(f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); }); est.textContent = "Fotos descargadas."; }
+    } catch (err) { if (err.name !== "AbortError") { est.className = "status err"; est.textContent = "No se pudieron guardar: " + err.message; } else est.textContent = ""; }
+    return;
+  }
+  const pub = e.target.closest("#publicado"), desp = e.target.closest("#despublicar");
+  if (pub || desp) {
+    try { await worker("MKT_MARCAR", { pid: p.id, publicado: !!pub }); (INDICE[p.id] ||= { fotos: [], pub: 0 }).pub = pub ? Date.now() : 0; abrir(p.id); }
+    catch (err) { $("fEstado").className = "status err"; $("fEstado").textContent = err.message; }
+  }
+});
+$("ficha").addEventListener("click", e => { if (e.target === $("ficha")) cerrar(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("ficha").hidden) cerrar(); });
+$("filtros").addEventListener("click", e => { const b = e.target.closest("[data-f]"); if (b) { filtro = b.dataset.f; pintar(); } });
+$("lista").addEventListener("click", e => { const b = e.target.closest("[data-p]"); if (b) abrir(b.dataset.p); });
+$("buscar").addEventListener("input", pintar);
+
+$("vLogin").addEventListener("submit", async ev => {
+  ev.preventDefault(); $("lError").textContent = ""; $("lEntrar").disabled = true;
+  try { await signInWithEmailAndPassword(auth, $("lCorreo").value.trim(), $("lClave").value); }
+  catch { $("lError").textContent = "Correo o contraseña incorrectos."; }
+  $("lEntrar").disabled = false;
+});
+$("salir").onclick = () => signOut(auth);
+onAuthStateChanged(auth, async u => {
+  if (u && u.uid !== ADMIN_UID) { await signOut(auth); $("lError").textContent = "Esta cuenta no tiene acceso."; return; }
+  $("vLogin").hidden = !!u; $("vApp").hidden = !u;
+  if (u) cargar();
+});
+</script>
+</body>
+</html>
