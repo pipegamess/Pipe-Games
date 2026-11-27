@@ -280,7 +280,7 @@ import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../me
 const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
 const { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`);
 const auth = getAuth(initializeApp(firebaseConfig));
-import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON, tipoDe } from "./redactor.js?v=20261124a";
+import { CONSOLAS, DISPO, CIERRE_BASE, promptPublicacion, leerJSON, tipoDe } from "./redactor.js?v=20261126a";
 
 const $ = (id) => document.getElementById(id);
 let consola = "PS5";
@@ -299,10 +299,10 @@ let TITULO_AMZ = "", ENLACE_AMZ = "";
 function consolaNombre() { return (CONSOLAS.find(c => c.k === consola) || {}).nombre || consola; }
 
 function leerCierre() {
-  try { const v = localStorage.getItem("pg_cierre2"); if (v) return v; } catch (e) {}
+  try { const v = localStorage.getItem("pg_cierre3"); if (v) return v; } catch (e) {}
   return null;
 }
-function guardarCierre(v) { try { localStorage.setItem("pg_cierre2", v); } catch (e) {} }
+function guardarCierre(v) { try { localStorage.setItem("pg_cierre3", v); } catch (e) {} }
 
 function armarMk() {
   const nombre = ($("fNombre").value || $("juego").value).trim().toUpperCase();
@@ -326,7 +326,7 @@ function armarIg() {
   const ver = ($("version").value || "ESTANDAR").trim().toUpperCase();
   const p = fmtPrecio(precioNum());
   const cab = nombre + (ver && ver !== "ESTANDAR" ? " " + ver : "") + " " + consola + " - " +
-    (ESTADO_CORTO[$("estado").value] || $("estado").value) + "🕹" + (p ? " Precio: " + p + "💰" : "");
+    (ESTADO_CORTO[$("estado").value] || $("estado").value) + "🕹" + (p ? "\nPrecio: " + p + "💰" : "");
   return [cab, estadoGen.instagram.trim(), $("cierre").value.trim()].filter(Boolean).join("\n\n");
 }
 function contar() {
@@ -1014,7 +1014,7 @@ $("limpiar").onclick = () => {
 ["fNombre", "fGenero", "fFecha", "version", "estado"].forEach(id => $(id).addEventListener("input", pintar));
 $("cierre").addEventListener("input", () => { guardarCierre($("cierre").value); $("salidaIg").value = armarIg(); contar(); });
 $("precio").addEventListener("input", () => { $("salidaIg").value = armarIg(); contar(); });
-$("restaurarCierre").onclick = () => { try { localStorage.removeItem("pg_cierre2"); } catch (e) {} $("cierre").value = CIERRE_BASE(precioNum()); $("salidaIg").value = armarIg(); contar(); };
+$("restaurarCierre").onclick = () => { try { localStorage.removeItem("pg_cierre3"); } catch (e) {} $("cierre").value = CIERRE_BASE(precioNum()); $("salidaIg").value = armarIg(); contar(); };
 ["salidaMk", "salidaIg"].forEach(id => $(id).addEventListener("input", contar));
 document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", () => copiar(b.dataset.copy, b)));
 

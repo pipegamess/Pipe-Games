@@ -3,7 +3,7 @@
 // - generar el certificado/factura de Éxito con los datos del cliente (lo descarga el Generador facturas Éxito)
 // - responder con IA (Claude, por el Worker) lo que las respuestas fijas no cubren
 import { firebaseConfig, ADMIN_UID, FIREBASE_VERSION, SKYDROPX_URL } from "../mensajeria/config.js";
-import { promptPublicacion, CIERRE_BASE, CONSOLAS, leerJSON } from "../publicaciones/redactor.js?v=20261124a";
+import { promptPublicacion, CIERRE_BASE, CONSOLAS, leerJSON } from "../publicaciones/redactor.js?v=20261126a";
 import { buscar, productos, leer, garantiaDe, formatoPesos as cop, escapar as esc, METODOS } from "./motor.js";
 
 const { initializeApp, getApps, getApp } = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`);
@@ -60,8 +60,8 @@ export async function publicacion(q) {
   if (g.genero) cab.push("GÉNERO: " + String(g.genero).toUpperCase());
   if (g.fecha_lanzamiento) cab.push("FECHA DE LANZAMIENTO: " + String(g.fecha_lanzamiento).toUpperCase());
   const mk = cab.join("\n") + "\n\n" + String(g.descripcion || "").trim();
-  let cierre = null; try { cierre = localStorage.getItem("pg_cierre2"); } catch {}
-  const ig = [nombre + " " + consolaK + " - NUEVO🕹" + (p ? " Precio: " + cop(p.v) + "💰" : ""), String(g.instagram || "").trim(), cierre || CIERRE_BASE()].filter(Boolean).join("\n\n");
+  let cierre = null; try { cierre = localStorage.getItem("pg_cierre3"); } catch {}
+  const ig = [nombre + " " + consolaK + " - NUEVO🕹" + (p ? "\nPrecio: " + cop(p.v) + "💰" : ""), String(g.instagram || "").trim(), cierre || CIERRE_BASE()].filter(Boolean).join("\n\n");
   return `<p class="nota">${esc(nombre)} · ${esc(consola)}${p ? " · " + cop(p.v) : ""}. Revisa los textos antes de publicar; para cambiar versión, estado o notas usa <a href="${BASE}../publicaciones/">Publicaciones</a>.</p>`
     + copiable("Mercado Libre / Falabella", mk) + copiable("Instagram", ig);
 }

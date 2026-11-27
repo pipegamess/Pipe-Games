@@ -6,7 +6,17 @@ export const CONSOLAS = [
   { k: "SWITCH 2", nombre: "NINTENDO SWITCH 2" },
   { k: "XBOX", nombre: "XBOX SERIES X|S" }
 ];
-export const CIERRE_BASE = () => "🕹Videojuegos, Consolas, Libros de Arte y accesorios. Compra fácil y recibe en cualquier parte del país.🕹 📍Tienda Virtual en Bogotá✌🏻 💳Pagos vía Transferencia vía Nequi o Llave Bre-B, pagos con Tarjeta de crédito (3.59%+$900), con Addi🔵 (+7.7%), con Sistecrédito🟢(+5%). 📲WhatsApp 311 8836995📱\n👉🏻Visita nuestro catálogo actualizado en pipegames.com.co👈🏻";
+export const CIERRE_BASE = () => [
+  "🕹 Videojuegos, consolas, libros de arte y accesorios.",
+  "🚚 Compra fácil y recibe en cualquier parte del país.",
+  "📍 Tienda virtual en Bogotá ✌🏻",
+  "💳 Pagos por transferencia con Llave Bre-B.",
+  "💳 Tarjeta de crédito (3.59% + $900).",
+  "🔵 Addi (+7.7%).",
+  "🟢 Sistecrédito (+5%).",
+  "📲 WhatsApp 311 8836995",
+  "👉🏻 Catálogo actualizado en pipegames.com.co"
+].join("\n");
 export const DISPO = {
   inmediata: "disponible para entrega inmediata",
   preventa: "en preventa (se reserva con abono)",
