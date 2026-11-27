@@ -39,6 +39,10 @@ function llavesDe(g) {
   if (Object.prototype.hasOwnProperty.call(mapa, nk)) { const k = mapa[nk]; return Array.isArray(k) ? k : [k]; }
   return [llave(g.name) + "|" + llavePlat(g.platform)];
 }
+// Eliminados desde el modo admin del catálogo: no se vuelven a crear desde LISTADO
+const mEl = html.match(/^const PG_ELIMINADOS = (\[.*\]);[ \t]*$/m);
+let eliminados = []; try { eliminados = mEl ? JSON.parse(mEl[1]) : []; } catch {}
+const eliminado = (k, nombre, pl) => eliminados.includes(k) || eliminados.includes(llave(nombre) + "|" + llavePlat(platCatalogo(pl)));
 const porLlave = {};
 for (const n of Object.keys(datos)) for (const g of datos[n]) for (const k of llavesDe(g)) (porLlave[k] = porLlave[k] || []).push(g);
 
@@ -141,6 +145,7 @@ for (const [k, nombre, pl, precio, esAcc] of listado) {
   if (!k || !(precio > 0) || porLlave[k]) continue;
   if (!PLATS_JUEGO[llavePlat(pl)]) continue;          // gorras, convertidores, etc.: no se crean solos
   if (!(productos[k] > 0)) continue;                  // sin unidades disponibles
+  if (eliminado(k, nombre, pl)) continue;             // lo eliminaste del catálogo en el modo admin
   crear(k, nombre, pl, precio, esAcc, "LISTADO");
 }
 
@@ -149,6 +154,10 @@ for (const n of Object.keys(datos)) {
   html = html.replace(new RegExp("^const " + n + " = \\[.*\\];[ \\t]*$", "m"), () => "const " + n + " = " + JSON.stringify(datos[n]) + ";");
 }
 html = html.replace(/^const PG_STOCK_MAP = \{.*\};[ \t]*$/m, () => "const PG_STOCK_MAP = " + JSON.stringify(mapa) + ";");
+// lo que volvió a llegar de importación y se creó de nuevo sale de la lista de eliminados
+const vivos = new Set(); for (const n of Object.keys(datos)) for (const g of datos[n]) llavesDe(g).forEach(k => vivos.add(k));
+const eliminados2 = eliminados.filter(k => !vivos.has(k));
+if (mEl) html = html.replace(/^const PG_ELIMINADOS = \[.*\];[ \t]*$/m, () => "const PG_ELIMINADOS = " + JSON.stringify(eliminados2) + ";");
 // nueva versión: los navegadores (incluido el panel) dejan de usar la copia guardada
 html = html.replace(/var VERSION = '[^']*'/, () => "var VERSION = '2025-export-" + Date.now() + "'");
 fs.writeFileSync(ARCHIVO, html);
